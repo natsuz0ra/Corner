@@ -12,13 +12,17 @@ import (
 )
 
 type OpenAIClient struct {
+	// 复用的 HTTP 客户端，统一控制超时与连接行为。
 	Client *http.Client
 }
 
 type ModelRuntimeConfig struct {
+	// 兼容 OpenAI 协议的服务地址。
 	BaseURL string
-	APIKey  string
-	Model   string
+	// 鉴权密钥。
+	APIKey string
+	// 目标模型名称。
+	Model string
 }
 
 type ChatMessage struct {
@@ -53,7 +57,9 @@ const (
 
 // StreamResult 包含一次流式调用的结果
 type StreamResult struct {
-	Type      StreamResultType
+	// 本次流式结果类型：文本或工具调用。
+	Type StreamResultType
+	// 模型返回的工具调用列表（仅 Type=StreamResultToolCalls 时有值）。
 	ToolCalls []ToolCallInfo
 	// AssistantMessage 用于将 assistant 消息（含 tool_calls）追加回上下文
 	AssistantMessage ChatMessage
@@ -67,6 +73,7 @@ func NewOpenAIClient() *OpenAIClient {
 
 // StreamChat 发起流式聊天请求（不带工具），保持原有调用兼容
 func (c *OpenAIClient) StreamChat(ctx context.Context, modelConfig ModelRuntimeConfig, messages []ChatMessage, onChunk func(string) error) error {
+	// 复用带工具版本，传入空工具定义以保持单一实现入口。
 	result, err := c.StreamChatWithTools(ctx, modelConfig, messages, nil, onChunk)
 	if err != nil {
 		return err
@@ -87,6 +94,7 @@ func (c *OpenAIClient) StreamChatWithTools(
 	toolDefs []ToolDef,
 	onChunk func(string) error,
 ) (*StreamResult, error) {
+	// 统一净化配置，避免尾部斜杠和空白导致请求失败。
 	baseURL := strings.TrimRight(strings.TrimSpace(modelConfig.BaseURL), "/")
 	apiKey := strings.TrimSpace(modelConfig.APIKey)
 	model := strings.TrimSpace(modelConfig.Model)
@@ -105,6 +113,7 @@ func (c *OpenAIClient) StreamChatWithTools(
 		return nil, fmt.Errorf("请求消息为空")
 	}
 
+	// 组装 OpenAI 聊天参数；仅在有工具定义时启用 tools。
 	params := openai.ChatCompletionNewParams{
 		Messages: requestMessages,
 		Model:    openai.ChatModel(model),
@@ -117,6 +126,7 @@ func (c *OpenAIClient) StreamChatWithTools(
 	stream := client.Chat.Completions.NewStreaming(ctx, params)
 	acc := openai.ChatCompletionAccumulator{}
 
+	// 流式消费：边累积完整结果，边把文本增量回调给上层。
 	for stream.Next() {
 		chunk := stream.Current()
 		acc.AddChunk(chunk)
@@ -134,12 +144,14 @@ func (c *OpenAIClient) StreamChatWithTools(
 		return nil, fmt.Errorf("模型请求失败: %w", err)
 	}
 
+	// 无选择分支时按空文本处理，保持返回结构稳定。
 	if len(acc.Choices) == 0 {
 		return &StreamResult{Type: StreamResultText}, nil
 	}
 
 	choice := acc.Choices[0]
 	if len(choice.Message.ToolCalls) > 0 {
+		// 将 SDK 的 tool_calls 结构收敛为内部统一格式。
 		var calls []ToolCallInfo
 		for _, tc := range choice.Message.ToolCalls {
 			calls = append(calls, ToolCallInfo{
@@ -151,6 +163,7 @@ func (c *OpenAIClient) StreamChatWithTools(
 		return &StreamResult{
 			Type:      StreamResultToolCalls,
 			ToolCalls: calls,
+			// 保留完整 assistant 消息，供上层追加回上下文继续推理。
 			AssistantMessage: ChatMessage{
 				Role:      "assistant",
 				Content:   choice.Message.Content,
@@ -167,6 +180,7 @@ func buildRequestMessages(messages []ChatMessage) []openai.ChatCompletionMessage
 	for _, msg := range messages {
 		content := strings.TrimSpace(msg.Content)
 
+		// 按内部 role 映射到 OpenAI SDK 对应消息类型。
 		switch strings.ToLower(strings.TrimSpace(msg.Role)) {
 		case "system":
 			if content == "" {
@@ -175,6 +189,7 @@ func buildRequestMessages(messages []ChatMessage) []openai.ChatCompletionMessage
 			result = append(result, openai.SystemMessage(content))
 		case "assistant":
 			if len(msg.ToolCalls) > 0 {
+				// assistant 带 tool_calls 时必须使用结构化消息，保留调用 ID 与参数。
 				var toolCalls []openai.ChatCompletionMessageToolCallUnionParam
 				for _, tc := range msg.ToolCalls {
 					toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallUnionParam{
@@ -200,6 +215,7 @@ func buildRequestMessages(messages []ChatMessage) []openai.ChatCompletionMessage
 				result = append(result, openai.AssistantMessage(content))
 			}
 		case "tool":
+			// tool 消息通过 toolCallID 与上一个 assistant 的调用请求关联。
 			result = append(result, openai.ToolMessage(msg.Content, msg.ToolCallID))
 		case "developer":
 			if content == "" {
@@ -219,6 +235,7 @@ func buildRequestMessages(messages []ChatMessage) []openai.ChatCompletionMessage
 func buildToolParams(defs []ToolDef) []openai.ChatCompletionToolUnionParam {
 	var tools []openai.ChatCompletionToolUnionParam
 	for _, def := range defs {
+		// 将内部工具定义转换为 OpenAI function tool 参数。
 		tools = append(tools, openai.ChatCompletionFunctionTool(openai.FunctionDefinitionParam{
 			Name:        def.Name,
 			Description: openai.String(def.Description),

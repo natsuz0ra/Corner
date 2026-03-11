@@ -15,9 +15,8 @@ import (
 )
 
 type ChatService struct {
-	repo   *repositories.Repository
-	openai *OpenAIClient
-	agent  *AgentService
+	repo  *repositories.Repository
+	agent *AgentService
 }
 
 const contextHistoryLimit = 20
@@ -33,9 +32,8 @@ type ChatStreamResult struct {
 
 func NewChatService(repo *repositories.Repository, openai *OpenAIClient) *ChatService {
 	return &ChatService{
-		repo:   repo,
-		openai: openai,
-		agent:  NewAgentService(openai),
+		repo:  repo,
+		agent: NewAgentService(openai),
 	}
 }
 
@@ -246,9 +244,13 @@ func (s *ChatService) HandleChatStream(
 }
 
 type titleStreamParser struct {
+	// 是否启用协议解析；关闭时全部透传。
 	enabled bool
-	title   string
+	// 最近一次成功解析出的标题。
+	title string
+	// 探测模式下的行缓冲，用于按“行”识别 [TITLE] 协议。
 	lineBuf strings.Builder
+	// 是否处于探测模式：true=先入缓冲识别协议，false=正文直通。
 	probing bool
 }
 
@@ -280,6 +282,7 @@ func (p *titleStreamParser) Flush() string {
 func (p *titleStreamParser) process(chunk string, flush bool) string {
 	var out strings.Builder
 
+	// 将确认属于正文的内容透传到输出。
 	writePassthrough := func(content string) {
 		if content == "" {
 			return
@@ -287,6 +290,7 @@ func (p *titleStreamParser) process(chunk string, flush bool) string {
 		out.WriteString(content)
 	}
 
+	// 刷新当前行缓冲：可在遇到换行时自然刷新，也可强制刷新（流结束/判定非协议时）。
 	flushLineBuffer := func(force bool) {
 		current := p.lineBuf.String()
 		if current == "" {
@@ -298,22 +302,27 @@ func (p *titleStreamParser) process(chunk string, flush bool) string {
 		line := strings.TrimSuffix(current, "\n")
 		line = strings.TrimSuffix(line, "\r")
 		if title, ok := parseProtocolTitle(line); ok {
+			// 协议行仅用于更新标题，不进入正文输出。
 			p.title = title
 			p.lineBuf.Reset()
+			// 处理完一行后继续处于探测模式，便于识别下一行协议。
 			p.probing = true
 			return
 		}
 		writePassthrough(current)
 		p.lineBuf.Reset()
+		// 仅当以换行结束时，下一字符才视作新行开头并重新探测。
 		p.probing = strings.HasSuffix(current, "\n")
 	}
 
 	for i := 0; i < len(chunk); i++ {
 		ch := chunk[i]
 		if p.probing {
+			// 探测模式：先累积到行缓冲，再判断是否为 [TITLE] 协议。
 			p.lineBuf.WriteByte(ch)
 			trimmedLeft := strings.TrimLeft(p.lineBuf.String(), " \t\r\n\uFEFF")
 			titleTag := "[TITLE]"
+			// 前缀已足够但不匹配时，立即强制刷新为正文，避免无谓等待整行。
 			if len([]rune(trimmedLeft)) >= len([]rune(titleTag)) && !strings.HasPrefix(trimmedLeft, titleTag) {
 				flushLineBuffer(true)
 			} else {
@@ -322,6 +331,7 @@ func (p *titleStreamParser) process(chunk string, flush bool) string {
 			continue
 		}
 
+		// 直通模式：正文原样输出，换行后回到探测模式。
 		out.WriteByte(ch)
 		if ch == '\n' {
 			p.probing = true
@@ -329,6 +339,7 @@ func (p *titleStreamParser) process(chunk string, flush bool) string {
 	}
 
 	if flush {
+		// 流结束时强制处理残留缓冲，避免最后半行被遗漏。
 		flushLineBuffer(true)
 	}
 
@@ -337,21 +348,6 @@ func (p *titleStreamParser) process(chunk string, flush bool) string {
 
 func (p *titleStreamParser) Title() string {
 	return p.title
-}
-
-func firstNewlineIndex(input string) (int, int) {
-	for i := 0; i < len(input); i++ {
-		switch input[i] {
-		case '\n':
-			return i, 1
-		case '\r':
-			if i+1 < len(input) && input[i+1] == '\n' {
-				return i, 2
-			}
-			return i, 1
-		}
-	}
-	return -1, 0
 }
 
 func parseProtocolTitle(line string) (string, bool) {
