@@ -16,17 +16,25 @@ import (
 )
 
 type WSController struct {
+	// 聊天业务入口，负责会话与流式输出处理。
 	chatService *services.ChatService
-	upgrader    websocket.Upgrader
+	// WebSocket 升级与连接参数配置。
+	upgrader websocket.Upgrader
 }
 
 type chatIncoming struct {
-	Type       string `json:"type"`
-	SessionID  string `json:"sessionId"`
-	Content    string `json:"content"`
-	ModelID    string `json:"modelId"`
+	// 客户端消息类型：chat/ping/tool_approve 等。
+	Type string `json:"type"`
+	// 会话标识，用于路由到指定聊天上下文。
+	SessionID string `json:"sessionId"`
+	// 用户输入内容（聊天消息正文）。
+	Content string `json:"content"`
+	// 期望使用的模型标识。
+	ModelID string `json:"modelId"`
+	// 工具调用审批对应的调用 ID。
 	ToolCallID string `json:"toolCallId"`
-	Approved   *bool  `json:"approved"`
+	// 工具审批结果；nil 表示未携带审批字段。
+	Approved *bool `json:"approved"`
 }
 
 func NewWSController(chatService *services.ChatService) *WSController {
@@ -44,7 +52,9 @@ func NewWSController(chatService *services.ChatService) *WSController {
 
 // approvalBroker 管理工具调用审批的通道
 type approvalBroker struct {
-	mu       sync.Mutex
+	// 保护 channels，避免并发读写 map。
+	mu sync.Mutex
+	// toolCallID -> 审批回传通道。
 	channels map[string]chan services.ApprovalResponse
 }
 
@@ -92,6 +102,7 @@ func (w *WSController) Chat(wr http.ResponseWriter, req *http.Request) {
 	chatCh := make(chan chatIncoming, 16)
 	broker := newApprovalBroker()
 
+	// 统一入队写消息：会话结束后不再发送，避免 goroutine 悬挂。
 	enqueue := func(payload map[string]any) bool {
 		select {
 		case <-sessionCtx.Done():
@@ -116,6 +127,7 @@ func (w *WSController) Chat(wr http.ResponseWriter, req *http.Request) {
 		}
 	}()
 
+	// 读协程负责协议解包与分流；实际聊天处理在主循环串行执行。
 	// 读协程：处理 ping/chat/tool_approve 消息
 	go func() {
 		for {
@@ -201,6 +213,7 @@ func (w *WSController) Chat(wr http.ResponseWriter, req *http.Request) {
 			if !enqueue(map[string]any{"type": "session", "sessionId": session.ID}) {
 				return
 			}
+			// 先发 start，再逐块下发 chunk，前端据此进入流式渲染状态。
 			if !enqueue(map[string]any{"type": "start", "sessionId": session.ID}) {
 				return
 			}
@@ -211,6 +224,7 @@ func (w *WSController) Chat(wr http.ResponseWriter, req *http.Request) {
 
 			callbacks := services.AgentCallbacks{
 				OnChunk: func(chunk string) error {
+					// 首块到达时间用于统计首包延迟。
 					if firstChunkSentAt.IsZero() && chunk != "" {
 						firstChunkSentAt = time.Now()
 					}
@@ -224,6 +238,7 @@ func (w *WSController) Chat(wr http.ResponseWriter, req *http.Request) {
 					return nil
 				},
 				OnToolCallStart: func(req services.ApprovalRequest) error {
+					// 通知前端进入工具审批流程。
 					if !enqueue(map[string]any{
 						"type":       "tool_call_start",
 						"sessionId":  session.ID,
@@ -238,6 +253,7 @@ func (w *WSController) Chat(wr http.ResponseWriter, req *http.Request) {
 					return nil
 				},
 				WaitApproval: func(ctx context.Context, toolCallID string) (*services.ApprovalResponse, error) {
+					// 将工具调用挂起，等待前端回传 tool_approve 结果。
 					ch := broker.Register(toolCallID)
 					defer broker.Remove(toolCallID)
 					select {
@@ -248,6 +264,7 @@ func (w *WSController) Chat(wr http.ResponseWriter, req *http.Request) {
 					}
 				},
 				OnToolCallResult: func(result services.ToolCallResult) error {
+					// 回传工具执行结果，便于前端展示中间产物。
 					if !enqueue(map[string]any{
 						"type":       "tool_call_result",
 						"sessionId":  session.ID,
@@ -278,6 +295,7 @@ func (w *WSController) Chat(wr http.ResponseWriter, req *http.Request) {
 			}
 
 			if streamResult != nil && streamResult.TitleUpdated {
+				// 标题有更新时，单独推送会话标题事件以刷新列表展示。
 				if !enqueue(map[string]any{
 					"type":      "session_title",
 					"sessionId": session.ID,
@@ -287,6 +305,7 @@ func (w *WSController) Chat(wr http.ResponseWriter, req *http.Request) {
 				}
 			}
 			if streamResult != nil && streamResult.PushFailed {
+				// 上游推送失败但消息已落库，前端收到提示后可引导用户重连。
 				if !enqueue(map[string]any{
 					"type":      "error",
 					"sessionId": session.ID,
@@ -311,6 +330,7 @@ func (w *WSController) Chat(wr http.ResponseWriter, req *http.Request) {
 				firstChunkToDoneMs = doneSentAt.Sub(firstChunkSentAt).Milliseconds()
 			}
 			log.Printf(
+				// 记录端到端关键阶段耗时，便于定位首包慢或尾包慢问题。
 				"ws_chat_timing session=%s receive_to_start_ms=%d start_to_first_chunk_ms=%d first_chunk_to_done_ms=%d total_ms=%d",
 				session.ID,
 				startSentAt.Sub(receivedAt).Milliseconds(),
@@ -322,6 +342,7 @@ func (w *WSController) Chat(wr http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// writeJSON 作为统一写出入口，便于后续集中处理写链路增强（如埋点/压缩）。
 func writeJSON(conn *websocket.Conn, payload map[string]any) error {
 	return conn.WriteJSON(payload)
 }
