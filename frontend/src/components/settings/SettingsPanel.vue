@@ -8,8 +8,8 @@ import { json } from '@codemirror/lang-json'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { lineNumbers } from '@codemirror/view'
 
-import MdiIcon from '../../../shared/components/MdiIcon.vue'
-import { llmAPI, mcpAPI, settingAPI, skillsAPI } from '../../../api'
+import MdiIcon from '@/components/MdiIcon.vue'
+import { llmAPI, mcpAPI, settingAPI, skillsAPI } from '@/api/settings'
 
 const emit = defineEmits<{
   close: []

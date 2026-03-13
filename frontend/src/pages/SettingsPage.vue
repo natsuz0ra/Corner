@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 
-import SettingsPanel from '../../features/settings/components/SettingsPanel.vue'
+import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 
 const router = useRouter()
 </script>
