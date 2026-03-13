@@ -91,7 +91,6 @@ function onGlobalClick(e: MouseEvent) {
 }
 
 onMounted(() => {
-  // 使用捕获阶段，避免被父元素的 @click.stop 阻断（如弹窗容器）
   document.addEventListener('click', onGlobalClick, true)
   window.addEventListener('resize', closeDropdown)
   window.addEventListener('scroll', closeDropdown, true)
@@ -110,12 +109,12 @@ onUnmounted(() => {
     <button
       ref="triggerRef"
       type="button"
-      class="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white text-gray-700 cursor-pointer transition-all duration-150 select-none"
+      class="select-trigger flex items-center gap-1.5 rounded-lg cursor-pointer transition-all duration-150 select-none"
       :class="[
-        size === 'xs' ? 'text-xs' : 'text-sm',
-        variant === 'default' ? 'border border-gray-200 px-3 py-1.5' : 'px-2 py-1',
-        disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100',
-        open && variant === 'default' ? 'border-blue-400 ring-2 ring-blue-100' : '',
+        size === 'xs' ? 'text-xs px-2 py-1' : 'text-sm px-3 py-1.5',
+        variant === 'default' ? 'select-trigger-default' : 'select-trigger-ghost',
+        disabled ? 'opacity-50 cursor-not-allowed' : '',
+        open && variant === 'default' ? 'select-trigger-focused' : '',
       ]"
       @click.stop="toggle"
     >
@@ -123,38 +122,36 @@ onUnmounted(() => {
       <MdiIcon
         :path="mdiChevronDown"
         :size="size === 'xs' ? 12 : 14"
-        class="text-gray-400 flex-shrink-0 transition-transform duration-150"
+        class="flex-shrink-0 transition-transform duration-200"
         :class="open ? 'rotate-180' : ''"
+        style="color: var(--text-muted)"
       />
     </button>
 
-    <!-- 下拉列表（Teleport 到 body，避免 overflow-hidden 截断） -->
+    <!-- 下拉列表 -->
     <Teleport to="body">
       <Transition :name="goUp ? 'select-dropdown-top' : 'select-dropdown'">
         <div
           v-if="open"
           ref="dropdownRef"
           :style="dropdownStyle"
-          class="z-[9999] bg-white border border-gray-200 rounded-xl shadow-lg py-1 overflow-hidden"
+          class="select-panel z-[9999] rounded-xl py-1 overflow-hidden"
           @click.stop
         >
           <button
             v-for="opt in options"
             :key="opt.value"
             type="button"
-            class="w-full text-left px-3 py-2 cursor-pointer transition-colors duration-100 flex items-center gap-2"
+            class="select-option w-full text-left px-3 py-2 cursor-pointer transition-all duration-100 flex items-center gap-2"
             :class="[
               size === 'xs' ? 'text-xs' : 'text-sm',
-              opt.value === modelValue
-                ? 'bg-blue-50 text-blue-700 font-medium'
-                : 'text-gray-700 hover:bg-gray-50',
+              opt.value === modelValue ? 'select-option-active' : 'select-option-default',
             ]"
             @click="select(opt.value)"
           >
-            <!-- 选中指示点 -->
             <span
-              class="w-1.5 h-1.5 rounded-full flex-shrink-0"
-              :class="opt.value === modelValue ? 'bg-blue-500' : 'bg-transparent'"
+              class="w-1.5 h-1.5 rounded-full flex-shrink-0 transition-all duration-150"
+              :class="opt.value === modelValue ? 'bg-indigo-500' : 'bg-transparent'"
             />
             {{ opt.label }}
           </button>
@@ -165,22 +162,67 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.select-trigger {
+  color: var(--text-secondary);
+}
+
+.select-trigger-default {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+}
+.select-trigger-default:not(:disabled):hover {
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.select-trigger-ghost:not(:disabled):hover {
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--text-primary);
+}
+
+.select-trigger-focused {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+.select-panel {
+  background: var(--menu-bg);
+  border: 1px solid var(--menu-border);
+  box-shadow: var(--menu-shadow);
+  backdrop-filter: blur(16px);
+}
+
+.select-option-active {
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+  font-weight: 500;
+}
+
+.select-option-default {
+  color: var(--text-secondary);
+}
+.select-option-default:hover {
+  background: rgba(99, 102, 241, 0.07);
+  color: var(--text-primary);
+}
+
+/* Transitions */
 .select-dropdown-enter-active,
 .select-dropdown-leave-active {
-  transition: opacity 120ms ease-out, transform 120ms ease-out;
+  transition: opacity 130ms ease-out, transform 130ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .select-dropdown-enter-from,
 .select-dropdown-leave-to {
   opacity: 0;
-  transform: translateY(-4px) scale(0.98);
+  transform: translateY(-4px) scale(0.97);
 }
 .select-dropdown-top-enter-active,
 .select-dropdown-top-leave-active {
-  transition: opacity 120ms ease-out, transform 120ms ease-out;
+  transition: opacity 130ms ease-out, transform 130ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .select-dropdown-top-enter-from,
 .select-dropdown-top-leave-to {
   opacity: 0;
-  transform: translateY(4px) scale(0.98);
+  transform: translateY(4px) scale(0.97);
 }
 </style>

@@ -50,23 +50,23 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
       <div
         v-if="visible"
         class="fixed inset-0 z-[200] flex items-center justify-center p-4"
-        style="background: rgba(0,0,0,0.3)"
+        style="background: rgba(0,0,0,0.45); backdrop-filter: blur(4px)"
         @click.self="close"
       >
         <div
-          class="relative bg-white rounded-xl shadow-xl flex flex-col overflow-hidden"
+          class="dialog-panel relative flex flex-col overflow-hidden rounded-2xl"
           :style="{ width: '100%', maxWidth: width, maxHeight: '90vh' }"
           @click.stop
         >
           <!-- 头部 -->
-          <div class="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
-            <span class="text-sm font-semibold text-gray-900">{{ title }}</span>
+          <div class="flex items-center justify-between px-5 py-4 dialog-header">
+            <span class="text-sm font-semibold dialog-title">{{ title }}</span>
             <button
               type="button"
-              class="w-7 h-7 flex items-center justify-center rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors duration-150 cursor-pointer"
+              class="w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-150 cursor-pointer dialog-close-btn"
               @click="close"
             >
-              <MdiIcon :path="mdiClose" :size="16" />
+              <MdiIcon :path="mdiClose" :size="15" />
             </button>
           </div>
 
@@ -76,18 +76,18 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
           </div>
 
           <!-- 底部 -->
-          <div v-if="!hideFooter" class="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-100">
+          <div v-if="!hideFooter" class="flex items-center justify-end gap-2 px-5 py-4 dialog-footer">
             <button
               type="button"
-              class="px-4 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 transition-colors duration-150 cursor-pointer"
+              class="px-4 py-2 text-sm rounded-xl transition-all duration-150 cursor-pointer dialog-cancel-btn"
               @click="close"
             >
               {{ cancelText }}
             </button>
             <button
               type="button"
-              class="px-4 py-1.5 text-sm rounded-lg text-white transition-colors duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-              :class="confirmDanger ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'"
+              class="px-4 py-2 text-sm rounded-xl text-white transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              :class="confirmDanger ? 'dialog-confirm-danger' : 'dialog-confirm-primary'"
               :disabled="confirmLoading"
               @click="onConfirm"
             >
@@ -105,21 +105,75 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
 </template>
 
 <style scoped>
+.dialog-panel {
+  background: var(--bg-main);
+  border: 1px solid var(--card-border);
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(99, 102, 241, 0.08);
+}
+
+.dialog-header {
+  border-bottom: 1px solid var(--card-border);
+}
+
+.dialog-title {
+  color: var(--text-primary);
+}
+
+.dialog-close-btn {
+  color: var(--text-muted);
+}
+.dialog-close-btn:hover {
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--text-primary);
+}
+
+.dialog-footer {
+  border-top: 1px solid var(--card-border);
+}
+
+.dialog-cancel-btn {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--text-secondary);
+}
+.dialog-cancel-btn:hover {
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.dialog-confirm-primary {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+}
+.dialog-confirm-primary:hover:not(:disabled) {
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.45);
+  transform: translateY(-1px);
+}
+
+.dialog-confirm-danger {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+}
+.dialog-confirm-danger:hover:not(:disabled) {
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+  transform: translateY(-1px);
+}
+
+/* Transition */
 .dialog-fade-enter-active,
 .dialog-fade-leave-active {
-  transition: opacity 150ms ease-out;
+  transition: opacity 180ms ease-out;
 }
-.dialog-fade-enter-active > div,
-.dialog-fade-leave-active > div {
-  transition: transform 150ms ease-out, opacity 150ms ease-out;
+.dialog-fade-enter-active .dialog-panel,
+.dialog-fade-leave-active .dialog-panel {
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease-out;
 }
 .dialog-fade-enter-from,
 .dialog-fade-leave-to {
   opacity: 0;
 }
-.dialog-fade-enter-from > div,
-.dialog-fade-leave-to > div {
-  transform: scale(0.97) translateY(-4px);
+.dialog-fade-enter-from .dialog-panel,
+.dialog-fade-leave-to .dialog-panel {
+  transform: scale(0.95) translateY(-8px);
   opacity: 0;
 }
 </style>
