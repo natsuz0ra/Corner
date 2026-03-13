@@ -112,7 +112,10 @@ function toggleSessionMenu(sessionId: string, event: MouseEvent) {
 }
 
 function syncModelToLocal(modelId: string) {
-  if (!modelId) return
+  if (!modelId) {
+    localStorage.removeItem(MODEL_STORAGE_KEY)
+    return
+  }
   localStorage.setItem(MODEL_STORAGE_KEY, modelId)
 }
 
@@ -122,6 +125,27 @@ function resolveInitialModelId(items: LLMConfig[]) {
   const remembered = localStorage.getItem(MODEL_STORAGE_KEY)
   const matched = remembered ? items.find((item) => item.id === remembered) : undefined
   return matched?.id || first.id
+}
+
+async function refreshModelOptions(useRemembered = false) {
+  const latestModels = await llmAPI.list()
+  modelOptions.value = latestModels
+
+  let nextModelId = ''
+  if (latestModels.length > 0) {
+    const hasCurrent = selectedModelId.value && latestModels.some((item) => item.id === selectedModelId.value)
+    if (hasCurrent) {
+      nextModelId = selectedModelId.value
+    } else if (useRemembered) {
+      nextModelId = resolveInitialModelId(latestModels)
+    } else {
+      const firstModel = latestModels[0]
+      nextModelId = firstModel ? firstModel.id : ''
+    }
+  }
+
+  selectedModelId.value = nextModelId
+  syncModelToLocal(nextModelId)
 }
 
 function showWarning(message: string) {
@@ -153,9 +177,7 @@ function queueScrollMessagesToBottom() {
 async function boot() {
   loading.value = true
   try {
-    modelOptions.value = await llmAPI.list()
-    selectedModelId.value = resolveInitialModelId(modelOptions.value)
-    syncModelToLocal(selectedModelId.value)
+    await refreshModelOptions(true)
 
     await store.loadSessions()
     if (store.sessions.length === 0) {
@@ -509,7 +531,7 @@ onUnmounted(() => {
 
     <div v-if="settingsVisible" class="settings-overlay" @click.self="settingsVisible = false">
       <div class="settings-modal" @click.stop>
-        <SettingsPanel @close="settingsVisible = false" />
+        <SettingsPanel @close="settingsVisible = false" @llm-changed="refreshModelOptions" />
       </div>
     </div>
 
