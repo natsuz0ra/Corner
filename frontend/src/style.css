@@ -1,9 +1,121 @@
-body {
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-danger: #dc2626;
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
   margin: 0;
-  font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  padding: 0;
+  font-family: var(--font-sans);
   min-width: 320px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #app {
   height: 100vh;
+}
+
+/* CodeMirror 自定义样式 */
+.cm-editor {
+  height: 100%;
+}
+.cm-scroller {
+  font-family: 'Consolas', 'Courier New', monospace !important;
+  font-size: 12px !important;
+  line-height: 1.6 !important;
+}
+.cm-gutters {
+  background: #1e1e1e !important;
+  border-right: 1px solid #313131 !important;
+}
+
+/* Markdown 渲染样式 */
+.bubble-markdown p { margin: 0 0 6px; }
+.bubble-markdown p:last-child { margin-bottom: 0; }
+.bubble-markdown ul, .bubble-markdown ol { margin: 0 0 6px; padding-left: 20px; }
+.bubble-markdown li + li { margin-top: 2px; }
+.bubble-markdown blockquote {
+  margin: 0 0 6px;
+  padding-left: 10px;
+  border-left: 3px solid #d1d5db;
+  color: #4b5563;
+}
+.bubble-markdown pre {
+  margin: 6px 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  overflow-x: auto;
+  white-space: pre;
+  font-size: 13px;
+}
+.bubble-markdown pre > code { display: block; }
+.bubble-markdown code {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 0.875em;
+}
+.bubble-markdown :not(pre) > code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+  color: #374151;
+}
+.bubble-markdown a {
+  color: #2563eb;
+  text-decoration: underline;
+  word-break: break-all;
+}
+.bubble-markdown > :first-child { margin-top: 0; }
+.bubble-markdown > :last-child { margin-bottom: 0; }
+.bubble-markdown h1, .bubble-markdown h2, .bubble-markdown h3 {
+  font-weight: 600;
+  margin: 10px 0 6px;
+  line-height: 1.4;
+}
+.bubble-markdown h1 { font-size: 1.25em; }
+.bubble-markdown h2 { font-size: 1.1em; }
+.bubble-markdown h3 { font-size: 1em; }
+.bubble-markdown table {
+  border-collapse: collapse;
+  margin: 6px 0;
+  width: 100%;
+  font-size: 13px;
+}
+.bubble-markdown th, .bubble-markdown td {
+  border: 1px solid #e5e7eb;
+  padding: 4px 8px;
+  text-align: left;
+}
+.bubble-markdown th { background: #f9fafb; font-weight: 600; }
+
+/* 旋转动画（工具调用加载中） */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-spin-icon {
+  animation: spin 1s linear infinite;
+}
+
+/* 跳动动画（打字指示器） */
+@keyframes bounce-dot {
+  0%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-5px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin-icon { animation: none; }
 }

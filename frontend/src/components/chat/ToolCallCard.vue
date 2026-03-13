@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { mdiCheck, mdiClose, mdiConsoleLine, mdiLoading, mdiWeb } from '@mdi/js'
+import { mdiCheck, mdiClose, mdiConsoleLine, mdiWeb } from '@mdi/js'
 import { useI18n } from 'vue-i18n'
 import MdiIcon from '@/components/MdiIcon.vue'
 import type { ToolCallItem } from '@/api/chat'
@@ -42,6 +42,28 @@ const statusLabel = computed(() => {
   }
 })
 
+const statusColorClass = computed(() => {
+  switch (props.item.status) {
+    case 'pending': return 'text-amber-600'
+    case 'executing': return 'text-blue-600'
+    case 'completed': return 'text-green-600'
+    case 'rejected': return 'text-red-500'
+    case 'error': return 'text-red-500'
+    default: return 'text-gray-500'
+  }
+})
+
+const cardBorderClass = computed(() => {
+  switch (props.item.status) {
+    case 'pending': return 'border-amber-200 bg-amber-50/60'
+    case 'executing': return 'border-blue-200 bg-blue-50/60'
+    case 'completed': return 'border-green-200 bg-green-50/60'
+    case 'rejected':
+    case 'error': return 'border-red-200 bg-red-50/60'
+    default: return 'border-gray-200 bg-gray-50'
+  }
+})
+
 const paramsDisplay = computed(() => {
   const entries = Object.entries(props.item.params)
   if (entries.length === 0) return ''
@@ -54,212 +76,69 @@ const shouldShowPreamble = computed(() => !!props.showPreamble && !!props.item.p
 </script>
 
 <template>
-  <div class="tool-call-card" :class="item.status">
-    <div class="tool-call-header">
-      <MdiIcon :path="toolIcon" :size="16" />
-      <span class="tool-name">{{ toolLabel }}</span>
-      <span class="tool-command">{{ item.command }}</span>
-      <span class="tool-status" :class="item.status">{{ statusLabel }}</span>
-      <MdiIcon v-if="item.status === 'executing'" :path="mdiLoading" :size="14" class="spin" />
+  <div
+    class="w-full rounded-xl border px-4 py-3 text-sm box-border overflow-hidden"
+    :class="cardBorderClass"
+  >
+    <!-- 头部 -->
+    <div class="flex items-center flex-wrap gap-2 font-medium text-gray-700">
+      <MdiIcon :path="toolIcon" :size="15" class="flex-shrink-0 text-gray-500" />
+      <span class="text-blue-600 font-medium">{{ toolLabel }}</span>
+      <code v-if="item.command" class="text-xs text-gray-500 font-mono break-all">{{ item.command }}</code>
+      <span class="ml-auto text-xs font-normal" :class="statusColorClass">
+        {{ statusLabel }}
+      </span>
+      <svg
+        v-if="item.status === 'executing'"
+        class="animate-spin-icon w-3.5 h-3.5 flex-shrink-0"
+        :class="statusColorClass"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+      </svg>
     </div>
 
-    <div v-if="paramsDisplay" class="tool-call-params">
-      <pre>{{ paramsDisplay }}</pre>
+    <!-- 参数 -->
+    <div v-if="paramsDisplay" class="mt-2">
+      <pre class="text-xs font-mono bg-black/[0.05] rounded-lg px-3 py-2 text-gray-600 whitespace-pre-wrap break-all">{{ paramsDisplay }}</pre>
     </div>
 
-    <div v-if="shouldShowPreamble" class="tool-call-preamble">
+    <!-- 前言 -->
+    <div v-if="shouldShowPreamble" class="mt-2 text-xs text-gray-600 leading-relaxed whitespace-pre-wrap break-words">
       {{ item.preamble }}
     </div>
 
-    <div v-if="showActions" class="tool-call-actions">
-      <button class="action-btn approve" @click="emit('approve', item.toolCallId)">
-        <MdiIcon :path="mdiCheck" :size="14" />
-        <span>{{ t('toolCallApprove') }}</span>
+    <!-- 操作按钮（待审批） -->
+    <div v-if="showActions" class="flex items-center gap-2 mt-3">
+      <button
+        type="button"
+        class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-green-300 bg-white text-green-700 hover:bg-green-50 transition-colors duration-150 cursor-pointer"
+        @click="emit('approve', item.toolCallId)"
+      >
+        <MdiIcon :path="mdiCheck" :size="12" />
+        {{ t('toolCallApprove') }}
       </button>
-      <button class="action-btn reject" @click="emit('reject', item.toolCallId)">
-        <MdiIcon :path="mdiClose" :size="14" />
-        <span>{{ t('toolCallReject') }}</span>
+      <button
+        type="button"
+        class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-red-200 bg-white text-red-600 hover:bg-red-50 transition-colors duration-150 cursor-pointer"
+        @click="emit('reject', item.toolCallId)"
+      >
+        <MdiIcon :path="mdiClose" :size="12" />
+        {{ t('toolCallReject') }}
       </button>
     </div>
 
-    <div v-if="showResult" class="tool-call-result">
-      <div v-if="item.error" class="result-error">{{ item.error }}</div>
-      <details v-if="item.output">
-        <summary>{{ t('toolCallOutput') }}</summary>
-        <pre class="result-output">{{ item.output }}</pre>
+    <!-- 执行结果 -->
+    <div v-if="showResult" class="mt-2">
+      <div v-if="item.error" class="text-xs text-red-500 mb-1">{{ item.error }}</div>
+      <details v-if="item.output" class="text-xs">
+        <summary class="cursor-pointer text-gray-400 hover:text-gray-600 select-none transition-colors duration-150">
+          {{ t('toolCallOutput') }}
+        </summary>
+        <pre class="mt-1.5 px-3 py-2 bg-gray-900 text-gray-100 rounded-lg text-xs font-mono whitespace-pre-wrap break-all leading-relaxed">{{ item.output }}</pre>
       </details>
     </div>
   </div>
 </template>
-
-<style scoped>
-.tool-call-card {
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin: 0;
-  background: #fafafa;
-  font-size: 13px;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-  overflow: visible;
-}
-
-.tool-call-card.pending {
-  border-color: #f0c040;
-  background: #fffdf5;
-}
-
-.tool-call-card.executing {
-  border-color: #7dc8f4;
-  background: #f5fbff;
-}
-
-.tool-call-card.completed {
-  border-color: #68c76a;
-  background: #f5fff5;
-}
-
-.tool-call-card.error,
-.tool-call-card.rejected {
-  border-color: #e0a0a0;
-  background: #fff8f8;
-}
-
-.tool-call-header {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  font-weight: 500;
-  color: #333;
-}
-
-.tool-name {
-  color: #1a73e8;
-}
-
-.tool-command {
-  color: #666;
-  font-family: 'Consolas', 'Courier New', monospace;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.tool-status {
-  margin-left: auto;
-  font-size: 12px;
-  font-weight: 400;
-}
-
-.tool-status.pending { color: #c78112; }
-.tool-status.executing { color: #1a73e8; }
-.tool-status.completed { color: #2e8b2e; }
-.tool-status.error, .tool-status.rejected { color: #d54941; }
-
-.spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.tool-call-params {
-  margin-top: 6px;
-}
-
-.tool-call-params pre {
-  margin: 0;
-  padding: 6px 8px;
-  background: #f0f0f0;
-  border-radius: 4px;
-  font-size: 12px;
-  font-family: 'Consolas', 'Courier New', monospace;
-  white-space: pre-wrap;
-  word-break: break-all;
-  color: #333;
-}
-
-.tool-call-actions {
-  margin-top: 8px;
-  display: flex;
-  gap: 8px;
-}
-
-.tool-call-preamble {
-  margin-top: 8px;
-  font-size: 13px;
-  line-height: 1.6;
-  color: #333;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.action-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 12px;
-  border: 1px solid #d0d0d0;
-  border-radius: 4px;
-  font-size: 12px;
-  cursor: pointer;
-  background: #fff;
-  color: #333;
-  transition: all 0.15s ease;
-}
-
-.action-btn.approve {
-  border-color: #68c76a;
-  color: #2e8b2e;
-}
-
-.action-btn.approve:hover {
-  background: #e8f8e8;
-}
-
-.action-btn.reject {
-  border-color: #e0a0a0;
-  color: #d54941;
-}
-
-.action-btn.reject:hover {
-  background: #fff0f0;
-}
-
-.tool-call-result {
-  margin-top: 6px;
-}
-
-.result-error {
-  color: #d54941;
-  font-size: 12px;
-  margin-bottom: 4px;
-}
-
-.tool-call-result details {
-  font-size: 12px;
-}
-
-.tool-call-result summary {
-  cursor: pointer;
-  color: #666;
-  user-select: none;
-}
-
-.result-output {
-  margin: 4px 0 0;
-  padding: 6px 8px;
-  background: #1f2329;
-  color: #e6edf3;
-  border-radius: 4px;
-  font-size: 12px;
-  font-family: 'Consolas', 'Courier New', monospace;
-  white-space: pre-wrap;
-  word-break: break-all;
-  overflow: visible;
-}
-</style>

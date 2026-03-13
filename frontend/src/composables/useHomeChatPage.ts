@@ -1,6 +1,6 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { MessagePlugin } from 'tdesign-vue-next'
 import { useI18n } from 'vue-i18n'
+import { useToast } from '@/composables/useToast'
 
 import { sessionAPI, type ToolCallItem } from '@/api/chat'
 import { llmAPI, type LLMConfig } from '@/api/settings'
@@ -9,6 +9,7 @@ import { useChatStore } from '@/stores/chat'
 export function useHomeChatPage() {
   const { t } = useI18n()
   const store = useChatStore()
+  const toast = useToast()
   const MODEL_STORAGE_KEY = 'corner:selectedModelId'
 
   const drawerOpen = ref(false)
@@ -148,17 +149,11 @@ export function useHomeChatPage() {
   }
 
   function showWarning(message: string) {
-    MessagePlugin.warning({
-      content: message,
-      placement: 'top-right',
-    })
+    toast.warning(message)
   }
 
   function showError(message: string) {
-    MessagePlugin.error({
-      content: message,
-      placement: 'top-right',
-    })
+    toast.error(message)
   }
 
   function scrollMessagesToBottom() {
