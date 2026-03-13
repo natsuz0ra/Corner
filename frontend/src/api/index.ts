@@ -37,6 +37,16 @@ export interface MCPConfig {
   updatedAt?: string
 }
 
+export interface SkillItem {
+  id: string
+  name: string
+  relativePath: string
+  description: string
+  uploadedAt: string
+  createdAt?: string
+  updatedAt?: string
+}
+
 export type ToolCallStatus = 'pending' | 'approved' | 'rejected' | 'executing' | 'completed' | 'error'
 
 export interface ToolCallItem {
@@ -75,4 +85,14 @@ export const mcpAPI = {
   create: async (payload: Omit<MCPConfig, 'id'>) => (await apiClient.post<MCPConfig>('/api/mcp-configs', payload)).data,
   update: async (id: string, payload: Omit<MCPConfig, 'id'>) => apiClient.put(`/api/mcp-configs/${id}`, payload),
   remove: async (id: string) => apiClient.delete(`/api/mcp-configs/${id}`),
+}
+
+export const skillsAPI = {
+  list: async () => (await apiClient.get<SkillItem[]>('/api/skills')).data,
+  upload: async (files: File[]) => {
+    const formData = new FormData()
+    files.forEach((file) => formData.append('files', file))
+    return (await apiClient.post('/api/skills/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } })).data
+  },
+  remove: async (id: string) => apiClient.delete(`/api/skills/${id}`),
 }
