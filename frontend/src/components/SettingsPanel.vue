@@ -11,7 +11,10 @@ import { lineNumbers } from '@codemirror/view'
 import MdiIcon from './MdiIcon.vue'
 import { llmAPI, mcpAPI, settingAPI, skillsAPI } from '../api'
 
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{
+  close: []
+  llmChanged: []
+}>()
 
 const { t, locale } = useI18n()
 
@@ -114,6 +117,7 @@ async function addLLM() {
     await llmAPI.create(llmForm.value)
     llmForm.value = { name: '', baseUrl: '', apiKey: '', model: '' }
     llmList.value = await llmAPI.list()
+    emit('llmChanged')
     llmDialogVisible.value = false
   } finally {
     llmSubmitting.value = false
@@ -124,6 +128,7 @@ async function deleteLLM(id: string) {
   if (!window.confirm(t('confirmDelete'))) return
   await llmAPI.remove(id)
   llmList.value = await llmAPI.list()
+  emit('llmChanged')
 }
 
 function buildTemplate(transport: 'stdio' | 'sse' | 'streamable_http') {
