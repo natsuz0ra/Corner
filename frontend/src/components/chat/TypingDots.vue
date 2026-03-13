@@ -1,43 +1,33 @@
 <template>
-  <div class="typing">
-    <span />
-    <span />
-    <span />
+  <div class="flex items-center gap-1 py-1">
+    <span class="typing-dot" />
+    <span class="typing-dot" style="animation-delay: 0.15s" />
+    <span class="typing-dot" style="animation-delay: 0.30s" />
   </div>
 </template>
 
 <style scoped>
-.typing {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-
-.typing span {
+.typing-dot {
+  display: inline-block;
   width: 6px;
   height: 6px;
-  border-radius: 50%;
-  background: #8b95a5;
-  animation: dot 1s infinite ease-in-out;
+  border-radius: 9999px;
+  background: #9ca3af;
+  animation: bounce-dot 1s ease-in-out infinite;
 }
 
-.typing span:nth-child(2) {
-  animation-delay: 0.15s;
-}
-
-.typing span:nth-child(3) {
-  animation-delay: 0.3s;
-}
-
-@keyframes dot {
-  0%,
-  100% {
+@keyframes bounce-dot {
+  0%, 80%, 100% {
     transform: translateY(0);
     opacity: 0.5;
   }
-  50% {
-    transform: translateY(-4px);
+  40% {
+    transform: translateY(-5px);
     opacity: 1;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing-dot { animation: none; opacity: 0.7; }
 }
 </style>

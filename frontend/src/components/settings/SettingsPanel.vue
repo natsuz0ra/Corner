@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { MessagePlugin } from 'tdesign-vue-next'
 import { useI18n } from 'vue-i18n'
-import { mdiClose, mdiPencil, mdiPlus } from '@mdi/js'
+import { mdiClose, mdiDeleteOutline, mdiPencilOutline, mdiPlus } from '@mdi/js'
 import CodeMirror from 'vue-codemirror6'
 import { json } from '@codemirror/lang-json'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { lineNumbers } from '@codemirror/view'
 
 import MdiIcon from '@/components/MdiIcon.vue'
+import BaseDialog from '@/components/ui/BaseDialog.vue'
 import { llmAPI, mcpAPI, settingAPI, skillsAPI } from '@/api/settings'
+import { useToast } from '@/composables/useToast'
 
 const emit = defineEmits<{
   close: []
@@ -17,6 +18,7 @@ const emit = defineEmits<{
 }>()
 
 const { t, locale } = useI18n()
+const toast = useToast()
 
 const tab = ref<'basic' | 'llm' | 'mcp' | 'skills'>('basic')
 const language = ref<'zh-CN' | 'en-US'>('zh-CN')
@@ -50,20 +52,6 @@ const skillsRows = computed(() =>
 )
 const mcpDialogTitle = computed(() => (mcpEditingID.value ? t('editMcp') : t('addMcp')))
 
-function showError(message: string) {
-  MessagePlugin.error({
-    content: message,
-    placement: 'top-right',
-  })
-}
-
-function showSuccess(message: string) {
-  MessagePlugin.success({
-    content: message,
-    placement: 'top-right',
-  })
-}
-
 async function loadData() {
   loading.value = true
   try {
@@ -88,18 +76,14 @@ async function onLanguageChange(nextLanguage: 'zh-CN' | 'en-US') {
   savingLanguage.value = true
   try {
     await settingAPI.update({ language: nextLanguage })
-    showSuccess(t('saveSuccess'))
+    toast.success(t('saveSuccess'))
   } catch {
     language.value = previousLanguage
     locale.value = previousLanguage
-    showError(t('languageSaveFailed'))
+    toast.error(t('languageSaveFailed'))
   } finally {
     savingLanguage.value = false
   }
-}
-
-function handleLanguageSelectChange(value: string) {
-  void onLanguageChange(value as 'zh-CN' | 'en-US')
 }
 
 function openLLMDialog() {
@@ -109,7 +93,7 @@ function openLLMDialog() {
 
 async function addLLM() {
   if (!llmForm.value.name || !llmForm.value.baseUrl || !llmForm.value.apiKey || !llmForm.value.model) {
-    showError(t('llmFormIncomplete'))
+    toast.error(t('llmFormIncomplete'))
     return
   }
   llmSubmitting.value = true
@@ -133,23 +117,10 @@ async function deleteLLM(id: string) {
 
 function buildTemplate(transport: 'stdio' | 'sse' | 'streamable_http') {
   if (transport === 'stdio') {
-    return JSON.stringify(
-      {
-        command: 'python',
-        args: ['-m', 'your_module'],
-      },
-      null,
-      2,
-    )
+    return JSON.stringify({ command: 'python', args: ['-m', 'your_module'] }, null, 2)
   }
   return JSON.stringify(
-    {
-      transport,
-      url: 'https://your-mcp-server-url',
-      headers: {},
-      timeout: 5,
-      sse_read_timeout: 300,
-    },
+    { transport, url: 'https://your-mcp-server-url', headers: {}, timeout: 5, sse_read_timeout: 300 },
     null,
     2,
   )
@@ -169,28 +140,24 @@ function openMCPDialog() {
 
 function openMCPEditDialog(item: any) {
   mcpEditingID.value = item.id
-  mcpForm.value = {
-    name: item.name,
-    config: item.config,
-    isEnabled: item.isEnabled,
-  }
+  mcpForm.value = { name: item.name, config: item.config, isEnabled: item.isEnabled }
   mcpDialogVisible.value = true
 }
 
 async function saveMCP() {
   if (!mcpForm.value.name || !mcpForm.value.config) {
-    showError(t('mcpFormIncomplete'))
+    toast.error(t('mcpFormIncomplete'))
     return
   }
   let parsed: any
   try {
     parsed = JSON.parse(mcpForm.value.config)
   } catch {
-    showError(t('mcpJsonInvalid'))
+    toast.error(t('mcpJsonInvalid'))
     return
   }
   if (parsed?.mcpServers) {
-    showError(t('mcpWrapperNotSupported'))
+    toast.error(t('mcpWrapperNotSupported'))
     return
   }
 
@@ -215,20 +182,14 @@ async function saveMCP() {
 }
 
 async function updateMCP(item: any) {
-  await mcpAPI.update(item.id, {
-    name: item.name,
-    config: item.config,
-    isEnabled: item.isEnabled,
-  })
+  await mcpAPI.update(item.id, { name: item.name, config: item.config, isEnabled: item.isEnabled })
 }
 
 function mcpPreview(item: any) {
   try {
     const cfg = JSON.parse(item.config || '{}')
     const transport = cfg.transport || 'stdio'
-    if (transport === 'stdio') {
-      return `${transport} · ${cfg.command || '-'}`
-    }
+    if (transport === 'stdio') return `${transport} · ${cfg.command || '-'}`
     return `${transport} · ${cfg.url || '-'}`
   } catch {
     return t('mcpJsonInvalid')
@@ -254,7 +215,7 @@ async function uploadSkills(files: File[]) {
   if (!files.length) return
   const invalidCount = files.filter((file) => !file.name.toLowerCase().endsWith('.zip')).length
   if (invalidCount > 0) {
-    showError(t('onlyZipAllowed'))
+    toast.error(t('onlyZipAllowed'))
     return
   }
 
@@ -264,24 +225,22 @@ async function uploadSkills(files: File[]) {
     const failed = Array.isArray(result?.failed) ? result.failed : []
     if (failed.length > 0) {
       const detail = failed.map((x: any) => `${x.file}: ${x.error}`).join('\n')
-      showError(`${t('skillsUploadPartial')}\n${detail}`)
+      toast.error(`${t('skillsUploadPartial')}\n${detail}`)
     } else {
-      showSuccess(t('skillsUploadSuccess'))
+      toast.success(t('skillsUploadSuccess'))
     }
     skillsList.value = await skillsAPI.list()
   } catch (err: any) {
     const failed = err?.response?.data?.failed
     if (Array.isArray(failed) && failed.length > 0) {
       const detail = failed.map((x: any) => `${x.file}: ${x.error}`).join('\n')
-      showError(`${t('skillsUploadFailed')}\n${detail}`)
+      toast.error(`${t('skillsUploadFailed')}\n${detail}`)
     } else {
-      showError(err?.response?.data?.error || t('skillsUploadFailed'))
+      toast.error(err?.response?.data?.error || t('skillsUploadFailed'))
     }
   } finally {
     skillsUploading.value = false
-    if (skillsFileInputRef.value) {
-      skillsFileInputRef.value.value = ''
-    }
+    if (skillsFileInputRef.value) skillsFileInputRef.value.value = ''
   }
 }
 
@@ -289,7 +248,7 @@ function onSkillsInputChange(event: Event) {
   const target = event.target as HTMLInputElement
   const files = getZipFiles(target.files)
   if (!files.length && target.files?.length) {
-    showError(t('onlyZipAllowed'))
+    toast.error(t('onlyZipAllowed'))
     return
   }
   void uploadSkills(files)
@@ -300,7 +259,7 @@ function onSkillsDrop(event: DragEvent) {
   skillsDropActive.value = false
   const files = getZipFiles(event.dataTransfer?.files)
   if (!files.length && event.dataTransfer?.files?.length) {
-    showError(t('onlyZipAllowed'))
+    toast.error(t('onlyZipAllowed'))
     return
   }
   void uploadSkills(files)
@@ -326,82 +285,190 @@ onMounted(loadData)
 </script>
 
 <template>
-  <div class="settings-panel">
-    <div class="panel-head">
-      <div class="title">{{ t('settings') }}</div>
-      <button class="close-btn" type="button" @click="emit('close')">
+  <div class="h-full bg-gray-50 flex flex-col overflow-hidden">
+    <!-- 面板顶栏 -->
+    <div class="flex items-center justify-between px-4 h-11 border-b border-gray-200 bg-white flex-shrink-0">
+      <span class="text-sm font-semibold text-gray-800">{{ t('settings') }}</span>
+      <button
+        type="button"
+        class="w-7 h-7 flex items-center justify-center rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors duration-150 cursor-pointer"
+        @click="emit('close')"
+      >
         <MdiIcon :path="mdiClose" :size="16" />
       </button>
     </div>
-    <div class="panel-body">
-      <aside class="tab-menu">
-        <button type="button" class="tab-item" :class="{ active: tab === 'basic' }" @click="tab = 'basic'">{{ t('basicSettings') }}</button>
-        <button type="button" class="tab-item" :class="{ active: tab === 'llm' }" @click="tab = 'llm'">{{ t('llmSettings') }}</button>
-        <button type="button" class="tab-item" :class="{ active: tab === 'mcp' }" @click="tab = 'mcp'">{{ t('mcpSettings') }}</button>
-        <button type="button" class="tab-item" :class="{ active: tab === 'skills' }" @click="tab = 'skills'">{{ t('skillsSettings') }}</button>
+
+    <!-- 面板主体 -->
+    <div class="flex flex-1 overflow-hidden">
+      <!-- 左侧 Tab 菜单 -->
+      <aside class="w-40 border-r border-gray-200 flex-shrink-0 bg-gray-50 p-2 flex flex-col gap-1 overflow-y-auto">
+        <button
+          v-for="item in [
+            { key: 'basic', label: t('basicSettings') },
+            { key: 'llm', label: t('llmSettings') },
+            { key: 'mcp', label: t('mcpSettings') },
+            { key: 'skills', label: t('skillsSettings') },
+          ]"
+          :key="item.key"
+          type="button"
+          class="w-full text-left px-3 h-9 rounded-lg text-sm transition-colors duration-150 cursor-pointer"
+          :class="tab === item.key
+            ? 'bg-gray-200 text-gray-900 font-medium'
+            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'"
+          @click="tab = item.key as any"
+        >
+          {{ item.label }}
+        </button>
       </aside>
-      <section class="tab-content" v-loading="loading">
-        <div v-if="tab === 'basic'" class="block">
-          <div class="field-label">{{ t('language') }}</div>
-          <t-select v-model="language" style="width: 160px" :disabled="savingLanguage" @change="handleLanguageSelectChange">
-            <t-option value="zh-CN" :label="t('chinese')" />
-            <t-option value="en-US" :label="t('english')" />
-          </t-select>
+
+      <!-- 右侧内容 -->
+      <section class="flex-1 overflow-y-auto px-5 py-4 relative">
+        <!-- 加载遮罩 -->
+        <div v-if="loading" class="absolute inset-0 flex items-center justify-center bg-white/70 z-10">
+          <svg class="animate-spin w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
         </div>
 
-        <div v-if="tab === 'llm'" class="block stack">
-          <div class="section-header">
-            <div class="section-title">{{ t('llmSettings') }}</div>
-            <t-button size="small" theme="primary" @click="openLLMDialog">
-              <template #icon><MdiIcon :path="mdiPlus" :size="14" /></template>
-              {{ t('add') }}
-            </t-button>
+        <!-- 基础设置 -->
+        <div v-if="tab === 'basic'">
+          <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{{ t('basicSettings') }}</p>
+          <div class="flex items-center justify-between py-3 border-b border-gray-100">
+            <span class="text-sm text-gray-800">{{ t('language') }}</span>
+            <select
+              :value="language"
+              class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 cursor-pointer transition-all duration-150 bg-white text-gray-700"
+              :disabled="savingLanguage"
+              @change="onLanguageChange(($event.target as HTMLSelectElement).value as any)"
+            >
+              <option value="zh-CN">{{ t('chinese') }}</option>
+              <option value="en-US">{{ t('english') }}</option>
+            </select>
           </div>
-          <div class="list">
-            <div v-for="item in llmRows" :key="item.id" class="list-row">
-              <div class="list-title">{{ item.name }} / {{ item.model }}</div>
-              <div class="list-desc">{{ item.baseUrl }}</div>
-              <button type="button" class="danger-btn" @click="deleteLLM(item.id)">{{ t('delete') }}</button>
+        </div>
+
+        <!-- LLM 设置 -->
+        <div v-if="tab === 'llm'">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">{{ t('llmSettings') }}</p>
+            <button
+              type="button"
+              class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors duration-150 cursor-pointer"
+              @click="openLLMDialog"
+            >
+              <MdiIcon :path="mdiPlus" :size="13" />
+              {{ t('add') }}
+            </button>
+          </div>
+          <div class="flex flex-col gap-2">
+            <div
+              v-for="item in llmRows"
+              :key="item.id"
+              class="flex items-center gap-3 px-4 py-3 border border-gray-200 rounded-xl bg-white"
+            >
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-gray-800 truncate">{{ item.name }} · <span class="font-normal text-gray-500">{{ item.model }}</span></div>
+                <div class="text-xs text-gray-400 truncate mt-0.5">{{ item.baseUrl }}</div>
+              </div>
+              <button
+                type="button"
+                class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors duration-150 cursor-pointer"
+                @click="deleteLLM(item.id)"
+              >
+                <MdiIcon :path="mdiDeleteOutline" :size="16" />
+              </button>
+            </div>
+            <div v-if="llmRows.length === 0" class="text-center py-8 text-sm text-gray-400 border border-dashed border-gray-200 rounded-xl">
+              {{ t('add') }} LLM
             </div>
           </div>
         </div>
 
-        <div v-if="tab === 'mcp'" class="block stack">
-          <div class="section-header">
-            <div class="section-title">{{ t('mcpSettings') }}</div>
-            <t-button size="small" theme="primary" @click="openMCPDialog">
-              <template #icon><MdiIcon :path="mdiPlus" :size="14" /></template>
+        <!-- MCP 设置 -->
+        <div v-if="tab === 'mcp'">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">{{ t('mcpSettings') }}</p>
+            <button
+              type="button"
+              class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors duration-150 cursor-pointer"
+              @click="openMCPDialog"
+            >
+              <MdiIcon :path="mdiPlus" :size="13" />
               {{ t('add') }}
-            </t-button>
+            </button>
           </div>
-          <div class="list">
-            <div v-for="item in mcpRows" :key="item.id" class="list-row">
-              <div class="list-title">{{ item.name }}</div>
-              <div class="list-desc">{{ mcpPreview(item) }}</div>
-              <div class="actions">
-                <t-switch v-model="item.isEnabled" size="small" @change="updateMCP(item)" />
-                <button type="button" class="text-btn" @click="openMCPEditDialog(item)">
-                  <MdiIcon :path="mdiPencil" :size="14" />
-                  {{ t('editMcp') }}
+          <div class="flex flex-col gap-2">
+            <div
+              v-for="item in mcpRows"
+              :key="item.id"
+              class="flex items-center gap-3 px-4 py-3 border border-gray-200 rounded-xl bg-white"
+            >
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-gray-800">{{ item.name }}</div>
+                <div class="text-xs text-gray-400 mt-0.5">{{ mcpPreview(item) }}</div>
+              </div>
+              <div class="flex items-center gap-2 flex-shrink-0">
+                <!-- 开关 -->
+                <button
+                  type="button"
+                  class="relative w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer flex-shrink-0"
+                  :class="item.isEnabled ? 'bg-blue-500' : 'bg-gray-300'"
+                  @click="item.isEnabled = !item.isEnabled; updateMCP(item)"
+                >
+                  <span
+                    class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-200"
+                    :class="item.isEnabled ? 'translate-x-4' : 'translate-x-0'"
+                  />
                 </button>
-                <button type="button" class="danger-btn" @click="deleteMCP(item.id)">{{ t('delete') }}</button>
+                <!-- 编辑 -->
+                <button
+                  type="button"
+                  class="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors duration-150 cursor-pointer"
+                  @click="openMCPEditDialog(item)"
+                >
+                  <MdiIcon :path="mdiPencilOutline" :size="15" />
+                </button>
+                <!-- 删除 -->
+                <button
+                  type="button"
+                  class="w-7 h-7 flex items-center justify-center rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors duration-150 cursor-pointer"
+                  @click="deleteMCP(item.id)"
+                >
+                  <MdiIcon :path="mdiDeleteOutline" :size="16" />
+                </button>
               </div>
             </div>
+            <div v-if="mcpRows.length === 0" class="text-center py-8 text-sm text-gray-400 border border-dashed border-gray-200 rounded-xl">
+              {{ t('add') }} MCP
+            </div>
           </div>
         </div>
 
-        <div v-if="tab === 'skills'" class="block stack">
-          <div class="section-header">
-            <div class="section-title">{{ t('skillsSettings') }}</div>
-            <t-button size="small" theme="primary" :loading="skillsUploading" @click="openSkillsPicker">
-              <template #icon><MdiIcon :path="mdiPlus" :size="14" /></template>
+        <!-- Skills 设置 -->
+        <div v-if="tab === 'skills'">
+          <div class="flex items-center justify-between mb-1">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">{{ t('skillsSettings') }}</p>
+            <button
+              type="button"
+              class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="skillsUploading"
+              @click="openSkillsPicker"
+            >
+              <svg v-if="skillsUploading" class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              <MdiIcon v-else :path="mdiPlus" :size="13" />
               {{ t('skillsUploadButton') }}
-            </t-button>
+            </button>
           </div>
-          <div class="skills-desc">{{ t('skillsDescription') }}</div>
+          <p class="text-xs text-gray-400 mb-3">{{ t('skillsDescription') }}</p>
+
+          <!-- 拖拽上传区 -->
           <div
-            class="skills-uploader"
-            :class="{ active: skillsDropActive }"
+            class="border border-dashed rounded-xl px-4 py-5 text-center text-sm text-gray-400 cursor-pointer transition-all duration-200 mb-3"
+            :class="skillsDropActive ? 'border-blue-400 bg-blue-50 text-blue-600' : 'border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-gray-100'"
             @dragover="onSkillsDragOver"
             @dragleave="onSkillsDragLeave"
             @drop="onSkillsDrop"
@@ -411,322 +478,146 @@ onMounted(loadData)
           </div>
           <input
             ref="skillsFileInputRef"
-            class="skills-file-input"
             type="file"
+            class="hidden"
             accept=".zip,application/zip"
             multiple
             @change="onSkillsInputChange"
           />
-          <div v-if="!skillsRows.length" class="list-empty">{{ t('skillsEmpty') }}</div>
-          <div v-else class="list">
-            <div v-for="item in skillsRows" :key="item.id" class="list-row">
-              <div class="list-title">{{ item.name }}</div>
-              <div class="list-desc">{{ item.description }}</div>
-              <div class="list-desc">{{ item.relativePath }}</div>
-              <button type="button" class="danger-btn" @click="deleteSkill(item.id)">{{ t('delete') }}</button>
+
+          <div v-if="skillsRows.length === 0" class="text-center py-6 text-sm text-gray-400 border border-dashed border-gray-200 rounded-xl">
+            {{ t('skillsEmpty') }}
+          </div>
+          <div v-else class="flex flex-col gap-2">
+            <div
+              v-for="item in skillsRows"
+              :key="item.id"
+              class="flex items-start gap-3 px-4 py-3 border border-gray-200 rounded-xl bg-white"
+            >
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-gray-800">{{ item.name }}</div>
+                <div v-if="item.description" class="text-xs text-gray-400 mt-0.5">{{ item.description }}</div>
+                <div v-if="item.relativePath" class="text-xs text-gray-300 mt-0.5 font-mono">{{ item.relativePath }}</div>
+              </div>
+              <button
+                type="button"
+                class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors duration-150 cursor-pointer"
+                @click="deleteSkill(item.id)"
+              >
+                <MdiIcon :path="mdiDeleteOutline" :size="16" />
+              </button>
             </div>
           </div>
         </div>
       </section>
     </div>
-
-    <t-dialog v-model:visible="llmDialogVisible" :header="t('addModel')" :confirm-btn="t('confirm')" :cancel-btn="t('cancel')" :confirm-loading="llmSubmitting" @confirm="addLLM">
-      <div class="dialog-form">
-        <div class="dialog-field">
-          <div class="dialog-label">{{ t('name') }}</div>
-          <t-input v-model="llmForm.name" />
-        </div>
-        <div class="dialog-field">
-          <div class="dialog-label">{{ t('model') }}</div>
-          <t-input v-model="llmForm.model" />
-        </div>
-        <div class="dialog-field">
-          <div class="dialog-label">{{ t('baseUrl') }}</div>
-          <t-input v-model="llmForm.baseUrl" />
-        </div>
-        <div class="dialog-field">
-          <div class="dialog-label">{{ t('apiKey') }}</div>
-          <t-input v-model="llmForm.apiKey" type="password" />
-        </div>
-      </div>
-    </t-dialog>
-
-    <t-dialog
-      v-model:visible="mcpDialogVisible"
-      :header="mcpDialogTitle"
-      :confirm-btn="t('confirm')"
-      :cancel-btn="t('cancel')"
-      :confirm-loading="mcpSubmitting"
-      width="760px"
-      @confirm="saveMCP"
-    >
-      <div class="dialog-form">
-        <div class="dialog-field">
-          <div class="dialog-label">{{ t('name') }}</div>
-          <t-input v-model="mcpForm.name" />
-        </div>
-        <div class="dialog-field">
-          <div class="dialog-template-row">
-            <div class="dialog-label">{{ t('mcpConfigJson') }}</div>
-            <div class="template-actions">
-              <t-button variant="outline" size="small" :theme="mcpTemplateType === 'stdio' ? 'primary' : 'default'" @click="applyTemplate('stdio')">stdio</t-button>
-              <t-button variant="outline" size="small" :theme="mcpTemplateType === 'sse' ? 'primary' : 'default'" @click="applyTemplate('sse')">sse</t-button>
-              <t-button variant="outline" size="small" :theme="mcpTemplateType === 'streamable_http' ? 'primary' : 'default'" @click="applyTemplate('streamable_http')">streamable_http</t-button>
-            </div>
-          </div>
-          <div class="json-editor-wrap">
-            <CodeMirror
-              v-model="mcpForm.config"
-              class="json-codemirror"
-              :extensions="mcpEditorExtensions"
-              :indent-with-tab="true"
-              :tab-size="2"
-              :style="{ height: '320px' }"
-            />
-          </div>
-        </div>
-      </div>
-    </t-dialog>
   </div>
+
+  <!-- 新增 LLM 弹窗 -->
+  <BaseDialog
+    v-model:visible="llmDialogVisible"
+    :title="t('addModel')"
+    :confirm-text="t('confirm')"
+    :cancel-text="t('cancel')"
+    :confirm-loading="llmSubmitting"
+    width="440px"
+    @confirm="addLLM"
+  >
+    <div class="flex flex-col gap-4">
+      <div v-for="field in [
+        { key: 'name', label: t('name'), type: 'text' },
+        { key: 'model', label: t('model'), type: 'text' },
+        { key: 'baseUrl', label: t('baseUrl'), type: 'text' },
+        { key: 'apiKey', label: t('apiKey'), type: 'password' },
+      ]" :key="field.key" class="flex flex-col gap-1.5">
+        <label class="text-xs font-medium text-gray-500">{{ field.label }}</label>
+        <input
+          v-model="(llmForm as any)[field.key]"
+          :type="field.type"
+          class="px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-150"
+        />
+      </div>
+    </div>
+  </BaseDialog>
+
+  <!-- 新增/编辑 MCP 弹窗 -->
+  <BaseDialog
+    v-model:visible="mcpDialogVisible"
+    :title="mcpDialogTitle"
+    :confirm-text="t('confirm')"
+    :cancel-text="t('cancel')"
+    :confirm-loading="mcpSubmitting"
+    width="760px"
+    @confirm="saveMCP"
+  >
+    <div class="flex flex-col gap-4">
+      <div class="flex flex-col gap-1.5">
+        <label class="text-xs font-medium text-gray-500">{{ t('name') }}</label>
+        <input
+          v-model="mcpForm.name"
+          type="text"
+          class="px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-150"
+        />
+      </div>
+
+      <div class="flex flex-col gap-1.5">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-medium text-gray-500">{{ t('mcpConfigJson') }}</label>
+          <div class="flex items-center gap-1">
+            <button
+              v-for="tpl in ['stdio', 'sse', 'streamable_http'] as const"
+              :key="tpl"
+              type="button"
+              class="px-2.5 py-1 text-xs rounded-md border transition-colors duration-150 cursor-pointer"
+              :class="mcpTemplateType === tpl
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'border-gray-200 text-gray-600 hover:bg-gray-100'"
+              @click="applyTemplate(tpl)"
+            >
+              {{ tpl }}
+            </button>
+          </div>
+        </div>
+        <div class="rounded-xl overflow-hidden border border-gray-700">
+          <CodeMirror
+            v-model="mcpForm.config"
+            class="json-codemirror"
+            :extensions="mcpEditorExtensions"
+            :indent-with-tab="true"
+            :tab-size="2"
+            :style="{ height: '300px' }"
+          />
+        </div>
+      </div>
+    </div>
+  </BaseDialog>
 </template>
 
 <style scoped>
-.settings-panel {
-  height: 100%;
-  background: #efefef;
-  border: 1px solid #d3d3d3;
-  border-radius: 8px;
-  overflow: hidden;
-  box-sizing: border-box;
-}
-
-.panel-head {
-  height: 32px;
-  border-bottom: 1px solid #d7d7d7;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 10px;
-}
-
-.title {
-  font-size: 14px;
-  color: #333;
-}
-
-.close-btn {
-  width: 22px;
-  height: 22px;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-.panel-body {
-  display: flex;
-  height: calc(100% - 32px);
-}
-
-.tab-menu {
-  width: 144px;
-  border-right: 1px solid #d7d7d7;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.tab-item {
-  height: 28px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  text-align: left;
-  padding: 0 10px;
-  cursor: pointer;
-  color: #2e2e2e;
-}
-
-.tab-item.active {
-  background: #e3e3e3;
-}
-
-.tab-content {
-  flex: 1;
-  padding: 14px 20px;
-  overflow: auto;
-}
-
-.block {
-  font-size: 14px;
-}
-
-.field-label {
-  margin-bottom: 8px;
-  font-weight: 600;
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.section-title {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.stack {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.list {
-  max-height: 220px;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.list-row {
-  border: 1px solid #dadada;
-  border-radius: 6px;
-  background: #f7f7f7;
-  padding: 8px 10px;
-}
-
-.list-title {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.list-desc {
-  font-size: 12px;
-  color: #6f6f6f;
-  margin: 4px 0 6px;
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.text-btn {
-  border: 0;
-  background: transparent;
-  color: #3f6fd9;
-  cursor: pointer;
-  padding: 0;
-  display: inline-flex;
-  gap: 4px;
-  align-items: center;
-}
-
-.danger-btn {
-  border: 0;
-  background: transparent;
-  color: #d54941;
-  cursor: pointer;
-  padding: 0;
-}
-
-.dialog-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.dialog-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.dialog-label {
-  font-size: 12px;
-  color: #555;
-}
-
-.dialog-template-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.template-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.json-editor-wrap {
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid #2f2f2f;
-}
-
 .json-codemirror :deep(.cm-editor) {
   height: 100%;
   background: #1e1e1e;
 }
-
 .json-codemirror :deep(.cm-scroller) {
   font-family: 'Consolas', 'Courier New', monospace;
   font-size: 12px;
   line-height: 1.6;
 }
-
 .json-codemirror :deep(.cm-gutters) {
   background: #1e1e1e;
   border-right: 1px solid #313131;
 }
 
-.skills-desc {
-  color: #666;
-  font-size: 12px;
-}
-
-.skills-uploader {
-  border: 1px dashed #b8b8b8;
-  border-radius: 8px;
-  padding: 14px;
-  color: #666;
-  background: #f3f3f3;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.skills-uploader.active {
-  border-color: #0052d9;
-  background: #e8f3ff;
-}
-
-.skills-file-input {
-  display: none;
-}
-
-.list-empty {
-  border: 1px dashed #d5d5d5;
-  border-radius: 8px;
-  color: #777;
-  padding: 12px;
-  text-align: center;
-}
-
-@media (max-width: 900px) {
-  .panel-body {
+@media (max-width: 640px) {
+  .flex.flex-1.overflow-hidden {
     flex-direction: column;
   }
-
-  .tab-menu {
-    width: 100%;
-    border-right: 0;
-    border-bottom: 1px solid #d7d7d7;
-    flex-direction: row;
+  aside {
+    width: 100% !important;
+    flex-direction: row !important;
+    overflow-x: auto;
+    border-right: none !important;
+    border-bottom: 1px solid #e5e7eb;
   }
 }
 </style>
