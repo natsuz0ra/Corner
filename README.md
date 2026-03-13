@@ -118,8 +118,8 @@ VITE_WS_URL=ws://localhost:8080
   - exec: 系统命令行执行器
   - http_request: http请求器
   - web_search: 基于tavily的网络搜索器
+- mcp
 
 ### 待完成功能
 
-- mcp
 - skills
