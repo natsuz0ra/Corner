@@ -1,10 +1,10 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
-import { ChatSocket, type ConnectionStatus } from '../../../api/chatSocket'
-import type { MessageItem, SessionItem, ToolCallItem } from '../../../api'
-import { sessionAPI } from '../../../api'
-import { i18n } from '../../../app/i18n'
+import { ChatSocket, type ConnectionStatus } from '@/api/chatSocket'
+import type { MessageItem, SessionItem, ToolCallItem } from '@/api/chat'
+import { sessionAPI } from '@/api/chat'
+import { i18n } from '@/i18n'
 
 interface AssistantReplyBatch {
   id: string

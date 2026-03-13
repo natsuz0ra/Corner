@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-import HomePage from '../../pages/home/HomePage.vue'
-import SettingsPage from '../../pages/settings/SettingsPage.vue'
+import HomePage from '@/pages/HomePage.vue'
+import SettingsPage from '@/pages/SettingsPage.vue'
 
 const router = createRouter({
   history: createWebHistory(),

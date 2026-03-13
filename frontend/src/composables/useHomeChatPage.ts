@@ -2,8 +2,9 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useI18n } from 'vue-i18n'
 
-import { llmAPI, sessionAPI, type LLMConfig, type ToolCallItem } from '../../../api'
-import { useChatStore } from '../stores/chat'
+import { sessionAPI, type ToolCallItem } from '@/api/chat'
+import { llmAPI, type LLMConfig } from '@/api/settings'
+import { useChatStore } from '@/stores/chat'
 
 export function useHomeChatPage() {
   const { t } = useI18n()

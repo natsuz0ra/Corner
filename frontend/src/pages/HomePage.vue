@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { mdiAlert, mdiChevronDown, mdiClose, mdiCogOutline, mdiDeleteOutline, mdiDotsHorizontal, mdiMenu, mdiPencilOutline, mdiPlus, mdiRobotOutline, mdiSend } from '@mdi/js'
 
-import MdiIcon from '../../shared/components/MdiIcon.vue'
-import TypingDots from '../../features/chat/components/TypingDots.vue'
-import SettingsPanel from '../../features/settings/components/SettingsPanel.vue'
-import ToolCallCard from '../../features/chat/components/ToolCallCard.vue'
-import { renderMarkdown } from '../../shared/utils/markdown'
-import { useHomeChatPage } from '../../features/chat/composables/useHomeChatPage'
+import MdiIcon from '@/components/MdiIcon.vue'
+import TypingDots from '@/components/chat/TypingDots.vue'
+import SettingsPanel from '@/components/settings/SettingsPanel.vue'
+import ToolCallCard from '@/components/chat/ToolCallCard.vue'
+import { renderMarkdown } from '@/utils/markdown'
+import { useHomeChatPage } from '@/composables/useHomeChatPage'
 
 const {
   t,
@@ -266,4 +266,4 @@ const {
   </div>
 </template>
 
-<style scoped src="../../features/chat/styles/home-page.css"></style>
+<style scoped src="./home-page.css"></style>
