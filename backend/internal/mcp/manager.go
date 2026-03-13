@@ -9,12 +9,14 @@ import (
 	"corner/backend/internal/models"
 )
 
+// ToolMeta 记录函数调用定义与 MCP 真实工具之间的映射关系。
 type ToolMeta struct {
 	FuncName    string
 	ServerAlias string
 	ToolName    string
 }
 
+// Manager 负责管理 MCP 客户端实例，并提供工具加载与执行能力。
 type Manager struct {
 	mu      sync.Mutex
 	clients map[string]*managedClient
@@ -27,12 +29,14 @@ type managedClient struct {
 	client   Client
 }
 
+// NewManager 创建一个新的 MCP 管理器实例。
 func NewManager() *Manager {
 	return &Manager{
 		clients: make(map[string]*managedClient),
 	}
 }
 
+// LoadTools 加载当前启用服务的工具定义，并返回函数映射与 OpenAI 工具描述。
 func (m *Manager) LoadTools(ctx context.Context, configs []models.MCPConfig) ([]ToolMeta, []map[string]any, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -56,6 +60,7 @@ func (m *Manager) LoadTools(ctx context.Context, configs []models.MCPConfig) ([]
 		}
 
 		for _, tool := range tools {
+			// 统一函数名格式，避免上游工具名包含非法字符导致 function call 失败。
 			commandAlias := sanitizeToken(tool.Name)
 			funcName := entry.alias + "__" + commandAlias
 			inputSchema := tool.InputSchema
@@ -82,6 +87,7 @@ func (m *Manager) LoadTools(ctx context.Context, configs []models.MCPConfig) ([]
 		if alive[id] {
 			continue
 		}
+		// 配置被禁用或删除后主动回收连接，避免保留失活客户端。
 		_ = entry.client.Close()
 		delete(m.clients, id)
 	}
@@ -89,9 +95,11 @@ func (m *Manager) LoadTools(ctx context.Context, configs []models.MCPConfig) ([]
 	return metas, defs, nil
 }
 
+// ensureClientLocked 确保给定配置对应的客户端可用，必要时按最新配置重建连接。
 func (m *Manager) ensureClientLocked(item models.MCPConfig) (*managedClient, error) {
 	existing, ok := m.clients[item.ID]
 	if ok && existing.raw == item.Config {
+		// 配置未变化时复用已有连接，减少重复握手与进程创建开销。
 		return existing, nil
 	}
 	if ok {
@@ -127,6 +135,7 @@ func (m *Manager) ensureClientLocked(item models.MCPConfig) (*managedClient, err
 	return entry, nil
 }
 
+// Execute 根据 serverAlias 与 toolName 定位目标 MCP 服务并执行工具调用。
 func (m *Manager) Execute(ctx context.Context, configs []models.MCPConfig, serverAlias, toolName string, arguments map[string]any) (*CallResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -154,6 +163,7 @@ func (m *Manager) Execute(ctx context.Context, configs []models.MCPConfig, serve
 	return entry.client.CallTool(ctx, toolName, arguments)
 }
 
+// sanitizeToken 将任意标识规范化为安全 token，用于函数名与别名拼接。
 func sanitizeToken(input string) string {
 	if strings.TrimSpace(input) == "" {
 		return "x"

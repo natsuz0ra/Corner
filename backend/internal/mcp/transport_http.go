@@ -19,6 +19,7 @@ type httpClient struct {
 	id         int64
 }
 
+// newHTTPClient 基于服务配置创建 HTTP 传输客户端。
 func newHTTPClient(cfg *ServerConfig) Client {
 	timeoutSec := cfg.Timeout
 	if timeoutSec <= 0 {
@@ -37,6 +38,7 @@ func (c *httpClient) nextID() int64 {
 	return atomic.AddInt64(&c.id, 1)
 }
 
+// postRPC 发送 JSON-RPC 请求，并将响应中的 result 提取为 map 返回。
 func (c *httpClient) postRPC(ctx context.Context, method string, params map[string]any) (map[string]any, error) {
 	payload := map[string]any{
 		"jsonrpc": "2.0",
@@ -76,6 +78,7 @@ func (c *httpClient) postRPC(ctx context.Context, method string, params map[stri
 	if err := json.Unmarshal(raw, &rpc); err != nil {
 		return nil, fmt.Errorf("mcp http response 非法 JSON: %w", err)
 	}
+	// MCP 规范中的 error 字段优先级高于 result，统一在这里抛出。
 	if errObj, ok := rpc["error"]; ok && errObj != nil {
 		return nil, fmt.Errorf("mcp rpc error: %v", errObj)
 	}
@@ -83,6 +86,7 @@ func (c *httpClient) postRPC(ctx context.Context, method string, params map[stri
 	return result, nil
 }
 
+// ListTools 获取 MCP 服务工具列表并转为内部统一结构。
 func (c *httpClient) ListTools(ctx context.Context) ([]Tool, error) {
 	result, err := c.postRPC(ctx, "tools/list", map[string]any{})
 	if err != nil {
@@ -111,6 +115,7 @@ func (c *httpClient) ListTools(ctx context.Context) ([]Tool, error) {
 	return tools, nil
 }
 
+// CallTool 调用指定工具并返回标准化调用结果。
 func (c *httpClient) CallTool(ctx context.Context, name string, arguments map[string]any) (*CallResult, error) {
 	result, err := c.postRPC(ctx, "tools/call", map[string]any{
 		"name":      name,
@@ -122,8 +127,10 @@ func (c *httpClient) CallTool(ctx context.Context, name string, arguments map[st
 	return parseCallResult(result), nil
 }
 
+// Close 关闭 HTTP 客户端。HTTP 为无状态连接，此处无需额外资源回收。
 func (c *httpClient) Close() error { return nil }
 
+// parseCallResult 解析 MCP tools/call 的 result 字段并映射为统一返回结构。
 func parseCallResult(result map[string]any) *CallResult {
 	var out strings.Builder
 	if contents, ok := result["content"].([]any); ok {
@@ -144,6 +151,7 @@ func parseCallResult(result map[string]any) *CallResult {
 	}
 
 	callErr := ""
+	// 当 isError=true 时，保持 output 文本原样并同步映射到 Error 字段。
 	if isError, _ := result["isError"].(bool); isError {
 		callErr = out.String()
 	}
