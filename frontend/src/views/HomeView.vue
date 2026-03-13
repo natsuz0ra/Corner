@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { mdiChevronDown, mdiClose, mdiCogOutline, mdiDeleteOutline, mdiDotsHorizontal, mdiMenu, mdiPencilOutline, mdiPlus, mdiRobotOutline, mdiSend } from '@mdi/js'
+import { mdiAlert, mdiChevronDown, mdiClose, mdiCogOutline, mdiDeleteOutline, mdiDotsHorizontal, mdiMenu, mdiPencilOutline, mdiPlus, mdiRobotOutline, mdiSend } from '@mdi/js'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useI18n } from 'vue-i18n'
 
@@ -386,10 +386,20 @@ onUnmounted(() => {
             v-for="item in store.messages"
             :key="item.id"
             class="message"
-            :class="[item.role, { 'assistant-waiting-inline': item.role === 'assistant' && isEmptyPlaceholder(item.id) && store.waiting }]"
+            :class="[
+              item.role,
+              {
+                'assistant-waiting-inline': item.role === 'assistant' && isEmptyPlaceholder(item.id) && store.waiting,
+                'assistant-error': item.role === 'assistant' && store.isAssistantErrorMessage(item.id),
+                'user-send-failed': item.role === 'user' && store.isFailedUserMessage(item.id),
+              },
+            ]"
           >
             <div v-if="item.role === 'assistant'" class="avatar">
               <MdiIcon :path="mdiRobotOutline" :size="30" />
+            </div>
+            <div v-if="item.role === 'user' && store.isFailedUserMessage(item.id)" class="user-failed-icon" :title="t('sendBlockedOffline')">
+              <MdiIcon :path="mdiAlert" :size="14" />
             </div>
             <div class="bubble">
               <template v-if="item.role === 'assistant'">
@@ -708,6 +718,10 @@ onUnmounted(() => {
   justify-content: flex-end;
 }
 
+.message.user.user-send-failed {
+  align-items: flex-end;
+}
+
 .message.user .avatar {
   order: 2;
 }
@@ -731,9 +745,29 @@ onUnmounted(() => {
   background: #e7e7e7;
 }
 
+.user-failed-icon {
+  color: #d54941;
+  display: inline-flex;
+  align-items: flex-end;
+  margin-right: 6px;
+  padding-bottom: 3px;
+}
+
 .message.assistant .bubble {
   border-radius: 0;
   padding: 0;
+}
+
+.message.assistant.assistant-error .bubble-markdown {
+  background: #fff8f8;
+  border-left: 3px solid #e0a0a0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #9b2c2c;
+}
+
+.message.assistant.assistant-error .bubble-markdown :deep(a) {
+  color: #b23030;
 }
 
 .message.assistant .avatar {

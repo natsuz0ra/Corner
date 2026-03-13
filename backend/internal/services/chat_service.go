@@ -16,8 +16,9 @@ import (
 )
 
 type ChatService struct {
-	repo  *repositories.Repository
-	agent *AgentService
+	repo         *repositories.Repository
+	agent        *AgentService
+	skillRuntime *SkillRuntimeService
 }
 
 const contextHistoryLimit = 20
@@ -31,10 +32,11 @@ type ChatStreamResult struct {
 	PushError    string
 }
 
-func NewChatService(repo *repositories.Repository, openai *OpenAIClient, mcpManager *mcp.Manager) *ChatService {
+func NewChatService(repo *repositories.Repository, openai *OpenAIClient, mcpManager *mcp.Manager, skillRuntime *SkillRuntimeService) *ChatService {
 	return &ChatService{
-		repo:  repo,
-		agent: NewAgentService(openai, mcpManager),
+		repo:         repo,
+		agent:        NewAgentService(openai, mcpManager, skillRuntime),
+		skillRuntime: skillRuntime,
 	}
 }
 
@@ -61,6 +63,15 @@ func (s *ChatService) BuildContextMessages(sessionID string, userInput string) (
 	// 拼接环境信息到系统提示词
 	envInfo := CollectEnvInfo()
 	systemPrompt = systemPrompt + "\n\n## 当前运行环境\n" + envInfo.FormatForPrompt()
+	if s.skillRuntime != nil {
+		catalogPrompt, _, catalogErr := s.skillRuntime.BuildCatalogPrompt()
+		if catalogErr != nil {
+			return nil, catalogErr
+		}
+		if strings.TrimSpace(catalogPrompt) != "" {
+			systemPrompt = systemPrompt + "\n\n" + catalogPrompt
+		}
+	}
 
 	history, err := s.repo.ListRecentSessionMessages(sessionID, contextHistoryLimit)
 	if err != nil {
@@ -203,7 +214,8 @@ func (s *ChatService) HandleChatStream(
 		Model:   llmConfig.Model,
 	}
 
-	answer, err := s.agent.RunAgentLoop(ctx, modelConfig, contextMessages, enabledMCPConfigs, agentCallbacks)
+	activatedSkills := make(map[string]struct{})
+	answer, err := s.agent.RunAgentLoop(ctx, modelConfig, contextMessages, enabledMCPConfigs, activatedSkills, agentCallbacks)
 	if err != nil && answer == "" {
 		return nil, err
 	}
