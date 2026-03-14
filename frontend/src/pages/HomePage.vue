@@ -20,7 +20,7 @@ import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 import ToolCallCard from '@/components/chat/ToolCallCard.vue'
 import BaseDialog from '@/components/ui/BaseDialog.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
-import CornerLogo from '@/components/ui/CornerLogo.vue'
+import SlimeBotLogo from '@/components/ui/SlimeBotLogo.vue'
 import { renderMarkdown } from '@/utils/markdown'
 import { useHomeChatPage } from '@/composables/useHomeChatPage'
 import { useTheme } from '@/composables/useTheme'
@@ -106,8 +106,8 @@ function onTextareaInput(e: Event) {
           <div class="flex items-center justify-between px-4 h-14" style="border-bottom: 1px solid var(--sidebar-border)">
             <!-- Logo -->
             <div class="flex items-center gap-2.5">
-              <CornerLogo :size="36" />
-              <span class="text-sm font-semibold" style="color: var(--text-primary)">Corner</span>
+              <SlimeBotLogo :size="36" />
+              <span class="text-sm font-semibold" style="color: var(--text-primary)">SlimeBot</span>
             </div>
 
             <div class="flex items-center gap-1">
@@ -289,7 +289,7 @@ function onTextareaInput(e: Event) {
 
             <template v-else>
               <!-- AI 渐变图标 -->
-              <img src="/slime-icon.svg" alt="Corner AI" class="w-20 h-20 mb-2 object-contain drop-shadow-lg" />
+              <img src="/slime-icon.svg" alt="SlimeBot AI" class="w-20 h-20 mb-2 object-contain drop-shadow-lg" />
 
               <!-- 欢迎标题 -->
               <h2 class="text-2xl font-bold mb-2 text-center welcome-title">{{ t('welcomeTitle') }}</h2>
@@ -359,7 +359,7 @@ function onTextareaInput(e: Event) {
                   v-if="item.role === 'assistant'"
                   class="flex-shrink-0 w-10 h-10 flex items-center justify-center"
                 >
-                  <img src="/slime-icon.svg" alt="Corner AI" class="w-10 h-10 object-contain" />
+                  <img src="/slime-icon.svg" alt="SlimeBot AI" class="w-10 h-10 object-contain" />
                 </div>
 
                 <!-- 失败图标（用户消息） -->

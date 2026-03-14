@@ -14,7 +14,7 @@ const router = createRouter({
 })
 
 router.afterEach(() => {
-  document.title = 'Corner'
+  document.title = 'SlimeBot'
 })
 
 export default router

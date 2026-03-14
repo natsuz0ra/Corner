@@ -13,7 +13,7 @@ export function useHomeChatPage() {
   const toast = useToast()
   const router = useRouter()
   const route = useRoute()
-  const MODEL_STORAGE_KEY = 'corner:selectedModelId'
+  const MODEL_STORAGE_KEY = 'slimebot:selectedModelId'
 
   const drawerOpen = ref(false)
   const renameVisible = ref(false)

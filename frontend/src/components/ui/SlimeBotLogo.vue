@@ -13,7 +13,7 @@ withDefaults(defineProps<{
     src="/slime-icon.svg"
     :width="size"
     :height="size"
-    alt="Corner"
+    alt="SlimeBot"
     class="block object-contain"
     :style="white ? 'filter: brightness(0) invert(1)' : ''"
   />
