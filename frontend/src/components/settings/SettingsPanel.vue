@@ -10,8 +10,12 @@ import { lineNumbers } from '@codemirror/view'
 import MdiIcon from '@/components/MdiIcon.vue'
 import BaseDialog from '@/components/ui/BaseDialog.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
+import AccountEditDialog from '@/components/settings/AccountEditDialog.vue'
 import { llmAPI, mcpAPI, settingAPI, skillsAPI } from '@/api/settings'
 import { useToast } from '@/composables/useToast'
+import { useAuthStore } from '@/stores/auth'
+import { useChatStore } from '@/stores/chat'
+import { useRouter } from 'vue-router'
 
 const emit = defineEmits<{
   close: []
@@ -20,6 +24,9 @@ const emit = defineEmits<{
 
 const { t, locale } = useI18n()
 const toast = useToast()
+const authStore = useAuthStore()
+const chatStore = useChatStore()
+const router = useRouter()
 
 const tab = ref<'basic' | 'llm' | 'mcp' | 'skills'>('basic')
 const language = ref<'zh-CN' | 'en-US'>('zh-CN')
@@ -36,6 +43,7 @@ const mcpEditingID = ref('')
 const skillsUploading = ref(false)
 const skillsDropActive = ref(false)
 const skillsFileInputRef = ref<HTMLInputElement | null>(null)
+const accountDialogVisible = ref(false)
 
 const llmForm = ref({ name: '', baseUrl: '', apiKey: '', model: '' })
 const mcpForm = ref({ name: '', config: '', isEnabled: true })
@@ -87,6 +95,21 @@ async function onLanguageChange(nextLanguage: 'zh-CN' | 'en-US') {
   } finally {
     savingLanguage.value = false
   }
+}
+
+function openAccountDialog() {
+  accountDialogVisible.value = true
+}
+
+function logout() {
+  chatStore.disconnectSocket()
+  chatStore.resetToNewSession()
+  authStore.clearAuth()
+  void router.replace('/login')
+}
+
+function onAccountUpdated() {
+  logout()
 }
 
 function openLLMDialog() {
@@ -361,6 +384,16 @@ onMounted(loadData)
         <!-- ── 基础设置 ── -->
         <div v-if="tab === 'basic'">
           <p class="section-label">{{ t('basicSettings') }}</p>
+          <div class="settings-card flex items-center justify-between px-4 py-3.5 rounded-xl mb-2">
+            <span class="text-sm settings-field-label">{{ t('accountEdit') }}</span>
+            <button
+              type="button"
+              class="px-3 py-1.5 text-xs rounded-lg cursor-pointer account-edit-btn"
+              @click="openAccountDialog"
+            >
+              {{ t('accountEditAction') }}
+            </button>
+          </div>
           <div class="settings-card flex items-center justify-between px-4 py-3.5 rounded-xl">
             <span class="text-sm settings-field-label">{{ t('language') }}</span>
             <AppSelect
@@ -370,6 +403,13 @@ onMounted(loadData)
               @update:model-value="onLanguageChange($event as any)"
             />
           </div>
+          <button
+            type="button"
+            class="settings-card w-full mt-2 px-4 py-3.5 rounded-xl text-left text-sm cursor-pointer logout-btn"
+            @click="logout"
+          >
+            {{ t('logout') }}
+          </button>
         </div>
 
         <!-- ── LLM 设置 ── -->
@@ -633,6 +673,11 @@ onMounted(loadData)
       </div>
     </div>
   </BaseDialog>
+
+  <AccountEditDialog
+    v-model:visible="accountDialogVisible"
+    @success="onAccountUpdated"
+  />
 </template>
 
 <style scoped>
@@ -740,6 +785,28 @@ onMounted(loadData)
 .delete-btn:hover {
   background: rgba(239, 68, 68, 0.1);
   color: #ef4444;
+}
+
+.account-edit-btn {
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text-secondary);
+}
+
+.account-edit-btn:hover {
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--text-primary);
+}
+
+.logout-btn {
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.18);
+  background: rgba(239, 68, 68, 0.04);
+  transition: all 0.15s;
+}
+
+.logout-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
 }
 
 /* MCP toggle */
