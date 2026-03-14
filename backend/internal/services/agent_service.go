@@ -21,11 +21,12 @@ const (
 
 // ApprovalRequest 发送给前端的工具调用审批请求
 type ApprovalRequest struct {
-	ToolCallID string            `json:"toolCallId"`
-	ToolName   string            `json:"toolName"`
-	Command    string            `json:"command"`
-	Params     map[string]string `json:"params"`
-	Preamble   string            `json:"preamble,omitempty"`
+	ToolCallID       string            `json:"toolCallId"`
+	ToolName         string            `json:"toolName"`
+	Command          string            `json:"command"`
+	Params           map[string]string `json:"params"`
+	RequiresApproval bool              `json:"requiresApproval"`
+	Preamble         string            `json:"preamble,omitempty"`
 }
 
 // ApprovalResponse 前端返回的审批结果
@@ -36,11 +37,13 @@ type ApprovalResponse struct {
 
 // ToolCallResult 工具调用结果，推送给前端展示
 type ToolCallResult struct {
-	ToolCallID string `json:"toolCallId"`
-	ToolName   string `json:"toolName"`
-	Command    string `json:"command"`
-	Output     string `json:"output"`
-	Error      string `json:"error"`
+	ToolCallID       string `json:"toolCallId"`
+	ToolName         string `json:"toolName"`
+	Command          string `json:"command"`
+	RequiresApproval bool   `json:"requiresApproval"`
+	Status           string `json:"status"`
+	Output           string `json:"output"`
+	Error            string `json:"error"`
 }
 
 // AgentCallbacks 是 Agent 循环与外部（WebSocket 控制器）交互的回调集合
@@ -246,48 +249,52 @@ func (a *AgentService) RunAgentLoop(
 			}
 
 			// 通知前端，等待审批
+			requiresApproval := requiresToolApproval(toolName, isMCP)
 			if err := callbacks.OnToolCallStart(ApprovalRequest{
-				ToolCallID: tc.ID,
-				ToolName:   toolName,
-				Command:    command,
-				Params:     params,
-				Preamble:   preamble,
+				ToolCallID:       tc.ID,
+				ToolName:         toolName,
+				Command:          command,
+				Params:           params,
+				RequiresApproval: requiresApproval,
+				Preamble:         preamble,
 			}); err != nil {
 				return "", fmt.Errorf("推送工具调用审批请求失败: %w", err)
 			}
 
-			approvalCtx, cancel := context.WithTimeout(ctx, agentApprovalTimeout)
-			approval, err := callbacks.WaitApproval(approvalCtx, tc.ID)
-			cancel()
+			if requiresApproval {
+				approvalCtx, cancel := context.WithTimeout(ctx, agentApprovalTimeout)
+				approval, err := callbacks.WaitApproval(approvalCtx, tc.ID)
+				cancel()
 
-			if err != nil {
-				messages = append(messages, ChatMessage{
-					Role:       "tool",
-					ToolCallID: tc.ID,
-					Content:    "用户审批超时或发生错误，工具调用已取消。",
-				})
-				if cbErr := callbacks.OnToolCallResult(ToolCallResult{
-					ToolCallID: tc.ID, ToolName: toolName, Command: command,
-					Error: "审批超时",
-				}); cbErr != nil {
-					log.Printf("推送工具结果失败: %v", cbErr)
+				if err != nil {
+					messages = append(messages, ChatMessage{
+						Role:       "tool",
+						ToolCallID: tc.ID,
+						Content:    "用户审批超时或发生错误，工具调用已取消。",
+					})
+					if cbErr := callbacks.OnToolCallResult(ToolCallResult{
+						ToolCallID: tc.ID, ToolName: toolName, Command: command, RequiresApproval: requiresApproval, Status: "error",
+						Error: "审批超时",
+					}); cbErr != nil {
+						log.Printf("推送工具结果失败: %v", cbErr)
+					}
+					continue
 				}
-				continue
-			}
 
-			if !approval.Approved {
-				messages = append(messages, ChatMessage{
-					Role:       "tool",
-					ToolCallID: tc.ID,
-					Content:    "用户拒绝了此工具调用，请换一种方式回答或告知用户需要授权才能完成此操作。",
-				})
-				if cbErr := callbacks.OnToolCallResult(ToolCallResult{
-					ToolCallID: tc.ID, ToolName: toolName, Command: command,
-					Error: "用户拒绝执行",
-				}); cbErr != nil {
-					log.Printf("推送工具结果失败: %v", cbErr)
+				if !approval.Approved {
+					messages = append(messages, ChatMessage{
+						Role:       "tool",
+						ToolCallID: tc.ID,
+						Content:    "用户拒绝了此工具调用，请换一种方式回答或告知用户需要授权才能完成此操作。",
+					})
+					if cbErr := callbacks.OnToolCallResult(ToolCallResult{
+						ToolCallID: tc.ID, ToolName: toolName, Command: command, RequiresApproval: requiresApproval, Status: "rejected",
+						Error: "用户拒绝执行",
+					}); cbErr != nil {
+						log.Printf("推送工具结果失败: %v", cbErr)
+					}
+					continue
 				}
-				continue
 			}
 
 			// 执行工具
@@ -308,12 +315,18 @@ func (a *AgentService) RunAgentLoop(
 				execResult = executeToolCall(toolName, command, params)
 			}
 
+			resultStatus := "completed"
+			if execResult.Error != "" {
+				resultStatus = "error"
+			}
 			if cbErr := callbacks.OnToolCallResult(ToolCallResult{
-				ToolCallID: tc.ID,
-				ToolName:   toolName,
-				Command:    command,
-				Output:     execResult.Output,
-				Error:      execResult.Error,
+				ToolCallID:       tc.ID,
+				ToolName:         toolName,
+				Command:          command,
+				RequiresApproval: requiresApproval,
+				Status:           resultStatus,
+				Output:           execResult.Output,
+				Error:            execResult.Error,
 			}); cbErr != nil {
 				log.Printf("推送工具结果失败: %v", cbErr)
 			}
@@ -387,4 +400,11 @@ func executeToolCall(toolName, command string, params map[string]string) *tools.
 		return &tools.ExecuteResult{Error: err.Error()}
 	}
 	return result
+}
+
+func requiresToolApproval(toolName string, isMCP bool) bool {
+	if isMCP {
+		return false
+	}
+	return toolName == "exec"
 }

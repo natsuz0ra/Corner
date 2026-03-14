@@ -92,7 +92,7 @@ const shouldShowPreamble = computed(() => !!props.showPreamble && !!props.item.p
       <div class="ml-auto flex items-center gap-1.5 flex-shrink-0">
         <span
           class="w-1.5 h-1.5 rounded-full flex-shrink-0"
-          :class="[statusDotClass, item.status === 'executing' ? 'animate-pulse' : '']"
+          :class="[statusDotClass, item.status === 'executing' ? 'status-dot-pulse' : '']"
         />
         <span class="text-xs font-medium" :class="statusTextClass">{{ statusLabel }}</span>
         <svg
@@ -145,7 +145,7 @@ const shouldShowPreamble = computed(() => !!props.showPreamble && !!props.item.p
         <summary class="tool-output-summary cursor-pointer select-none transition-colors duration-150 text-xs font-medium">
           {{ t('toolCallOutput') }}
         </summary>
-        <pre class="mt-2 px-3 py-2.5 tool-output rounded-lg text-xs font-mono whitespace-pre-wrap break-all leading-relaxed">{{ item.output }}</pre>
+        <pre class="mt-2 px-3 py-2.5 tool-output rounded-lg text-xs font-mono whitespace-pre-wrap break-all leading-relaxed max-h-56 overflow-y-auto">{{ item.output }}</pre>
       </details>
     </div>
   </div>
@@ -155,19 +155,23 @@ const shouldShowPreamble = computed(() => !!props.showPreamble && !!props.item.p
 .tool-card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  backdrop-filter: blur(8px);
+  box-shadow: var(--floating-elevation-shadow);
 }
 
 .tool-icon {
-  color: #6366f1;
+  color: var(--text-secondary);
 }
 
 .tool-label {
-  color: #6366f1;
+  color: var(--text-primary);
 }
 
 .tool-command {
-  color: var(--text-muted);
+  color: var(--text-secondary);
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  border-radius: 8px;
+  padding: 2px 8px;
 }
 
 /* Status dots */
@@ -176,6 +180,9 @@ const shouldShowPreamble = computed(() => !!props.showPreamble && !!props.item.p
 .status-dot-success { background: #10b981; }
 .status-dot-error { background: #ef4444; }
 .status-dot-default { background: var(--text-muted); }
+.status-dot-pulse {
+  animation: tool-dot-pulse 1.2s ease-in-out infinite;
+}
 
 /* Status text */
 .status-text-pending { color: #f59e0b; }
@@ -186,13 +193,9 @@ const shouldShowPreamble = computed(() => !!props.showPreamble && !!props.item.p
 
 /* Params block */
 .tool-params {
-  background: rgba(0, 0, 0, 0.15);
-  color: var(--text-secondary);
-  border: 1px solid var(--card-border);
-}
-
-.dark .tool-params {
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--input-border);
 }
 
 .tool-preamble {
@@ -207,6 +210,7 @@ const shouldShowPreamble = computed(() => !!props.showPreamble && !!props.item.p
 }
 .approve-btn:hover {
   background: rgba(16, 185, 129, 0.18);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
 }
 
 .reject-btn {
@@ -216,6 +220,18 @@ const shouldShowPreamble = computed(() => !!props.showPreamble && !!props.item.p
 }
 .reject-btn:hover {
   background: rgba(239, 68, 68, 0.14);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.18);
+}
+
+.approve-btn,
+.reject-btn {
+  transition: background-color 180ms ease, color 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.approve-btn:focus-visible,
+.reject-btn:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
 }
 
 /* Output */
@@ -224,15 +240,39 @@ const shouldShowPreamble = computed(() => !!props.showPreamble && !!props.item.p
 }
 
 .tool-output-summary {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .tool-output-summary:hover {
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .tool-output {
-  background: rgba(0, 0, 0, 0.25);
-  color: #c4b5fd;
-  border: 1px solid rgba(99, 102, 241, 0.15);
+  background: var(--bg-main);
+  color: var(--text-primary);
+  border: 1px solid var(--card-border);
+  scrollbar-width: thin;
+}
+
+.tool-output-summary:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@keyframes tool-dot-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.92);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-dot-pulse {
+    animation: none;
+  }
 }
 </style>

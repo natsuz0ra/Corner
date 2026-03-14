@@ -16,12 +16,31 @@ export interface MessageItem {
 
 export type ToolCallStatus = 'pending' | 'rejected' | 'executing' | 'completed' | 'error'
 
+export interface SessionHistoryToolCallItem {
+  toolCallId: string
+  toolName: string
+  command: string
+  params: Record<string, string>
+  status: ToolCallStatus
+  requiresApproval: boolean
+  output?: string
+  error?: string
+  startedAt?: string
+  finishedAt?: string
+}
+
+export interface SessionHistoryPayload {
+  messages: MessageItem[]
+  toolCallsByAssistantMessageId: Record<string, SessionHistoryToolCallItem[]>
+}
+
 export interface ToolCallItem {
   toolCallId: string
   toolName: string
   command: string
   params: Record<string, string>
   preamble?: string
+  requiresApproval: boolean
   status: ToolCallStatus
   output?: string
   error?: string
@@ -32,5 +51,5 @@ export const sessionAPI = {
   create: async (name?: string) => (await apiClient.post<SessionItem>('/api/sessions', { name })).data,
   rename: async (id: string, name: string) => apiClient.patch(`/api/sessions/${id}/name`, { name }),
   remove: async (id: string) => apiClient.delete(`/api/sessions/${id}`),
-  history: async (id: string) => (await apiClient.get<MessageItem[]>(`/api/sessions/${id}/messages`)).data,
+  history: async (id: string) => (await apiClient.get<SessionHistoryPayload>(`/api/sessions/${id}/messages`)).data,
 }

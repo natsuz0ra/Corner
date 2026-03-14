@@ -22,6 +22,7 @@ export interface ToolCallStartData {
   toolName: string
   command: string
   params: Record<string, string>
+  requiresApproval: boolean
   preamble?: string
 }
 
@@ -29,6 +30,8 @@ export interface ToolCallResultData {
   toolCallId: string
   toolName: string
   command: string
+  requiresApproval: boolean
+  status: 'pending' | 'rejected' | 'executing' | 'completed' | 'error'
   output: string
   error: string
 }
@@ -44,6 +47,8 @@ type WSIncoming = {
   toolName?: string
   command?: string
   params?: Record<string, string>
+  requiresApproval?: boolean
+  status?: 'pending' | 'rejected' | 'executing' | 'completed' | 'error'
   preamble?: string
   output?: string
 }
@@ -150,6 +155,7 @@ export class ChatSocket {
           toolName: data.toolName || '',
           command: data.command || '',
           params: data.params || {},
+          requiresApproval: !!data.requiresApproval,
           preamble: data.preamble || '',
         }, data.sessionId)
       }
@@ -159,6 +165,8 @@ export class ChatSocket {
           toolCallId: data.toolCallId || '',
           toolName: data.toolName || '',
           command: data.command || '',
+          requiresApproval: !!data.requiresApproval,
+          status: data.status || 'completed',
           output: data.output || '',
           error: data.error || '',
         }, data.sessionId)
