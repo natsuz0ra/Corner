@@ -1,6 +1,6 @@
 import { ref, watch } from 'vue'
 
-const STORAGE_KEY = 'corner:theme'
+const STORAGE_KEY = 'slimebot:theme'
 
 type Theme = 'dark' | 'light'
 
