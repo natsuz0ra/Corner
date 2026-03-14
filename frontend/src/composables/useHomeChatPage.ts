@@ -158,6 +158,35 @@ export function useHomeChatPage() {
     return findReplyBatchByMessageId(messageId)?.toolCalls.length || 0
   }
 
+  function getToolCallDesc(toolCall: ToolCallItem) {
+    const entries = Object.entries(toolCall.params || {})
+    if (entries.length === 0) return toolCall.command || ''
+    return entries
+      .map(([key, value]) => `${key}: ${String(value)}`)
+      .join(' | ')
+  }
+
+  function getReplyToolSummary(messageId: string) {
+    const batch = findReplyBatchByMessageId(messageId)
+    if (!batch) return ''
+
+    const count = batch.toolCalls.length
+    if (count === 0) return ''
+    if (batch.collapsed) return t('toolExecutionCount', { count })
+
+    const runningCall = [...batch.toolCalls].reverse().find((item) => item.status === 'pending' || item.status === 'executing')
+    if (runningCall) {
+      return t('toolExecutionRunning', { command: runningCall.toolName, desc: getToolCallDesc(runningCall) })
+    }
+
+    const latest = batch.toolCalls[count - 1]
+    if (!latest) return t('toolExecutionCount', { count })
+    if (latest.status === 'completed') {
+      return t('toolExecutionSuccess', { command: latest.toolName })
+    }
+    return t('toolExecutionFailed', { command: latest.toolName })
+  }
+
   function getReplyToolCalls(messageId: string): ToolCallItem[] {
     return findReplyBatchByMessageId(messageId)?.toolCalls || []
   }
@@ -168,6 +197,12 @@ export function useHomeChatPage() {
 
   function getReplyToolItem(messageId: string, toolCallId: string) {
     return getReplyToolCalls(messageId).find((item) => item.toolCallId === toolCallId)
+  }
+
+  function shouldShowInlineToolCall(messageId: string, toolCallId: string) {
+    const item = getReplyToolItem(messageId, toolCallId)
+    if (!item) return false
+    return item.requiresApproval
   }
 
   function isReplyToolCollapsed(messageId: string) {
@@ -571,8 +606,10 @@ export function useHomeChatPage() {
     sendDisabled,
     networkStatusText,
     getReplyToolCount,
+    getReplyToolSummary,
     getReplyTimeline,
     getReplyToolItem,
+    shouldShowInlineToolCall,
     isReplyToolCollapsed,
     isEmptyPlaceholder,
     openToolDetail,
