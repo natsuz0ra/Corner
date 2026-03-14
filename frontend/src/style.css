@@ -1,8 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: 'Plus Jakarta Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-brand-tech: 'Orbitron', 'Plus Jakarta Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --color-primary: #6366f1;
   --color-primary-hover: #4f46e5;
   --color-secondary: #818cf8;
@@ -24,6 +25,10 @@ html, body {
   min-width: 320px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.brand-tech-font {
+  font-family: var(--font-brand-tech);
 }
 
 #app {

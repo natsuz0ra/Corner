@@ -107,7 +107,7 @@ function onTextareaInput(e: Event) {
             <!-- Logo -->
             <div class="flex items-center gap-2.5">
               <SlimeBotLogo :size="36" />
-              <span class="text-sm font-semibold" style="color: var(--text-primary)">SlimeBot</span>
+              <span class="text-lg font-semibold tracking-wide brand-tech-font" style="color: var(--text-primary)">SlimeBot</span>
             </div>
 
             <div class="flex items-center gap-1">
