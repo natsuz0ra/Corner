@@ -164,29 +164,3 @@ VITE_WS_URL=ws://localhost:8080
 ### 待完成功能
 
 - 消息平台接入能力
-
-## 7. exec 工具调用建议
-
-`exec.run` 现已支持结构化参数，推荐优先使用 `program + args`，仅在必须使用 shell 语法时再用 `command`。
-
-- 推荐（跨平台稳定）：
-
-```json
-{
-  "program": "python",
-  "args": "[\"-c\",\"print('hello')\"]",
-  "timeout": "30"
-}
-```
-
-- 兼容模式（字符串命令）：
-  - Windows 默认通过 PowerShell 执行 `command`
-  - 如需旧行为可显式传 `shell=cmd`
-
-```json
-{
-  "command": "Get-ChildItem .",
-  "shell": "powershell",
-  "timeout": "30"
-}
-```
