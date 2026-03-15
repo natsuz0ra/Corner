@@ -19,6 +19,7 @@ type ChatService struct {
 	repo         *repositories.Repository
 	agent        *AgentService
 	skillRuntime *SkillRuntimeService
+	memory       *MemoryService
 }
 
 const contextHistoryLimit = 20
@@ -32,14 +33,17 @@ type ChatStreamResult struct {
 	PushError    string
 }
 
-func NewChatService(repo *repositories.Repository, openai *OpenAIClient, mcpManager *mcp.Manager, skillRuntime *SkillRuntimeService) *ChatService {
+// NewChatService 组装聊天服务及其依赖的 agent/memory 子能力。
+func NewChatService(repo *repositories.Repository, openai *OpenAIClient, mcpManager *mcp.Manager, skillRuntime *SkillRuntimeService, memory *MemoryService) *ChatService {
 	return &ChatService{
 		repo:         repo,
-		agent:        NewAgentService(openai, mcpManager, skillRuntime),
+		agent:        NewAgentService(openai, mcpManager, skillRuntime, memory),
 		skillRuntime: skillRuntime,
+		memory:       memory,
 	}
 }
 
+// EnsureSession 确保会话存在；若不存在则创建默认新会话。
 func (s *ChatService) EnsureSession(sessionID string) (*models.Session, error) {
 	if sessionID != "" {
 		existing, err := s.repo.GetSessionByID(sessionID)
@@ -53,7 +57,21 @@ func (s *ChatService) EnsureSession(sessionID string) (*models.Session, error) {
 	return s.repo.CreateSession("新会话")
 }
 
-func (s *ChatService) BuildContextMessages(sessionID string, userInput string) ([]ChatMessage, error) {
+type chatContextBuilder struct {
+	service *ChatService
+}
+
+// BuildContextMessages 生成模型上下文消息（系统提示 + 历史 + 可选 memory 上下文）。
+func (s *ChatService) BuildContextMessages(ctx context.Context, sessionID string, modelConfig ModelRuntimeConfig) ([]ChatMessage, error) {
+	builder := chatContextBuilder{service: s}
+	return builder.Build(ctx, sessionID, modelConfig)
+}
+
+func (b chatContextBuilder) Build(ctx context.Context, sessionID string, modelConfig ModelRuntimeConfig) ([]ChatMessage, error) {
+	return b.service.buildContextMessages(ctx, sessionID, modelConfig)
+}
+
+func (s *ChatService) buildContextMessages(ctx context.Context, sessionID string, modelConfig ModelRuntimeConfig) ([]ChatMessage, error) {
 	buildStart := time.Now()
 	systemPrompt, err := s.loadSystemPrompt()
 	if err != nil {
@@ -77,18 +95,83 @@ func (s *ChatService) BuildContextMessages(sessionID string, userInput string) (
 	if err != nil {
 		return nil, err
 	}
+
 	msgs := []ChatMessage{{Role: "system", Content: systemPrompt}}
+	compressEnabled := false
+	var memoryKeywords []string
+	var memoryHitCount int
+	if s.memory != nil {
+		shouldCompress, messageCount, countErr := s.memory.ShouldCompressContext(sessionID)
+		if countErr != nil {
+			log.Printf("chat_context_memory_skip session=%s reason=count_failed err=%v", sessionID, countErr)
+		} else if shouldCompress {
+			compressEnabled = true
+
+			sessionSummary := ""
+			if memoryItem, memoryErr := s.repo.GetSessionMemory(sessionID); memoryErr != nil {
+				log.Printf("chat_context_memory_skip session=%s reason=get_summary_failed err=%v", sessionID, memoryErr)
+			} else if memoryItem != nil {
+				sessionSummary = strings.TrimSpace(memoryItem.Summary)
+			}
+
+			lastUserInput := ""
+			for idx := len(history) - 1; idx >= 0; idx-- {
+				if strings.EqualFold(strings.TrimSpace(history[idx].Role), "user") {
+					lastUserInput = strings.TrimSpace(history[idx].Content)
+					break
+				}
+			}
+
+			decision, decideErr := s.memory.DecideMemoryQuery(ctx, modelConfig, lastUserInput, sessionSummary)
+			if decideErr != nil {
+				log.Printf("chat_context_memory_skip session=%s reason=decision_failed err=%v", sessionID, decideErr)
+			} else if decision.NeedMemory {
+				memoryKeywords = decision.Keywords
+			}
+
+			var memoryHits []repositories.SessionMemorySearchHit
+			if len(memoryKeywords) > 0 {
+				hits, retrieveErr := s.memory.RetrieveMemories(memoryKeywords, sessionID, memorySearchTopK)
+				if retrieveErr != nil {
+					log.Printf("chat_context_memory_skip session=%s reason=retrieve_failed err=%v", sessionID, retrieveErr)
+				} else {
+					memoryHits = hits
+					memoryHitCount = len(hits)
+				}
+			}
+
+			memoryContext := s.memory.FormatMemoryContext(sessionSummary, memoryHits)
+			if memoryContext != "" {
+				msgs = append(msgs, ChatMessage{
+					Role: "developer",
+					Content: "以下是系统提供的 memory_context，请优先用于理解历史偏好、约束与长期任务；" +
+						"若与用户当前输入冲突，以用户当前输入为准。\n\n<memory_context>\n" +
+						memoryContext +
+						"\n</memory_context>",
+				})
+			}
+
+			compactHistory, compactErr := s.memory.BuildCompactHistory(sessionID)
+			if compactErr != nil {
+				log.Printf("chat_context_memory_skip session=%s reason=compact_history_failed err=%v", sessionID, compactErr)
+			} else if len(compactHistory) > 0 {
+				history = compactHistory
+			}
+			log.Printf("chat_context_compressed session=%s message_count=%d keywords=%d hits=%d", sessionID, messageCount, len(memoryKeywords), memoryHitCount)
+		}
+	}
+
 	for _, item := range history {
 		msgs = append(msgs, ChatMessage{
 			Role:    item.Role,
 			Content: item.Content,
 		})
 	}
-	msgs = append(msgs, ChatMessage{Role: "user", Content: strings.TrimSpace(userInput)})
-	log.Printf("chat_context_ready session=%s history=%d cost_ms=%d", sessionID, len(history), time.Since(buildStart).Milliseconds())
+	log.Printf("chat_context_ready session=%s history=%d compressed=%t cost_ms=%d", sessionID, len(history), compressEnabled, time.Since(buildStart).Milliseconds())
 	return msgs, nil
 }
 
+// loadSystemPrompt 从 prompts 目录加载系统提示词模板。
 func (s *ChatService) loadSystemPrompt() (string, error) {
 	_, currentFile, _, ok := runtime.Caller(0)
 	if !ok {
@@ -114,6 +197,7 @@ func (s *ChatService) loadSystemPrompt() (string, error) {
 	return prompt, nil
 }
 
+// ResolveLLMConfig 校验并返回当前会话使用的模型配置。
 func (s *ChatService) ResolveLLMConfig(modelID string) (*models.LLMConfig, error) {
 	configID := strings.TrimSpace(modelID)
 	if configID == "" {
@@ -152,6 +236,11 @@ func (s *ChatService) HandleChatStream(
 	if err != nil {
 		return nil, err
 	}
+	modelConfig := ModelRuntimeConfig{
+		BaseURL: llmConfig.BaseURL,
+		APIKey:  llmConfig.APIKey,
+		Model:   llmConfig.Model,
+	}
 
 	session, err := s.repo.GetSessionByID(sessionID)
 	if err != nil {
@@ -165,7 +254,7 @@ func (s *ChatService) HandleChatStream(
 		return nil, err
 	}
 
-	contextMessages, err := s.BuildContextMessages(sessionID, content)
+	contextMessages, err := s.BuildContextMessages(ctx, sessionID, modelConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -209,17 +298,7 @@ func (s *ChatService) HandleChatStream(
 			if req.RequiresApproval {
 				startStatus = "pending"
 			}
-			if err := s.repo.UpsertToolCallStart(repositories.ToolCallStartRecordInput{
-				SessionID:        sessionID,
-				RequestID:        requestID,
-				ToolCallID:       req.ToolCallID,
-				ToolName:         req.ToolName,
-				Command:          req.Command,
-				Params:           req.Params,
-				Status:           startStatus,
-				RequiresApproval: req.RequiresApproval,
-				StartedAt:        time.Now(),
-			}); err != nil {
+			if err := s.recordToolCallStart(sessionID, requestID, req, startStatus); err != nil {
 				return err
 			}
 			// 进入工具调用阶段前，结束当前回答片段并为下一轮回答重置标题探测状态。
@@ -243,15 +322,7 @@ func (s *ChatService) HandleChatStream(
 					}
 				}
 			}
-			if err := s.repo.UpdateToolCallResult(repositories.ToolCallResultRecordInput{
-				SessionID:  sessionID,
-				RequestID:  requestID,
-				ToolCallID: result.ToolCallID,
-				Status:     status,
-				Output:     result.Output,
-				Error:      result.Error,
-				FinishedAt: time.Now(),
-			}); err != nil {
+			if err := s.recordToolCallResult(sessionID, requestID, result, status); err != nil {
 				return err
 			}
 			if callbacks.OnToolCallResult == nil {
@@ -261,14 +332,8 @@ func (s *ChatService) HandleChatStream(
 		},
 	}
 
-	modelConfig := ModelRuntimeConfig{
-		BaseURL: llmConfig.BaseURL,
-		APIKey:  llmConfig.APIKey,
-		Model:   llmConfig.Model,
-	}
-
 	activatedSkills := make(map[string]struct{})
-	answer, err := s.agent.RunAgentLoop(ctx, modelConfig, contextMessages, enabledMCPConfigs, activatedSkills, agentCallbacks)
+	answer, err := s.agent.RunAgentLoop(ctx, modelConfig, sessionID, contextMessages, enabledMCPConfigs, activatedSkills, agentCallbacks)
 	if err != nil && answer == "" {
 		return nil, err
 	}
@@ -301,6 +366,9 @@ func (s *ChatService) HandleChatStream(
 	if err := s.repo.BindToolCallsToAssistantMessage(sessionID, requestID, assistantMessage.ID); err != nil {
 		return nil, err
 	}
+	if s.memory != nil {
+		s.memory.UpdateSummaryAsync(modelConfig, sessionID)
+	}
 
 	result := &ChatStreamResult{Answer: finalAnswer}
 	if title != "" {
@@ -317,180 +385,40 @@ func (s *ChatService) HandleChatStream(
 	return result, nil
 }
 
-type titleStreamParser struct {
-	// 是否启用协议解析；关闭时全部透传。
-	enabled bool
-	// 最近一次成功解析出的标题。
-	title string
-	// 探测模式下的行缓冲，用于按“行”识别 [TITLE] 协议。
-	lineBuf strings.Builder
-	// 是否处于探测模式：true=先入缓冲识别协议，false=正文直通。
-	probing bool
+func (s *ChatService) recordToolCallStart(
+	sessionID string,
+	requestID string,
+	req ApprovalRequest,
+	startStatus string,
+) error {
+	// 记录工具调用起始状态，后续由结果更新接口补齐结束态。
+	return s.repo.UpsertToolCallStart(repositories.ToolCallStartRecordInput{
+		SessionID:        sessionID,
+		RequestID:        requestID,
+		ToolCallID:       req.ToolCallID,
+		ToolName:         req.ToolName,
+		Command:          req.Command,
+		Params:           req.Params,
+		Status:           startStatus,
+		RequiresApproval: req.RequiresApproval,
+		StartedAt:        time.Now(),
+	})
 }
 
-func newTitleStreamParser(enabled bool, probeRuneLimit int) *titleStreamParser {
-	_ = probeRuneLimit
-	if !enabled {
-		return &titleStreamParser{enabled: false}
-	}
-	return &titleStreamParser{enabled: true, probing: true}
-}
-
-func (p *titleStreamParser) Feed(chunk string) string {
-	if chunk == "" {
-		return ""
-	}
-	if !p.enabled {
-		return chunk
-	}
-	return p.process(chunk, false)
-}
-
-func (p *titleStreamParser) Flush() string {
-	if !p.enabled {
-		return ""
-	}
-	return p.process("", true)
-}
-
-func (p *titleStreamParser) process(chunk string, flush bool) string {
-	var out strings.Builder
-
-	// 将确认属于正文的内容透传到输出。
-	writePassthrough := func(content string) {
-		if content == "" {
-			return
-		}
-		out.WriteString(content)
-	}
-
-	// 刷新当前行缓冲：可在遇到换行时自然刷新，也可强制刷新（流结束/判定非协议时）。
-	flushLineBuffer := func(force bool) {
-		current := p.lineBuf.String()
-		if current == "" {
-			return
-		}
-		if !force && !strings.Contains(current, "\n") {
-			return
-		}
-		line := strings.TrimSuffix(current, "\n")
-		line = strings.TrimSuffix(line, "\r")
-		if title, ok := parseProtocolTitle(line); ok {
-			// 协议行仅用于更新标题，不进入正文输出。
-			p.title = title
-			p.lineBuf.Reset()
-			// 处理完一行后继续处于探测模式，便于识别下一行协议。
-			p.probing = true
-			return
-		}
-		writePassthrough(current)
-		p.lineBuf.Reset()
-		// 仅当以换行结束时，下一字符才视作新行开头并重新探测。
-		p.probing = strings.HasSuffix(current, "\n")
-	}
-
-	for i := 0; i < len(chunk); i++ {
-		ch := chunk[i]
-		if p.probing {
-			// 探测模式：先累积到行缓冲，再判断是否为 [TITLE] 协议。
-			p.lineBuf.WriteByte(ch)
-			trimmedLeft := strings.TrimLeft(p.lineBuf.String(), " \t\r\n\uFEFF")
-			titleTag := "[TITLE]"
-			// 前缀已足够但不匹配时，立即强制刷新为正文，避免无谓等待整行。
-			if len([]rune(trimmedLeft)) >= len([]rune(titleTag)) && !strings.HasPrefix(trimmedLeft, titleTag) {
-				flushLineBuffer(true)
-			} else {
-				flushLineBuffer(false)
-			}
-			continue
-		}
-
-		// 直通模式：正文原样输出，换行后回到探测模式。
-		out.WriteByte(ch)
-		if ch == '\n' {
-			p.probing = true
-		}
-	}
-
-	if flush {
-		// 流结束时强制处理残留缓冲，避免最后半行被遗漏。
-		flushLineBuffer(true)
-	}
-
-	return out.String()
-}
-
-func (p *titleStreamParser) Title() string {
-	return p.title
-}
-
-func (p *titleStreamParser) BeginAssistantTurn() string {
-	if !p.enabled {
-		return ""
-	}
-	// 工具调用切轮时先冲刷残留，再回到“新一行起点探测”状态。
-	passthrough := p.process("", true)
-	p.probing = true
-	return passthrough
-}
-
-func parseProtocolTitle(line string) (string, bool) {
-	trimmed := strings.TrimSpace(strings.ReplaceAll(line, "\uFEFF", ""))
-	if !strings.HasPrefix(trimmed, "[TITLE]") {
-		return "", false
-	}
-
-	title := strings.TrimSpace(strings.TrimPrefix(trimmed, "[TITLE]"))
-	title = strings.ReplaceAll(title, "\r", "")
-	title = strings.ReplaceAll(title, "\n", "")
-	title = strings.Trim(title, "\"'\u201c\u201d")
-	title = truncateRunes(title, 20)
-	if title == "" {
-		return "", false
-	}
-	return title, true
-}
-
-func extractProtocolTitleAndBody(input string) (string, string) {
-	if strings.TrimSpace(input) == "" {
-		return "", input
-	}
-
-	// 按行扫描协议行，支持 [TITLE] 出现在首行/中间/末行。
-	segments := strings.SplitAfter(input, "\n")
-	if len(segments) == 0 {
-		return "", input
-	}
-
-	var extractedTitle string
-	var hasTitle bool
-	bodySegments := make([]string, 0, len(segments))
-
-	for _, seg := range segments {
-		line := strings.TrimSuffix(seg, "\n")
-		line = strings.TrimSuffix(line, "\r")
-		if title, ok := parseProtocolTitle(line); ok {
-			extractedTitle = title
-			hasTitle = true
-			continue
-		}
-		bodySegments = append(bodySegments, seg)
-	}
-
-	if !hasTitle {
-		return "", input
-	}
-
-	return extractedTitle, strings.Join(bodySegments, "")
-}
-
-func truncateRunes(input string, max int) string {
-	if max <= 0 {
-		return ""
-	}
-	runes := []rune(input)
-	if len(runes) <= max {
-		return input
-	}
-	return string(runes[:max])
+func (s *ChatService) recordToolCallResult(
+	sessionID string,
+	requestID string,
+	result ToolCallResult,
+	status string,
+) error {
+	// 回写工具调用最终状态，用于会话消息历史回放。
+	return s.repo.UpdateToolCallResult(repositories.ToolCallResultRecordInput{
+		SessionID:  sessionID,
+		RequestID:  requestID,
+		ToolCallID: result.ToolCallID,
+		Status:     status,
+		Output:     result.Output,
+		Error:      result.Error,
+		FinishedAt: time.Now(),
+	})
 }
