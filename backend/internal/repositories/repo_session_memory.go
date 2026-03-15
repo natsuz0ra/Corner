@@ -3,6 +3,7 @@ package repositories
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -30,6 +31,8 @@ type SessionMemorySearchHit struct {
 	Score           float64
 }
 
+var ErrStaleSessionMemoryWrite = errors.New("stale session memory write")
+
 func (r *Repository) GetSessionMemory(sessionID string) (*models.SessionMemory, error) {
 	var item models.SessionMemory
 	err := r.db.Where("session_id = ?", strings.TrimSpace(sessionID)).First(&item).Error
@@ -43,45 +46,71 @@ func (r *Repository) GetSessionMemory(sessionID string) (*models.SessionMemory, 
 }
 
 func (r *Repository) UpsertSessionMemory(input SessionMemoryUpsertInput) error {
+	_, err := r.UpsertSessionMemoryIfNewer(input)
+	return err
+}
+
+func (r *Repository) UpsertSessionMemoryIfNewer(input SessionMemoryUpsertInput) (bool, error) {
 	now := time.Now()
 	sessionID := strings.TrimSpace(input.SessionID)
+	if sessionID == "" {
+		return false, fmt.Errorf("session_id 不能为空")
+	}
 	keywords := normalizeKeywords(input.Keywords)
 	keywordsJSONBytes, err := json.Marshal(keywords)
 	if err != nil {
-		return err
+		return false, err
 	}
 	keywordsJSON := string(keywordsJSONBytes)
 	keywordsText := strings.Join(keywords, " ")
 
-	var existing models.SessionMemory
-	query := r.db.Where("session_id = ?", sessionID).First(&existing)
-	if query.Error == nil {
-		return r.db.Model(&models.SessionMemory{}).
-			Where("id = ?", existing.ID).
-			Updates(map[string]any{
-				"summary":              input.Summary,
-				"keywords_json":        keywordsJSON,
-				"keywords_text":        keywordsText,
-				"source_message_count": input.SourceMessageCount,
-				"updated_at":           now,
-			}).
-			Error
-	}
-	if query.Error != nil && !isRecordNotFound(query.Error) {
-		return query.Error
-	}
+	updated := false
+	err = r.db.Transaction(func(tx *gorm.DB) error {
+		var existing models.SessionMemory
+		query := tx.Where("session_id = ?", sessionID).First(&existing)
+		if query.Error == nil {
+			if input.SourceMessageCount < existing.SourceMessageCount {
+				updated = false
+				return nil
+			}
+			if err := tx.Model(&models.SessionMemory{}).
+				Where("id = ?", existing.ID).
+				Updates(map[string]any{
+					"summary":              input.Summary,
+					"keywords_json":        keywordsJSON,
+					"keywords_text":        keywordsText,
+					"source_message_count": input.SourceMessageCount,
+					"updated_at":           now,
+				}).Error; err != nil {
+				return err
+			}
+			updated = true
+			return nil
+		}
+		if query.Error != nil && !isRecordNotFound(query.Error) {
+			return query.Error
+		}
 
-	item := models.SessionMemory{
-		ID:                 uuid.NewString(),
-		SessionID:          sessionID,
-		Summary:            input.Summary,
-		KeywordsJSON:       keywordsJSON,
-		KeywordsText:       keywordsText,
-		SourceMessageCount: input.SourceMessageCount,
-		CreatedAt:          now,
-		UpdatedAt:          now,
+		item := models.SessionMemory{
+			ID:                 uuid.NewString(),
+			SessionID:          sessionID,
+			Summary:            input.Summary,
+			KeywordsJSON:       keywordsJSON,
+			KeywordsText:       keywordsText,
+			SourceMessageCount: input.SourceMessageCount,
+			CreatedAt:          now,
+			UpdatedAt:          now,
+		}
+		if err := tx.Create(&item).Error; err != nil {
+			return err
+		}
+		updated = true
+		return nil
+	})
+	if err != nil {
+		return false, err
 	}
-	return r.db.Create(&item).Error
+	return updated, nil
 }
 
 func (r *Repository) SearchMemoriesByKeywords(keywords []string, limit int, excludeSessionID string) ([]SessionMemorySearchHit, error) {
