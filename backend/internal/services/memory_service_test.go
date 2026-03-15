@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -120,6 +121,108 @@ func TestMemoryServiceUpdateSummaryAsync_NonBlocking(t *testing.T) {
 	if elapsed := time.Since(start); elapsed > 50*time.Millisecond {
 		t.Fatalf("expected async call to return quickly, elapsed=%s", elapsed)
 	}
+}
+
+func TestMemoryServiceChatOnceWithRetry_TimeoutThenSuccess(t *testing.T) {
+	svc := NewMemoryService(nil, nil)
+	callCount := int32(0)
+	svc.chatInvoker = func(_ context.Context, _ ModelRuntimeConfig, _ []ChatMessage) (string, error) {
+		attempt := atomic.AddInt32(&callCount, 1)
+		if attempt == 1 {
+			return "", context.DeadlineExceeded
+		}
+		return "{\"need_memory\":true,\"keywords\":[\"slimebot\"],\"reason\":\"ok\"}", nil
+	}
+
+	reply, attempts, _, err := svc.chatOnceWithRetry(
+		context.Background(),
+		ModelRuntimeConfig{},
+		[]ChatMessage{{Role: "user", Content: "test"}},
+		1*time.Second,
+		"memory_decision",
+	)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if strings.TrimSpace(reply) == "" {
+		t.Fatal("expected non-empty reply")
+	}
+	if attempts != 2 {
+		t.Fatalf("expected attempts=2, got %d", attempts)
+	}
+}
+
+func TestMemoryServiceUpdateSummaryAsync_SerializesSameSession(t *testing.T) {
+	repo := newTestRepo(t)
+	svc := NewMemoryService(repo, nil)
+
+	session, err := repo.CreateSession("s")
+	if err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+	sessionID := session.ID
+	for i := 0; i < 4; i++ {
+		if _, err := repo.AddMessage(sessionID, "user", fmt.Sprintf("hello-%d", i)); err != nil {
+			t.Fatalf("add message failed: %v", err)
+		}
+	}
+
+	firstStarted := make(chan struct{})
+	allowFirst := make(chan struct{})
+	var active int32
+	var maxActive int32
+	var calls int32
+
+	svc.chatInvoker = func(_ context.Context, _ ModelRuntimeConfig, _ []ChatMessage) (string, error) {
+		n := atomic.AddInt32(&calls, 1)
+		current := atomic.AddInt32(&active, 1)
+		for {
+			observed := atomic.LoadInt32(&maxActive)
+			if current <= observed || atomic.CompareAndSwapInt32(&maxActive, observed, current) {
+				break
+			}
+		}
+		defer atomic.AddInt32(&active, -1)
+
+		if n == 1 {
+			close(firstStarted)
+			<-allowFirst
+		}
+		return fmt.Sprintf("summary-%d", n), nil
+	}
+
+	svc.UpdateSummaryAsync(ModelRuntimeConfig{}, sessionID)
+	<-firstStarted
+	svc.UpdateSummaryAsync(ModelRuntimeConfig{}, sessionID)
+	svc.UpdateSummaryAsync(ModelRuntimeConfig{}, sessionID)
+	close(allowFirst)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if atomic.LoadInt32(&calls) >= 2 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if atomic.LoadInt32(&calls) != 2 {
+		t.Fatalf("expected exactly 2 merged runs, got %d", atomic.LoadInt32(&calls))
+	}
+	if atomic.LoadInt32(&maxActive) > 1 {
+		t.Fatalf("expected serialized worker, max concurrent=%d", atomic.LoadInt32(&maxActive))
+	}
+
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		svc.workerMu.Lock()
+		_, exists := svc.workers[sessionID]
+		svc.workerMu.Unlock()
+		if !exists {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("worker state was not released")
 }
 
 func TestChatServiceBuildContextMessages_NoDuplicateUserMessage(t *testing.T) {

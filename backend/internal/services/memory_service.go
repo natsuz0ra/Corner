@@ -3,8 +3,10 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"net"
 	"regexp"
 	"strings"
 	"sync"
@@ -20,8 +22,10 @@ const (
 	compressHistoryThreshold       = 10
 	compactRawHistoryLimit         = 6
 	memorySearchTopK               = 5
-	memoryDecisionTimeout          = 12 * time.Second
-	memorySummaryTimeout           = 25 * time.Second
+	memoryDecisionTimeout          = 20 * time.Second
+	memorySummaryTimeout           = 45 * time.Second
+	memoryCallMaxAttempts          = 2
+	memoryRetryBackoff             = 350 * time.Millisecond
 	memorySummaryRecentMessageSize = 30
 	memoryKeywordMaxCount          = 12
 )
@@ -42,17 +46,30 @@ type MemoryDecision struct {
 }
 
 type MemoryService struct {
-	repo      *repositories.Repository
-	openai    *OpenAIClient
+	repo        *repositories.Repository
+	openai      *OpenAIClient
+	chatInvoker func(context.Context, ModelRuntimeConfig, []ChatMessage) (string, error)
+
+	workerMu sync.Mutex
+	workers  map[string]*memoryWorkerState
+
 	segOnce   sync.Once
 	segmenter gse.Segmenter
 }
 
+type memoryWorkerState struct {
+	running bool
+	pending bool
+}
+
 func NewMemoryService(repo *repositories.Repository, openai *OpenAIClient) *MemoryService {
-	return &MemoryService{
-		repo:   repo,
-		openai: openai,
+	service := &MemoryService{
+		repo:    repo,
+		openai:  openai,
+		workers: make(map[string]*memoryWorkerState),
 	}
+	service.chatInvoker = service.chatOnce
+	return service
 }
 
 func (m *MemoryService) ShouldCompressContext(sessionID string) (bool, int64, error) {
@@ -64,9 +81,6 @@ func (m *MemoryService) ShouldCompressContext(sessionID string) (bool, int64, er
 }
 
 func (m *MemoryService) DecideMemoryQuery(ctx context.Context, modelConfig ModelRuntimeConfig, userInput string, summary string) (MemoryDecision, error) {
-	ctx, cancel := context.WithTimeout(ctx, memoryDecisionTimeout)
-	defer cancel()
-
 	systemPrompt := `你是“记忆检索决策器”。请根据用户当前输入和会话摘要，判断是否需要检索历史记忆来回答问题。
 仅返回 JSON，不要输出任何额外文本。
 JSON 格式：
@@ -77,10 +91,10 @@ JSON 格式：
 3. 若不需要检索，keywords 返回空数组。`
 
 	userPrompt := fmt.Sprintf("用户输入：\n%s\n\n当前会话摘要：\n%s", strings.TrimSpace(userInput), strings.TrimSpace(summary))
-	reply, err := m.chatOnce(ctx, modelConfig, []ChatMessage{
+	reply, attempts, elapsed, err := m.chatOnceWithRetry(ctx, modelConfig, []ChatMessage{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: userPrompt},
-	})
+	}, memoryDecisionTimeout, "memory_decision")
 	if err != nil {
 		return MemoryDecision{}, err
 	}
@@ -93,6 +107,14 @@ JSON 格式：
 	if !decision.NeedMemory {
 		decision.Keywords = nil
 	}
+	log.Printf(
+		"memory_decision_done need_memory=%t keywords=%d attempts=%d cost_ms=%d timeout_ms=%d",
+		decision.NeedMemory,
+		len(decision.Keywords),
+		attempts,
+		elapsed.Milliseconds(),
+		memoryDecisionTimeout.Milliseconds(),
+	)
 	return decision, nil
 }
 
@@ -128,66 +150,134 @@ func (m *MemoryService) BuildCompactHistory(sessionID string) ([]models.Message,
 }
 
 func (m *MemoryService) UpdateSummaryAsync(modelConfig ModelRuntimeConfig, sessionID string) {
-	go func() {
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				log.Printf("memory_summary_panic session=%s recovered=%v", sessionID, recovered)
-			}
-		}()
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return
+	}
 
-		ctx, cancel := context.WithTimeout(context.Background(), memorySummaryTimeout)
-		defer cancel()
+	m.workerMu.Lock()
+	state := m.workers[sessionID]
+	if state == nil {
+		state = &memoryWorkerState{}
+		m.workers[sessionID] = state
+	}
+	if state.running {
+		state.pending = true
+		m.workerMu.Unlock()
+		log.Printf("memory_summary_queued session=%s reason=worker_running", sessionID)
+		return
+	}
+	state.running = true
+	m.workerMu.Unlock()
 
-		totalMessages, err := m.repo.CountSessionMessages(sessionID)
-		if err != nil {
-			log.Printf("memory_summary_skip session=%s reason=count_failed err=%v", sessionID, err)
-			return
-		}
-		if totalMessages == 0 {
-			return
-		}
-
-		recent, err := m.repo.ListRecentSessionMessages(sessionID, memorySummaryRecentMessageSize)
-		if err != nil {
-			log.Printf("memory_summary_skip session=%s reason=recent_failed err=%v", sessionID, err)
-			return
-		}
-		if len(recent) == 0 {
-			return
-		}
-
-		existing, err := m.repo.GetSessionMemory(sessionID)
-		if err != nil {
-			log.Printf("memory_summary_skip session=%s reason=get_existing_failed err=%v", sessionID, err)
-			return
-		}
-
-		oldSummary := ""
-		if existing != nil {
-			oldSummary = existing.Summary
-		}
-
-		mergedSummary, err := m.MergeSummary(ctx, modelConfig, oldSummary, recent)
-		if err != nil {
-			log.Printf("memory_summary_skip session=%s reason=merge_failed err=%v", sessionID, err)
-			return
-		}
-		keywords := m.TokenizeKeywords(mergedSummary + "\n" + flattenMessages(recent))
-		if err := m.repo.UpsertSessionMemory(repositories.SessionMemoryUpsertInput{
-			SessionID:          sessionID,
-			Summary:            mergedSummary,
-			Keywords:           keywords,
-			SourceMessageCount: int(totalMessages),
-		}); err != nil {
-			log.Printf("memory_summary_skip session=%s reason=upsert_failed err=%v", sessionID, err)
-			return
-		}
-
-		log.Printf("memory_summary_updated session=%s total_messages=%d keywords=%d", sessionID, totalMessages, len(keywords))
-	}()
+	go m.runSummaryWorker(modelConfig, sessionID)
 }
 
-func (m *MemoryService) MergeSummary(ctx context.Context, modelConfig ModelRuntimeConfig, oldSummary string, recent []models.Message) (string, error) {
+func (m *MemoryService) runSummaryWorker(modelConfig ModelRuntimeConfig, sessionID string) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf("memory_summary_panic session=%s recovered=%v", sessionID, recovered)
+		}
+		m.workerMu.Lock()
+		delete(m.workers, sessionID)
+		m.workerMu.Unlock()
+	}()
+
+	for {
+		m.runSummaryOnce(modelConfig, sessionID)
+
+		m.workerMu.Lock()
+		state, ok := m.workers[sessionID]
+		if !ok {
+			m.workerMu.Unlock()
+			return
+		}
+		if state.pending {
+			state.pending = false
+			m.workerMu.Unlock()
+			log.Printf("memory_summary_worker_continue session=%s reason=pending_trigger", sessionID)
+			continue
+		}
+		m.workerMu.Unlock()
+		return
+	}
+}
+
+func (m *MemoryService) runSummaryOnce(modelConfig ModelRuntimeConfig, sessionID string) {
+	startAt := time.Now()
+
+	ctx := context.Background()
+	totalMessages, err := m.repo.CountSessionMessages(sessionID)
+	if err != nil {
+		log.Printf("memory_summary_skip session=%s reason=count_failed err=%v", sessionID, err)
+		return
+	}
+	if totalMessages == 0 {
+		return
+	}
+
+	recent, err := m.repo.ListRecentSessionMessages(sessionID, memorySummaryRecentMessageSize)
+	if err != nil {
+		log.Printf("memory_summary_skip session=%s reason=recent_failed err=%v", sessionID, err)
+		return
+	}
+	if len(recent) == 0 {
+		return
+	}
+
+	existing, err := m.repo.GetSessionMemory(sessionID)
+	if err != nil {
+		log.Printf("memory_summary_skip session=%s reason=get_existing_failed err=%v", sessionID, err)
+		return
+	}
+
+	oldSummary := ""
+	if existing != nil {
+		oldSummary = existing.Summary
+	}
+
+	mergedSummary, attempts, summaryCost, err := m.MergeSummary(ctx, modelConfig, oldSummary, recent)
+	if err != nil {
+		log.Printf(
+			"memory_summary_skip session=%s reason=merge_failed attempts=%d cost_ms=%d timeout_ms=%d err_class=%s err=%v",
+			sessionID,
+			attempts,
+			summaryCost.Milliseconds(),
+			memorySummaryTimeout.Milliseconds(),
+			classifyMemoryError(err),
+			err,
+		)
+		return
+	}
+	keywords := m.TokenizeKeywords(mergedSummary + "\n" + flattenMessages(recent))
+	updated, err := m.repo.UpsertSessionMemoryIfNewer(repositories.SessionMemoryUpsertInput{
+		SessionID:          sessionID,
+		Summary:            mergedSummary,
+		Keywords:           keywords,
+		SourceMessageCount: int(totalMessages),
+	})
+	if err != nil {
+		log.Printf("memory_summary_skip session=%s reason=upsert_failed err=%v", sessionID, err)
+		return
+	}
+	if !updated {
+		log.Printf("memory_summary_skip session=%s reason=stale_write source_message_count=%d", sessionID, totalMessages)
+		return
+	}
+
+	log.Printf(
+		"memory_summary_updated session=%s total_messages=%d keywords=%d attempts=%d summary_cost_ms=%d timeout_ms=%d total_cost_ms=%d",
+		sessionID,
+		totalMessages,
+		len(keywords),
+		attempts,
+		summaryCost.Milliseconds(),
+		memorySummaryTimeout.Milliseconds(),
+		time.Since(startAt).Milliseconds(),
+	)
+}
+
+func (m *MemoryService) MergeSummary(ctx context.Context, modelConfig ModelRuntimeConfig, oldSummary string, recent []models.Message) (string, int, time.Duration, error) {
 	systemPrompt := `你是会话摘要器。请将“历史摘要”和“最新对话片段”融合成新的高质量记忆摘要。
 输出要求：
 1. 只输出摘要正文，不要使用 markdown 标题，不要输出 JSON。
@@ -196,19 +286,19 @@ func (m *MemoryService) MergeSummary(ctx context.Context, modelConfig ModelRunti
 4. 摘要尽量精炼，但不要丢失关键信息。`
 	userPrompt := fmt.Sprintf("历史摘要：\n%s\n\n最新对话片段：\n%s", strings.TrimSpace(oldSummary), flattenMessages(recent))
 
-	reply, err := m.chatOnce(ctx, modelConfig, []ChatMessage{
+	reply, attempts, elapsed, err := m.chatOnceWithRetry(ctx, modelConfig, []ChatMessage{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: userPrompt},
-	})
+	}, memorySummaryTimeout, "memory_summary")
 	if err != nil {
-		return "", err
+		return "", attempts, elapsed, err
 	}
 
 	summary := strings.TrimSpace(reply)
 	if summary == "" {
-		return "", fmt.Errorf("摘要生成为空")
+		return "", attempts, elapsed, fmt.Errorf("摘要生成为空")
 	}
-	return summary, nil
+	return summary, attempts, elapsed, nil
 }
 
 func (m *MemoryService) chatOnce(ctx context.Context, modelConfig ModelRuntimeConfig, messages []ChatMessage) (string, error) {
@@ -316,4 +406,107 @@ func normalizeToken(token string) string {
 		return ""
 	}
 	return normalized
+}
+
+func (m *MemoryService) chatOnceWithRetry(
+	parent context.Context,
+	modelConfig ModelRuntimeConfig,
+	messages []ChatMessage,
+	timeout time.Duration,
+	stage string,
+) (string, int, time.Duration, error) {
+	startAt := time.Now()
+	var lastErr error
+	attempts := 0
+
+	for attempt := 1; attempt <= memoryCallMaxAttempts; attempt++ {
+		attempts = attempt
+		attemptCtx, cancel := context.WithTimeout(parent, timeout)
+		invoker := m.chatInvoker
+		if invoker == nil {
+			invoker = m.chatOnce
+		}
+		reply, err := invoker(attemptCtx, modelConfig, messages)
+		cancel()
+		if err == nil {
+			return reply, attempts, time.Since(startAt), nil
+		}
+		lastErr = err
+
+		retryable := attempt < memoryCallMaxAttempts && isRetryableMemoryError(err) && parent.Err() == nil
+		log.Printf(
+			"%s_attempt_failed attempt=%d timeout_ms=%d retryable=%t err_class=%s err=%v",
+			stage,
+			attempt,
+			timeout.Milliseconds(),
+			retryable,
+			classifyMemoryError(err),
+			err,
+		)
+		if !retryable {
+			break
+		}
+		select {
+		case <-parent.Done():
+			return "", attempts, time.Since(startAt), parent.Err()
+		case <-time.After(memoryRetryBackoff):
+		}
+	}
+
+	return "", attempts, time.Since(startAt), lastErr
+}
+
+func isRetryableMemoryError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return netErr.Timeout() || netErr.Temporary()
+	}
+
+	text := strings.ToLower(err.Error())
+	return strings.Contains(text, "deadline exceeded") ||
+		strings.Contains(text, "timeout") ||
+		strings.Contains(text, "i/o timeout") ||
+		strings.Contains(text, "connection reset") ||
+		strings.Contains(text, "broken pipe") ||
+		strings.Contains(text, "eof")
+}
+
+func classifyMemoryError(err error) string {
+	if err == nil {
+		return "none"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "deadline_exceeded"
+	}
+	if errors.Is(err, context.Canceled) {
+		return "canceled"
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		if netErr.Timeout() {
+			return "network_timeout"
+		}
+		return "network_error"
+	}
+
+	text := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(text, "deadline exceeded"), strings.Contains(text, "timeout"), strings.Contains(text, "i/o timeout"):
+		return "deadline_exceeded"
+	case strings.Contains(text, "connection reset"), strings.Contains(text, "broken pipe"), strings.Contains(text, "eof"):
+		return "network_error"
+	default:
+		return "unknown"
+	}
 }
