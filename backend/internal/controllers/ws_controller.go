@@ -12,6 +12,7 @@ import (
 
 	"slimebot/backend/internal/services"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -219,6 +220,7 @@ func (w *WSController) Chat(wr http.ResponseWriter, req *http.Request) {
 			}
 			startSentAt := time.Now()
 			var firstChunkSentAt time.Time
+			requestID := uuid.NewString()
 
 			chatCtx, cancel := context.WithTimeout(sessionCtx, 300*time.Second)
 
@@ -240,13 +242,14 @@ func (w *WSController) Chat(wr http.ResponseWriter, req *http.Request) {
 				OnToolCallStart: func(req services.ApprovalRequest) error {
 					// 通知前端进入工具审批流程。
 					if !enqueue(map[string]any{
-						"type":       "tool_call_start",
-						"sessionId":  session.ID,
-						"toolCallId": req.ToolCallID,
-						"toolName":   req.ToolName,
-						"command":    req.Command,
-						"params":     req.Params,
-						"preamble":   req.Preamble,
+						"type":             "tool_call_start",
+						"sessionId":        session.ID,
+						"toolCallId":       req.ToolCallID,
+						"toolName":         req.ToolName,
+						"command":          req.Command,
+						"params":           req.Params,
+						"requiresApproval": req.RequiresApproval,
+						"preamble":         req.Preamble,
 					}) {
 						return context.Canceled
 					}
@@ -266,13 +269,15 @@ func (w *WSController) Chat(wr http.ResponseWriter, req *http.Request) {
 				OnToolCallResult: func(result services.ToolCallResult) error {
 					// 回传工具执行结果，便于前端展示中间产物。
 					if !enqueue(map[string]any{
-						"type":       "tool_call_result",
-						"sessionId":  session.ID,
-						"toolCallId": result.ToolCallID,
-						"toolName":   result.ToolName,
-						"command":    result.Command,
-						"output":     result.Output,
-						"error":      result.Error,
+						"type":             "tool_call_result",
+						"sessionId":        session.ID,
+						"toolCallId":       result.ToolCallID,
+						"toolName":         result.ToolName,
+						"command":          result.Command,
+						"requiresApproval": result.RequiresApproval,
+						"status":           result.Status,
+						"output":           result.Output,
+						"error":            result.Error,
 					}) {
 						return context.Canceled
 					}
@@ -280,7 +285,7 @@ func (w *WSController) Chat(wr http.ResponseWriter, req *http.Request) {
 				},
 			}
 
-			streamResult, err := w.chatService.HandleChatStream(chatCtx, session.ID, incoming.Content, incoming.ModelID, callbacks)
+			streamResult, err := w.chatService.HandleChatStream(chatCtx, session.ID, requestID, incoming.Content, incoming.ModelID, callbacks)
 			cancel()
 
 			if err != nil {

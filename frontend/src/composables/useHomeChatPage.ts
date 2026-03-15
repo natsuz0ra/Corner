@@ -158,6 +158,46 @@ export function useHomeChatPage() {
     return findReplyBatchByMessageId(messageId)?.toolCalls.length || 0
   }
 
+  function getToolCallDesc(toolCall: ToolCallItem) {
+    const params = toolCall.params || {}
+    const nonEmptyEntries = Object.entries(params).filter(([, value]) => String(value ?? '').trim() !== '')
+
+    if (toolCall.toolName === 'web_search') {
+      const query = String(params.query ?? '').trim()
+      if (query !== '') return `query: ${query}`
+    }
+
+    if (nonEmptyEntries.length === 0) return toolCall.command || ''
+    return nonEmptyEntries
+      .map(([key, value]) => `${key}: ${String(value)}`)
+      .join(' | ')
+  }
+
+  function getReplyToolSummary(messageId: string) {
+    const batch = findReplyBatchByMessageId(messageId)
+    if (!batch) return ''
+
+    const count = batch.toolCalls.length
+    if (count === 0) return ''
+    if (batch.collapsed) return t('toolExecutionCount', { count })
+
+    const runningCall = [...batch.toolCalls].reverse().find((item) => item.status === 'pending' || item.status === 'executing')
+    if (runningCall) {
+      const desc = getToolCallDesc(runningCall).trim()
+      if (desc !== '') {
+        return t('toolExecutionRunning', { command: runningCall.toolName, desc })
+      }
+      return t('toolExecutionRunningNoDesc', { command: runningCall.toolName })
+    }
+
+    const latest = batch.toolCalls[count - 1]
+    if (!latest) return t('toolExecutionCount', { count })
+    if (latest.status === 'completed') {
+      return t('toolExecutionSuccess', { command: latest.toolName })
+    }
+    return t('toolExecutionFailed', { command: latest.toolName })
+  }
+
   function getReplyToolCalls(messageId: string): ToolCallItem[] {
     return findReplyBatchByMessageId(messageId)?.toolCalls || []
   }
@@ -168,6 +208,12 @@ export function useHomeChatPage() {
 
   function getReplyToolItem(messageId: string, toolCallId: string) {
     return getReplyToolCalls(messageId).find((item) => item.toolCallId === toolCallId)
+  }
+
+  function shouldShowInlineToolCall(messageId: string, toolCallId: string) {
+    const item = getReplyToolItem(messageId, toolCallId)
+    if (!item) return false
+    return item.requiresApproval
   }
 
   function isReplyToolCollapsed(messageId: string) {
@@ -571,8 +617,10 @@ export function useHomeChatPage() {
     sendDisabled,
     networkStatusText,
     getReplyToolCount,
+    getReplyToolSummary,
     getReplyTimeline,
     getReplyToolItem,
+    shouldShowInlineToolCall,
     isReplyToolCollapsed,
     isEmptyPlaceholder,
     openToolDetail,

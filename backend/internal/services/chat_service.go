@@ -139,6 +139,7 @@ func (s *ChatService) ResolveLLMConfig(modelID string) (*models.LLMConfig, error
 func (s *ChatService) HandleChatStream(
 	ctx context.Context,
 	sessionID string,
+	requestID string,
 	content string,
 	modelID string,
 	callbacks AgentCallbacks,
@@ -204,6 +205,23 @@ func (s *ChatService) HandleChatStream(
 			return pushBody(body)
 		},
 		OnToolCallStart: func(req ApprovalRequest) error {
+			startStatus := "executing"
+			if req.RequiresApproval {
+				startStatus = "pending"
+			}
+			if err := s.repo.UpsertToolCallStart(repositories.ToolCallStartRecordInput{
+				SessionID:        sessionID,
+				RequestID:        requestID,
+				ToolCallID:       req.ToolCallID,
+				ToolName:         req.ToolName,
+				Command:          req.Command,
+				Params:           req.Params,
+				Status:           startStatus,
+				RequiresApproval: req.RequiresApproval,
+				StartedAt:        time.Now(),
+			}); err != nil {
+				return err
+			}
 			// 进入工具调用阶段前，结束当前回答片段并为下一轮回答重置标题探测状态。
 			if err := pushBody(parser.BeginAssistantTurn()); err != nil {
 				return err
@@ -213,8 +231,34 @@ func (s *ChatService) HandleChatStream(
 			}
 			return callbacks.OnToolCallStart(req)
 		},
-		WaitApproval:     callbacks.WaitApproval,
-		OnToolCallResult: callbacks.OnToolCallResult,
+		WaitApproval: callbacks.WaitApproval,
+		OnToolCallResult: func(result ToolCallResult) error {
+			status := strings.TrimSpace(result.Status)
+			if status == "" {
+				status = "completed"
+				if result.Error != "" {
+					status = "error"
+					if strings.Contains(result.Error, "用户拒绝") {
+						status = "rejected"
+					}
+				}
+			}
+			if err := s.repo.UpdateToolCallResult(repositories.ToolCallResultRecordInput{
+				SessionID:  sessionID,
+				RequestID:  requestID,
+				ToolCallID: result.ToolCallID,
+				Status:     status,
+				Output:     result.Output,
+				Error:      result.Error,
+				FinishedAt: time.Now(),
+			}); err != nil {
+				return err
+			}
+			if callbacks.OnToolCallResult == nil {
+				return nil
+			}
+			return callbacks.OnToolCallResult(result)
+		},
 	}
 
 	modelConfig := ModelRuntimeConfig{
@@ -250,7 +294,11 @@ func (s *ChatService) HandleChatStream(
 	if strings.TrimSpace(finalAnswer) == "" {
 		finalAnswer = "模型没有返回内容。"
 	}
-	if _, err := s.repo.AddMessage(sessionID, "assistant", finalAnswer); err != nil {
+	assistantMessage, err := s.repo.AddMessage(sessionID, "assistant", finalAnswer)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.repo.BindToolCallsToAssistantMessage(sessionID, requestID, assistantMessage.ID); err != nil {
 		return nil, err
 	}
 
