@@ -2,7 +2,14 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { ChatSocket, type ConnectionStatus } from '@/api/chatSocket'
-import type { MessageItem, SessionItem, ToolCallItem } from '@/api/chat'
+import type {
+  MessageItem,
+  SessionHistoryPayload,
+  SessionHistoryToolCallItem,
+  SessionItem,
+  ToolCallItem,
+  ToolCallStatus,
+} from '@/api/chat'
 import { sessionAPI } from '@/api/chat'
 import { i18n } from '@/i18n'
 
@@ -55,6 +62,73 @@ export const useChatStore = defineStore('chat', () => {
     currentBatchId.value = ''
     assistantErrorIds.value.clear()
     failedUserMessageIds.value.clear()
+  }
+
+  function normalizeToolStatus(status?: string, fallbackError?: string): ToolCallStatus {
+    if (status === 'pending' || status === 'rejected' || status === 'executing' || status === 'completed' || status === 'error') {
+      return status
+    }
+    return fallbackError ? 'error' : 'completed'
+  }
+
+  function rebuildReplyBatchesFromHistory(sessionId: string, history: SessionHistoryPayload) {
+    const nextBatches: AssistantReplyBatch[] = []
+    for (const message of history.messages) {
+      if (message.role !== 'assistant') continue
+      const historyToolCalls = history.toolCallsByAssistantMessageId[message.id] || []
+      if (historyToolCalls.length === 0) continue
+
+      const sortedCalls = [...historyToolCalls].sort((left, right) => {
+        const leftAt = new Date(left.startedAt || 0).getTime()
+        const rightAt = new Date(right.startedAt || 0).getTime()
+        return leftAt - rightAt
+      })
+
+      const toolCalls: ToolCallItem[] = sortedCalls.map((item: SessionHistoryToolCallItem) => ({
+        toolCallId: item.toolCallId,
+        toolName: item.toolName,
+        command: item.command,
+        params: item.params || {},
+        requiresApproval: !!item.requiresApproval,
+        status: normalizeToolStatus(item.status, item.error),
+        output: item.output,
+        error: item.error,
+      }))
+
+      const timeline: AssistantReplyTimelineItem[] = []
+      for (const item of toolCalls) {
+        timeline.push({
+          id: crypto.randomUUID(),
+          kind: 'tool_start',
+          toolCallId: item.toolCallId,
+        })
+        if (item.status !== 'pending' && item.status !== 'executing') {
+          timeline.push({
+            id: crypto.randomUUID(),
+            kind: 'tool_result',
+            toolCallId: item.toolCallId,
+          })
+        }
+      }
+      if (message.content.trim() !== '') {
+        timeline.push({
+          id: crypto.randomUUID(),
+          kind: 'text',
+          content: message.content,
+        })
+      }
+
+      nextBatches.push({
+        id: crypto.randomUUID(),
+        sessionId: sessionId,
+        assistantMessageId: message.id,
+        toolCalls,
+        timeline,
+        collapsed: true,
+      })
+    }
+    replyBatches.value = nextBatches
+    currentBatchId.value = ''
   }
 
   function getCurrentBatch() {
@@ -173,10 +247,11 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function selectSession(id: string) {
-    const nextMessages = await sessionAPI.history(id)
+    const history = await sessionAPI.history(id)
     currentSessionId.value = id
-    messages.value = nextMessages
+    messages.value = history.messages
     resetSessionRuntimeState()
+    rebuildReplyBatchesFromHistory(id, history)
   }
 
   function connectSocket() {
@@ -291,7 +366,8 @@ export const useChatStore = defineStore('chat', () => {
           command: data.command,
           params: data.params,
           preamble: data.preamble,
-          status: 'pending',
+          requiresApproval: data.requiresApproval,
+          status: data.requiresApproval ? 'pending' : 'executing',
         })
         batch.timeline.push({
           id: crypto.randomUUID(),
@@ -305,9 +381,10 @@ export const useChatStore = defineStore('chat', () => {
         if (!batch) return
         const item = batch.toolCalls.find((tc) => tc.toolCallId === data.toolCallId)
         if (item) {
-          item.status = data.error ? 'error' : 'completed'
+          item.status = normalizeToolStatus(data.status, data.error)
           item.output = data.output
           item.error = data.error
+          item.requiresApproval = data.requiresApproval
         }
         batch.timeline.push({
           id: crypto.randomUUID(),

@@ -53,6 +53,10 @@ func (r *Repository) DeleteSession(id string) error {
 		tx.Rollback()
 		return err
 	}
+	if err := tx.Where("session_id = ?", id).Delete(&models.ToolCallRecord{}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
 	if err := tx.Where("id = ?", id).Delete(&models.Session{}).Error; err != nil {
 		tx.Rollback()
 		return err

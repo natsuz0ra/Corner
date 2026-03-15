@@ -20,6 +20,26 @@ type Message struct {
 	CreatedAt time.Time `gorm:"index" json:"createdAt"`
 }
 
+// ToolCallRecord 持久化一次工具调用完整链路，支持历史会话回放工具详情。
+type ToolCallRecord struct {
+	ID                 string     `gorm:"primaryKey;size:36" json:"id"`
+	SessionID          string     `gorm:"size:36;index;not null;uniqueIndex:idx_tool_call_request,priority:1" json:"sessionId"`
+	RequestID          string     `gorm:"size:36;index;not null;uniqueIndex:idx_tool_call_request,priority:2" json:"requestId"`
+	AssistantMessageID *string    `gorm:"size:36;index" json:"assistantMessageId,omitempty"`
+	ToolCallID         string     `gorm:"size:128;index;not null;uniqueIndex:idx_tool_call_request,priority:3" json:"toolCallId"`
+	ToolName           string     `gorm:"size:128;not null" json:"toolName"`
+	Command            string     `gorm:"size:128;not null" json:"command"`
+	ParamsJSON         string     `gorm:"type:text;not null" json:"paramsJson"`
+	Status             string     `gorm:"size:32;index;not null" json:"status"`
+	RequiresApproval   bool       `gorm:"not null;default:false" json:"requiresApproval"`
+	Output             string     `gorm:"type:text" json:"output,omitempty"`
+	Error              string     `gorm:"type:text" json:"error,omitempty"`
+	StartedAt          time.Time  `gorm:"index;not null" json:"startedAt"`
+	FinishedAt         *time.Time `gorm:"index" json:"finishedAt,omitempty"`
+	CreatedAt          time.Time  `json:"createdAt"`
+	UpdatedAt          time.Time  `json:"updatedAt"`
+}
+
 type AppSetting struct {
 	Key       string    `gorm:"primaryKey;size:64" json:"key"`
 	Value     string    `gorm:"type:text;not null" json:"value"`

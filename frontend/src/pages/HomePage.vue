@@ -21,6 +21,7 @@ import TypingDots from '@/components/chat/TypingDots.vue'
 import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 import AccountEditDialog from '@/components/settings/AccountEditDialog.vue'
 import ToolCallCard from '@/components/chat/ToolCallCard.vue'
+import ToolExecutionDetailDialog from '@/components/chat/ToolExecutionDetailDialog.vue'
 import BaseDialog from '@/components/ui/BaseDialog.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import SlimeBotLogo from '@/components/ui/SlimeBotLogo.vue'
@@ -53,8 +54,10 @@ const {
   sendDisabled,
   networkStatusText,
   getReplyToolCount,
+  getReplyToolSummary,
   getReplyTimeline,
   getReplyToolItem,
+  shouldShowInlineToolCall,
   isReplyToolCollapsed,
   isEmptyPlaceholder,
   openToolDetail,
@@ -624,17 +627,19 @@ function onTextareaInput(e: Event) {
                 >
                   <template v-if="item.role === 'assistant'">
                     <!-- 工具调用摘要按钮 -->
-                    <div v-if="getReplyToolCount(item.id) > 0" class="mb-3">
+                    <div v-if="getReplyToolCount(item.id) > 0" class="assistant-tool-summary-row mb-2.5">
                       <button
                         type="button"
-                        class="tool-summary-btn inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-full transition-all duration-150 cursor-pointer"
+                        class="tool-summary-btn inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-full transition-all duration-150 cursor-pointer max-w-full"
+                        aria-haspopup="dialog"
+                        :aria-label="`${t('toolExecutionDetailTitle')} - ${getReplyToolSummary(item.id)}`"
                         @click="openToolDetail(item.id)"
                       >
                         <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                           <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
-                        {{ t('toolExecutionCount', { count: getReplyToolCount(item.id) }) }}
+                        <span class="truncate max-w-[min(62vw,420px)]">{{ getReplyToolSummary(item.id) }}</span>
                       </button>
                     </div>
 
@@ -645,7 +650,10 @@ function onTextareaInput(e: Event) {
                     >
                       <template v-for="entry in getReplyTimeline(item.id)" :key="entry.id">
                         <div v-if="entry.kind === 'text'" class="bubble-markdown text-primary" v-html="renderMarkdown(entry.content)" />
-                        <div v-else-if="entry.kind === 'tool_start'" class="w-full">
+                        <div
+                          v-else-if="entry.kind === 'tool_start' && shouldShowInlineToolCall(item.id, entry.toolCallId)"
+                          class="w-full"
+                        >
                           <ToolCallCard
                             v-if="getReplyToolItem(item.id, entry.toolCallId)"
                             :item="getReplyToolItem(item.id, entry.toolCallId)!"
@@ -653,9 +661,6 @@ function onTextareaInput(e: Event) {
                             @approve="store.approveToolCall($event, true)"
                             @reject="store.approveToolCall($event, false)"
                           />
-                        </div>
-                        <div v-else class="text-muted text-xs py-0.5">
-                          {{ t('toolExecutionFinished') }}
                         </div>
                       </template>
                     </div>
@@ -767,37 +772,14 @@ function onTextareaInput(e: Event) {
     </BaseDialog>
 
     <!-- ───── 工具调用详情弹窗 ───── -->
-    <BaseDialog
+    <ToolExecutionDetailDialog
       v-model:visible="toolDetailVisible"
-      :title="t('toolExecutionDetailTitle')"
-      :cancel-text="t('close')"
       :width="toolDetailDialogWidth"
-      hide-footer
-    >
-      <div class="flex flex-col gap-3 max-h-[60vh] overflow-y-auto pr-1">
-        <template v-for="entry in toolDetailToolTimeline" :key="entry.id">
-          <ToolCallCard
-            v-if="entry.kind === 'tool_start' && toolDetailItems.find((tc) => tc.toolCallId === entry.toolCallId)"
-            :item="toolDetailItems.find((tc) => tc.toolCallId === entry.toolCallId)!"
-            :show-preamble="true"
-            @approve="store.approveToolCall($event, true)"
-            @reject="store.approveToolCall($event, false)"
-          />
-          <div v-else-if="entry.kind === 'tool_result'" class="text-muted text-xs py-0.5">
-            {{ t('toolExecutionFinished') }}
-          </div>
-        </template>
-      </div>
-      <div class="dialog-footer-separator flex justify-end mt-4 pt-3">
-        <button
-          type="button"
-          class="px-4 py-1.5 text-sm rounded-xl transition-all duration-150 cursor-pointer dialog-cancel-btn"
-          @click="toolDetailVisible = false"
-        >
-          {{ t('close') }}
-        </button>
-      </div>
-    </BaseDialog>
+      :items="toolDetailItems"
+      :tool-timeline="toolDetailToolTimeline"
+      @approve="store.approveToolCall($event, true)"
+      @reject="store.approveToolCall($event, false)"
+    />
 
     <!-- ───── 设置弹窗 ───── -->
     <Transition name="overlay-fade">
