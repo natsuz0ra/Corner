@@ -33,6 +33,15 @@ func (r *Repository) CreateSession(name string) (*models.Session, error) {
 	return session, err
 }
 
+func (r *Repository) CreateSessionWithID(id, name string) (*models.Session, error) {
+	session := &models.Session{
+		ID:   id,
+		Name: name,
+	}
+	err := r.db.Create(session).Error
+	return session, err
+}
+
 func (r *Repository) RenameSessionByUser(id, name string) error {
 	return r.db.Model(&models.Session{}).
 		Where("id = ?", id).

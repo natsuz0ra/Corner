@@ -28,6 +28,16 @@ type ChatService struct {
 const contextHistoryLimit = 20
 const titleProbeRuneLimit = 100
 
+const (
+	// MessagePlatformSessionID 约定外部消息平台共用固定会话，便于统一展示与权限约束。
+	MessagePlatformSessionID = "im-platform-session"
+	// MessagePlatformSessionName 用于首次创建固定会话时的默认标题。
+	MessagePlatformSessionName = "消息平台会话"
+	// settings key 与 settings_service 对齐；保持字符串常量避免跨层耦合。
+	settingDefaultModelKey                = "defaultModel"
+	settingMessagePlatformDefaultModelKey = "messagePlatformDefaultModel"
+)
+
 type ChatStreamResult struct {
 	Answer       string
 	TitleUpdated bool
@@ -95,6 +105,73 @@ func (s *ChatService) EnsureSession(sessionID string) (*models.Session, error) {
 		}
 	}
 	return s.repo.CreateSession("新会话")
+}
+
+// EnsureMessagePlatformSession 确保固定的消息平台会话存在。
+func (s *ChatService) EnsureMessagePlatformSession() (*models.Session, error) {
+	session, err := s.repo.GetSessionByID(MessagePlatformSessionID)
+	if err != nil {
+		return nil, err
+	}
+	if session != nil {
+		return session, nil
+	}
+	return s.repo.CreateSessionWithID(MessagePlatformSessionID, MessagePlatformSessionName)
+}
+
+// ResolvePlatformModel 按平台会话策略解析模型：
+// 1) messagePlatformDefaultModel；2) defaultModel；3) 首个可用模型。
+// 当平台默认模型不存在时，会自动回退并写回，避免每次请求都失败。
+func (s *ChatService) ResolvePlatformModel() (string, error) {
+	resolveModel := func(modelID string) (string, bool, error) {
+		trimmed := strings.TrimSpace(modelID)
+		if trimmed == "" {
+			return "", false, nil
+		}
+		item, err := s.repo.GetLLMConfigByID(trimmed)
+		if err != nil {
+			return "", false, err
+		}
+		if item == nil {
+			return "", false, nil
+		}
+		return item.ID, true, nil
+	}
+
+	platformDefault, err := s.repo.GetSetting(settingMessagePlatformDefaultModelKey)
+	if err != nil {
+		return "", err
+	}
+	if id, ok, err := resolveModel(platformDefault); err != nil {
+		return "", err
+	} else if ok {
+		return id, nil
+	}
+
+	globalDefault, err := s.repo.GetSetting(settingDefaultModelKey)
+	if err != nil {
+		return "", err
+	}
+	if id, ok, err := resolveModel(globalDefault); err != nil {
+		return "", err
+	} else if ok {
+		_ = s.repo.SetSetting(settingMessagePlatformDefaultModelKey, id)
+		return id, nil
+	}
+
+	allModels, err := s.repo.ListLLMConfigs()
+	if err != nil {
+		return "", err
+	}
+	if len(allModels) == 0 {
+		return "", fmt.Errorf("未配置可用模型")
+	}
+	fallbackID := strings.TrimSpace(allModels[0].ID)
+	if fallbackID == "" {
+		return "", fmt.Errorf("未配置可用模型")
+	}
+	_ = s.repo.SetSetting(settingMessagePlatformDefaultModelKey, fallbackID)
+	return fallbackID, nil
 }
 
 type chatContextBuilder struct {

@@ -1,5 +1,7 @@
 import { apiClient } from './client'
 
+export const MESSAGE_PLATFORM_SESSION_ID = 'im-platform-session'
+
 export interface SessionItem {
   id: string
   name: string

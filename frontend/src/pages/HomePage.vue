@@ -26,6 +26,7 @@ import BaseDialog from '@/components/ui/BaseDialog.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import SlimeBotLogo from '@/components/ui/SlimeBotLogo.vue'
 import { renderMarkdown } from '@/utils/markdown'
+import { MESSAGE_PLATFORM_SESSION_ID } from '@/api/chat'
 import { useHomeChatPage } from '@/composables/useHomeChatPage'
 import { useTheme } from '@/composables/useTheme'
 import { useAuthStore } from '@/stores/auth'
@@ -53,6 +54,8 @@ const {
   currentSession,
   sendDisabled,
   networkStatusText,
+  isMessagePlatformSession,
+  canManageCurrentSession,
   getReplyToolCount,
   getReplyToolSummary,
   getReplyTimeline,
@@ -362,7 +365,21 @@ function onTextareaInput(e: Event) {
           <!-- 会话列表 -->
           <div :ref="setSidebarListRef" class="scroll-area flex-1 overflow-y-auto py-2 px-2">
             <div
-              v-for="item in store.sessions"
+              class="group relative flex items-center gap-1 px-3 h-9 rounded-xl cursor-pointer transition-all duration-150 mb-0.5"
+              :class="store.currentSessionId === MESSAGE_PLATFORM_SESSION_ID
+                ? 'session-item-active'
+                : 'session-item'"
+              @click="pickSession(MESSAGE_PLATFORM_SESSION_ID)"
+            >
+              <span
+                v-if="store.currentSessionId === MESSAGE_PLATFORM_SESSION_ID"
+                class="session-active-indicator absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
+              />
+              <span class="text-primary flex-1 truncate text-sm">{{ t('messagePlatformSession') }}</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-md platform-badge">IM</span>
+            </div>
+            <div
+              v-for="item in store.sessions.filter((session) => session.id !== MESSAGE_PLATFORM_SESSION_ID)"
               :key="item.id"
               class="group relative flex items-center gap-1 px-3 h-9 rounded-xl cursor-pointer transition-all duration-150 mb-0.5"
               :class="item.id === store.currentSessionId
@@ -439,7 +456,7 @@ function onTextareaInput(e: Event) {
 
           <!-- 标题 + 下拉菜单 -->
           <button
-            v-if="currentSession"
+            v-if="currentSession && canManageCurrentSession"
             type="button"
             class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all duration-150 cursor-pointer max-w-[260px] header-title-btn"
             @click.stop="topMenuVisible = !topMenuVisible"
@@ -452,6 +469,13 @@ function onTextareaInput(e: Event) {
               :class="topMenuVisible ? 'rotate-180' : ''"
             />
           </button>
+          <div
+            v-else-if="currentSession"
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl max-w-[260px]"
+          >
+            <span class="text-primary text-sm font-semibold truncate">{{ currentSession.name }}</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded-md platform-badge">IM</span>
+          </div>
 
           <!-- 网络状态 badge -->
           <div
@@ -468,7 +492,7 @@ function onTextareaInput(e: Event) {
           <!-- 顶部下拉菜单 -->
           <Transition name="top-menu-pop">
             <div
-              v-if="topMenuVisible"
+              v-if="topMenuVisible && canManageCurrentSession"
               class="absolute top-[52px] left-1/2 -translate-x-1/2 w-40 rounded-xl py-1 overflow-hidden z-[85] top-menu-glass"
               @click.stop
             >
@@ -520,21 +544,26 @@ function onTextareaInput(e: Event) {
               <SlimeBotLogo :size="80" animated class="new-chat-logo mb-1.0 drop-shadow-lg" />
 
               <!-- 欢迎标题 -->
-              <h2 class="text-2xl font-bold mb-2 text-center welcome-title" :aria-label="fullWelcomeTitle">
-                {{ displayedWelcomeTitle }}
-                <span
-                  v-if="showTypeCursor"
-                  class="welcome-cursor"
-                  :class="titlePhase === 'cursor' ? 'welcome-cursor-pre' : 'welcome-cursor-typing'"
-                  aria-hidden="true"
-                >
-                  |
-                </span>
+              <h2 class="text-2xl font-bold mb-2 text-center welcome-title">
+                <template v-if="isMessagePlatformSession">{{ t('messagePlatformEmptyTitle') }}</template>
+                <template v-else>
+                  {{ displayedWelcomeTitle }}
+                  <span
+                    v-if="showTypeCursor"
+                    class="welcome-cursor"
+                    :class="titlePhase === 'cursor' ? 'welcome-cursor-pre' : 'welcome-cursor-typing'"
+                    aria-hidden="true"
+                  >
+                    |
+                  </span>
+                </template>
               </h2>
-              <p class="text-muted text-sm mb-6 text-center">{{ t('welcomeSubtitle') }}</p>
+              <p class="text-muted text-sm mb-6 text-center">
+                {{ isMessagePlatformSession ? t('messagePlatformEmptySubtitle') : t('welcomeSubtitle') }}
+              </p>
 
               <!-- 居中输入框 -->
-              <div class="w-full max-w-[640px]">
+              <div v-if="!isMessagePlatformSession" class="w-full max-w-[640px]">
                 <div class="input-container rounded-2xl overflow-hidden">
                   <textarea
                     v-model="inputValue"
@@ -576,6 +605,9 @@ function onTextareaInput(e: Event) {
             :ref="setMessagesRef"
             class="messages-section scroll-area flex-1 overflow-y-auto px-4 py-6"
           >
+            <div v-if="isMessagePlatformSession" class="max-w-[720px] mx-auto mb-3 px-1">
+              <p class="text-xs text-muted">{{ t('messagePlatformReadonlyTip') }}</p>
+            </div>
             <div class="flex flex-col gap-5 max-w-[720px] mx-auto">
               <div
                 v-for="item in store.messages"
@@ -702,6 +734,7 @@ function onTextareaInput(e: Event) {
 
           <!-- 底部输入区 -->
           <footer
+            v-if="!isMessagePlatformSession"
             class="composer-footer flex-shrink-0 px-4 py-3"
           >
             <div class="max-w-[680px] mx-auto">
@@ -800,7 +833,7 @@ function onTextareaInput(e: Event) {
     <!-- ───── 浮动会话菜单 ───── -->
     <Transition name="session-menu-pop">
       <div
-        v-if="activeSessionMenu"
+        v-if="activeSessionMenu && canManageCurrentSession"
         class="floating-session-menu fixed z-[80] w-40 rounded-xl py-1 overflow-hidden"
         :style="{ left: `${activeSessionMenu.x}px`, top: `${activeSessionMenu.y}px` }"
         @click.stop

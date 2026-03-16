@@ -47,6 +47,11 @@ func New(cfg config.Config, tokenManager *auth.TokenManager, httpController *con
 		protectedAPI.PUT("/mcp-configs/:id", httpController.UpdateMCPConfig)
 		protectedAPI.DELETE("/mcp-configs/:id", httpController.DeleteMCPConfig)
 
+		protectedAPI.GET("/message-platform-configs", httpController.ListMessagePlatformConfigs)
+		protectedAPI.POST("/message-platform-configs", httpController.CreateMessagePlatformConfig)
+		protectedAPI.PUT("/message-platform-configs/:id", httpController.UpdateMessagePlatformConfig)
+		protectedAPI.DELETE("/message-platform-configs/:id", httpController.DeleteMessagePlatformConfig)
+
 		protectedAPI.GET("/skills", httpController.ListSkills)
 		protectedAPI.POST("/skills/upload", httpController.UploadSkills)
 		protectedAPI.DELETE("/skills/:id", httpController.DeleteSkill)
