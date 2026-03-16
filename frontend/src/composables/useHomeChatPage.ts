@@ -3,7 +3,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 
-import { sessionAPI, type ToolCallItem } from '@/api/chat'
+import { MESSAGE_PLATFORM_SESSION_ID, sessionAPI, type ToolCallItem } from '@/api/chat'
 import { llmAPI, type LLMConfig } from '@/api/settings'
 import { useChatStore } from '@/stores/chat'
 
@@ -133,12 +133,28 @@ export function useHomeChatPage() {
     el.addEventListener('scroll', handler, { passive: true })
   }
 
-  const currentSession = computed(() => store.sessions.find((item) => item.id === store.currentSessionId))
+  const isMessagePlatformSession = computed(() => store.currentSessionId === MESSAGE_PLATFORM_SESSION_ID)
+  const currentSession = computed(() => {
+    const current = store.sessions.find((item) => item.id === store.currentSessionId)
+    if (current) return current
+    if (isMessagePlatformSession.value) {
+      return {
+        id: MESSAGE_PLATFORM_SESSION_ID,
+        name: t('messagePlatformSession'),
+        updatedAt: '',
+      }
+    }
+    return undefined
+  })
   const modelSelectOptions = computed(() => modelOptions.value.map((m) => ({ value: m.id, label: m.name })))
   const hasModel = computed(() => modelOptions.value.length > 0)
   const isEmptySession = computed(() => !loading.value && store.messages.length === 0)
+  const canManageCurrentSession = computed(() => !isMessagePlatformSession.value)
   const showScrollToBottom = computed(() => !isEmptySession.value && !autoStickToBottom.value)
-  const sendDisabled = computed(() => !hasModel.value || !selectedModelId.value || !inputValue.value.trim() || store.waiting || !store.isSocketReady)
+  const sendDisabled = computed(() => {
+    if (isMessagePlatformSession.value) return true
+    return !hasModel.value || !selectedModelId.value || !inputValue.value.trim() || store.waiting || !store.isSocketReady
+  })
   const shouldShowConnectionNotice = computed(() => {
     if (suppressConnectionNoticeDisplay.value) return false
     if (store.connectionStatus === 'connected') return false
@@ -367,14 +383,18 @@ export function useHomeChatPage() {
       const routeSessionId = route.params.sessionId as string | undefined
       const isNewChatRoute = route.name === 'new-chat' || route.name === 'home'
       if (routeSessionId && routeSessionId !== 'new_chat') {
-        const matched = store.sessions.find((s) => s.id === routeSessionId)
-        if (matched) {
-          await store.selectSession(matched.id)
-        } else if (store.sessions.length > 0) {
-          const first = store.sessions[0]
-          if (first) await store.selectSession(first.id)
+        if (routeSessionId === MESSAGE_PLATFORM_SESSION_ID) {
+          await store.selectSession(MESSAGE_PLATFORM_SESSION_ID)
         } else {
-          store.resetToNewSession()
+          const matched = store.sessions.find((s) => s.id === routeSessionId)
+          if (matched) {
+            await store.selectSession(matched.id)
+          } else if (store.sessions.length > 0) {
+            const first = store.sessions[0]
+            if (first) await store.selectSession(first.id)
+          } else {
+            store.resetToNewSession()
+          }
         }
       } else if (isNewChatRoute || store.sessions.length === 0) {
         store.resetToNewSession()
@@ -391,6 +411,7 @@ export function useHomeChatPage() {
   }
 
   function openRename(sessionId: string, oldName: string) {
+    if (sessionId === MESSAGE_PLATFORM_SESSION_ID) return
     renameTargetId.value = sessionId
     renameValue.value = oldName
     renameVisible.value = true
@@ -404,6 +425,7 @@ export function useHomeChatPage() {
   }
 
   function removeSession(id: string) {
+    if (id === MESSAGE_PLATFORM_SESSION_ID) return
     deleteTargetId.value = id
     deleteConfirmVisible.value = true
     activeSessionMenu.value = null
@@ -428,6 +450,13 @@ export function useHomeChatPage() {
   }
 
   async function pickSession(id: string) {
+    if (id === MESSAGE_PLATFORM_SESSION_ID) {
+      await store.selectSession(id)
+      await nextTick()
+      scrollMessagesToBottom(true)
+      drawerOpen.value = false
+      return
+    }
     await store.selectSession(id)
     await nextTick()
     scrollMessagesToBottom(true)
@@ -616,6 +645,8 @@ export function useHomeChatPage() {
     currentSession,
     sendDisabled,
     networkStatusText,
+    isMessagePlatformSession,
+    canManageCurrentSession,
     getReplyToolCount,
     getReplyToolSummary,
     getReplyTimeline,

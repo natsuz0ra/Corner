@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { ChatSocket, type ConnectionStatus } from '@/api/chatSocket'
+import { MESSAGE_PLATFORM_SESSION_ID, sessionAPI } from '@/api/chat'
 import type {
   MessageItem,
   SessionHistoryPayload,
@@ -10,7 +11,6 @@ import type {
   ToolCallItem,
   ToolCallStatus,
 } from '@/api/chat'
-import { sessionAPI } from '@/api/chat'
 import { i18n } from '@/i18n'
 
 interface AssistantReplyBatch {
@@ -225,6 +225,10 @@ export const useChatStore = defineStore('chat', () => {
 
   async function loadSessions() {
     sessions.value = await sessionAPI.list()
+    const isVirtualMessagePlatformSession =
+      currentSessionId.value === MESSAGE_PLATFORM_SESSION_ID &&
+      !sessions.value.some((item) => item.id === MESSAGE_PLATFORM_SESSION_ID)
+    if (isVirtualMessagePlatformSession) return
     if (currentSessionId.value && !sessions.value.some((item) => item.id === currentSessionId.value)) {
       currentSessionId.value = undefined
       messages.value = []
@@ -247,11 +251,22 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function selectSession(id: string) {
-    const history = await sessionAPI.history(id)
-    currentSessionId.value = id
-    messages.value = history.messages
-    resetSessionRuntimeState()
-    rebuildReplyBatchesFromHistory(id, history)
+    try {
+      const history = await sessionAPI.history(id)
+      currentSessionId.value = id
+      messages.value = history.messages
+      resetSessionRuntimeState()
+      rebuildReplyBatchesFromHistory(id, history)
+    } catch {
+      // 固定消息平台会话在首条平台消息前可能尚未落库，前端先展示只读空态。
+      if (id === MESSAGE_PLATFORM_SESSION_ID) {
+        currentSessionId.value = id
+        messages.value = []
+        resetSessionRuntimeState()
+        return
+      }
+      throw new Error('load session history failed')
+    }
   }
 
   function connectSocket() {

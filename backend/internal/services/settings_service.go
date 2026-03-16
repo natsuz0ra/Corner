@@ -5,8 +5,9 @@ import (
 )
 
 const (
-	settingLanguage     = "language"
-	settingDefaultModel = "defaultModel"
+	settingLanguage                    = "language"
+	settingDefaultModel                = "defaultModel"
+	settingMessagePlatformDefaultModel = "messagePlatformDefaultModel"
 )
 
 // SettingsStore 抽象设置读写能力，便于 controller 与 repo 解耦。
@@ -17,14 +18,16 @@ type SettingsStore interface {
 
 // AppSettings 是后端对前端暴露的设置视图模型。
 type AppSettings struct {
-	Language     string
-	DefaultModel string
+	Language                    string
+	DefaultModel                string
+	MessagePlatformDefaultModel string
 }
 
 // UpdateSettingsInput 是设置更新请求的领域输入。
 type UpdateSettingsInput struct {
-	Language     string
-	DefaultModel string
+	Language                    string
+	DefaultModel                string
+	MessagePlatformDefaultModel string
 }
 
 type SettingsService struct {
@@ -48,9 +51,14 @@ func (s *SettingsService) Get() (*AppSettings, error) {
 	if err != nil {
 		return nil, err
 	}
+	messagePlatformDefaultModel, err := s.store.GetSetting(settingMessagePlatformDefaultModel)
+	if err != nil {
+		return nil, err
+	}
 	return &AppSettings{
-		Language:     language,
-		DefaultModel: defaultModel,
+		Language:                    language,
+		DefaultModel:                defaultModel,
+		MessagePlatformDefaultModel: messagePlatformDefaultModel,
 	}, nil
 }
 
@@ -63,6 +71,11 @@ func (s *SettingsService) Update(input UpdateSettingsInput) error {
 	}
 	if strings.TrimSpace(input.DefaultModel) != "" {
 		if err := s.store.SetSetting(settingDefaultModel, input.DefaultModel); err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(input.MessagePlatformDefaultModel) != "" {
+		if err := s.store.SetSetting(settingMessagePlatformDefaultModel, input.MessagePlatformDefaultModel); err != nil {
 			return err
 		}
 	}

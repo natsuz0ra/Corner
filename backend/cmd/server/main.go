@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"slimebot/backend/internal/controllers"
 	"slimebot/backend/internal/database"
 	"slimebot/backend/internal/mcp"
+	"slimebot/backend/internal/platforms"
 	"slimebot/backend/internal/repositories"
 	"slimebot/backend/internal/router"
 	"slimebot/backend/internal/services"
@@ -58,6 +60,9 @@ func main() {
 	skillRuntimeService := services.NewSkillRuntimeService(repo, cfg.SkillsRoot)
 	memoryService := services.NewMemoryService(repo, openaiClient)
 	chatService := services.NewChatService(repo, openaiClient, mcpManager, skillRuntimeService, memoryService)
+	platformDispatcher := platforms.NewDispatcher(chatService)
+	telegramWorker := platforms.NewTelegramWorker(repo, platformDispatcher)
+	telegramWorker.Start(context.Background())
 
 	httpController := controllers.NewHTTPController(repo, skillPackageService, skillRuntimeService, tokenManager)
 	wsController := controllers.NewWSController(chatService)

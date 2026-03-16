@@ -28,6 +28,7 @@ func NewSQLite(dbPath string) (*gorm.DB, error) {
 		&models.AppSetting{},
 		&models.LLMConfig{},
 		&models.MCPConfig{},
+		&models.MessagePlatformConfig{},
 		&models.Skill{},
 	); err != nil {
 		return nil, fmt.Errorf("自动迁移失败: %w", err)

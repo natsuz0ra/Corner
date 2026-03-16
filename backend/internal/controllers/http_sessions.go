@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"slimebot/backend/internal/models"
+	"slimebot/backend/internal/services"
 
 	"github.com/gin-gonic/gin"
 )
@@ -72,6 +73,10 @@ func (h *HTTPController) CreateSession(c *gin.Context) {
 // RenameSession 修改指定会话名称。
 func (h *HTTPController) RenameSession(c *gin.Context) {
 	id := c.Param("id")
+	if id == services.MessagePlatformSessionID {
+		jsonError(c, http.StatusBadRequest, "消息平台会话不支持重命名")
+		return
+	}
 	var req struct {
 		Name string `json:"name" binding:"required"`
 	}
@@ -88,6 +93,10 @@ func (h *HTTPController) RenameSession(c *gin.Context) {
 // DeleteSession 删除指定会话及其关联数据。
 func (h *HTTPController) DeleteSession(c *gin.Context) {
 	id := c.Param("id")
+	if id == services.MessagePlatformSessionID {
+		jsonError(c, http.StatusBadRequest, "消息平台会话不支持删除")
+		return
+	}
 	if err := h.repo.DeleteSession(id); err != nil {
 		jsonInternalError(c, err)
 		return
