@@ -20,6 +20,8 @@ import { useAuthStore } from '@/stores/auth'
 const {
   t,
   store,
+  hasMoreHistory,
+  loadingOlderHistory,
   drawerOpen,
   renameVisible,
   renameValue,
@@ -208,6 +210,8 @@ const {
             :waiting="store.waiting"
             :is-message-platform-session="isMessagePlatformSession"
             :show-scroll-to-bottom="showScrollToBottom"
+            :has-more-history="hasMoreHistory"
+            :loading-older-history="loadingOlderHistory"
             :set-messages-ref="setMessagesRef"
             :is-failed-user-message="store.isFailedUserMessage"
             :is-assistant-error-message="store.isAssistantErrorMessage"
