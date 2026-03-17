@@ -72,16 +72,16 @@ func (m *MemoryService) ShouldCompressContext(sessionID string) (bool, int64, er
 
 // DecideMemoryQuery 通过小模型决策当前提问是否需要检索历史记忆。
 func (m *MemoryService) DecideMemoryQuery(ctx context.Context, modelConfig ModelRuntimeConfig, userInput string, summary string) (MemoryDecision, error) {
-	systemPrompt := `你是“记忆检索决策器”。请根据用户当前输入和会话摘要，判断是否需要检索历史记忆来回答问题。
-仅返回 JSON，不要输出任何额外文本。
-JSON 格式：
-{"need_memory":true/false,"keywords":["关键词1","关键词2"],"reason":"简短原因"}
-要求：
-1. 只有在用户问题依赖历史事实、偏好、长期任务或跨会话信息时，need_memory=true。
-2. keywords 仅保留 1~8 个可检索关键词，避免停用词。
-3. 若不需要检索，keywords 返回空数组。`
+	systemPrompt := `You are a memory retrieval decision engine. Based on the current user input and session summary, decide whether historical memory retrieval is needed to answer.
+Return JSON only. Do not output any extra text.
+JSON format:
+{"need_memory":true/false,"keywords":["keyword1","keyword2"],"reason":"brief reason"}
+Requirements:
+1. Set need_memory=true only when the request depends on historical facts, preferences, long-term tasks, or cross-session context.
+2. Keep 1-8 retrievable keywords in keywords, avoiding stop words.
+3. If retrieval is not needed, return an empty keywords array.`
 
-	userPrompt := fmt.Sprintf("用户输入：\n%s\n\n当前会话摘要：\n%s", strings.TrimSpace(userInput), strings.TrimSpace(summary))
+	userPrompt := fmt.Sprintf("User input:\n%s\n\nCurrent session summary:\n%s", strings.TrimSpace(userInput), strings.TrimSpace(summary))
 	reply, attempts, elapsed, err := m.chatOnceWithRetry(ctx, modelConfig, []ChatMessage{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: userPrompt},
@@ -144,7 +144,7 @@ func (m *MemoryService) QueryForAgent(sessionID string, query string, topK int) 
 		Query: strings.TrimSpace(query),
 	}
 	if result.Query == "" {
-		return result, fmt.Errorf("memory_query 参数 query 不能为空")
+		return result, fmt.Errorf("memory_query query cannot be empty")
 	}
 	if topK <= 0 {
 		topK = 3
@@ -155,7 +155,7 @@ func (m *MemoryService) QueryForAgent(sessionID string, query string, topK int) 
 
 	result.Keywords = m.TokenizeKeywords(result.Query)
 	if len(result.Keywords) == 0 {
-		result.Output = "<memory_query_result>\n未提取到可检索关键词，请改写 query 后重试。\n</memory_query_result>"
+		result.Output = "<memory_query_result>\nNo retrievable keywords extracted. Please refine the query and try again.\n</memory_query_result>"
 		return result, nil
 	}
 
@@ -183,7 +183,7 @@ func (m *MemoryService) buildMemoryQueryOutput(query string, keywords []string, 
 	b.WriteString("\n")
 	b.WriteString(fmt.Sprintf("hit_count: %d\n", len(hits)))
 	if len(hits) == 0 {
-		b.WriteString("未检索到相关记忆。\n")
+		b.WriteString("No related memories found.\n")
 		b.WriteString("</memory_query_result>")
 		return b.String()
 	}
@@ -335,13 +335,13 @@ func (m *MemoryService) runSummaryOnce(modelConfig ModelRuntimeConfig, sessionID
 
 // MergeSummary 合并历史摘要与近期消息，生成新的会话记忆摘要。
 func (m *MemoryService) MergeSummary(ctx context.Context, modelConfig ModelRuntimeConfig, oldSummary string, recent []models.Message) (string, int, time.Duration, error) {
-	systemPrompt := `你是会话摘要器。请将“历史摘要”和“最新对话片段”融合成新的高质量记忆摘要。
-输出要求：
-1. 只输出摘要正文，不要使用 markdown 标题，不要输出 JSON。
-2. 保留：用户偏好、关键事实、已完成/待完成任务、重要约束、上下文线索。
-3. 删除：寒暄、重复信息、无关工具日志。
-4. 摘要尽量精炼，但不要丢失关键信息。`
-	userPrompt := fmt.Sprintf("历史摘要：\n%s\n\n最新对话片段：\n%s", strings.TrimSpace(oldSummary), flattenMessages(recent))
+	systemPrompt := `You are a conversation summarizer. Merge the historical summary and latest conversation snippets into a new high-quality memory summary.
+Output requirements:
+1. Output summary text only. Do not use markdown headings and do not output JSON.
+2. Keep user preferences, key facts, completed/pending tasks, important constraints, and useful context clues.
+3. Remove greetings, repeated details, and irrelevant tool logs.
+4. Keep the summary concise without losing critical information.`
+	userPrompt := fmt.Sprintf("Historical summary:\n%s\n\nLatest conversation snippets:\n%s", strings.TrimSpace(oldSummary), flattenMessages(recent))
 
 	reply, attempts, elapsed, err := m.chatOnceWithRetry(ctx, modelConfig, []ChatMessage{
 		{Role: "system", Content: systemPrompt},
@@ -353,7 +353,7 @@ func (m *MemoryService) MergeSummary(ctx context.Context, modelConfig ModelRunti
 
 	summary := strings.TrimSpace(reply)
 	if summary == "" {
-		return "", attempts, elapsed, fmt.Errorf("摘要生成为空")
+		return "", attempts, elapsed, fmt.Errorf("summary generation returned empty output")
 	}
 	return summary, attempts, elapsed, nil
 }

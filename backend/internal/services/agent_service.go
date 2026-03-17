@@ -115,17 +115,17 @@ func (a *AgentService) buildRuntimeToolDefs(ctx context.Context, configs []model
 	if a.memory != nil {
 		defs = append(defs, ToolDef{
 			Name:        "memory__query",
-			Description: "[memory] 按需检索历史记忆。仅在回答依赖历史偏好、历史决策或跨会话约束时调用。",
+			Description: "[memory] Retrieve historical memory on demand. Use only when the response depends on past preferences, decisions, or cross-session constraints.",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"query": map[string]any{
 						"type":        "string",
-						"description": "本次需要检索的记忆主题或问题",
+						"description": "Memory topic or question to retrieve for this turn.",
 					},
 					"top_k": map[string]any{
 						"type":        "integer",
-						"description": "返回条数，默认 3，最大 5",
+						"description": "Number of results to return, default 3, max 5.",
 						"default":     consts.MemoryToolDefaultTopK,
 						"minimum":     1,
 						"maximum":     5,
@@ -172,7 +172,7 @@ func (a *AgentService) buildRuntimeToolDefs(ctx context.Context, configs []model
 		nameLen := len(def.Name)
 		if nameLen > consts.MaxToolNameLen {
 			log.Printf("tool_name_too_long name=%s len=%d", def.Name, nameLen)
-			return nil, nil, fmt.Errorf("工具名称过长: %s (len=%d, max=%d)", def.Name, nameLen, consts.MaxToolNameLen)
+			return nil, nil, fmt.Errorf("tool name is too long: %s (len=%d, max=%d)", def.Name, nameLen, consts.MaxToolNameLen)
 		}
 	}
 	return defs, metaByFunc, nil
@@ -194,7 +194,7 @@ func (a *AgentService) RunAgentLoop(
 ) (string, error) {
 	toolDefs, mcpToolMeta, err := a.buildRuntimeToolDefs(ctx, mcpConfigs)
 	if err != nil {
-		return "", fmt.Errorf("加载 MCP 工具失败: %w", err)
+		return "", fmt.Errorf("failed to load MCP tools: %w", err)
 	}
 	messages := make([]ChatMessage, len(contextMessages))
 	copy(messages, contextMessages)
@@ -211,7 +211,7 @@ func (a *AgentService) RunAgentLoop(
 			return callbacks.OnChunk(chunk)
 		})
 		if err != nil {
-			return "", fmt.Errorf("agent 第 %d 轮 LLM 调用失败: %w", i+1, err)
+			return "", fmt.Errorf("agent LLM call failed at iteration %d: %w", i+1, err)
 		}
 
 		if result.Type == StreamResultType(consts.StreamResultText) {
@@ -229,7 +229,7 @@ func (a *AgentService) RunAgentLoop(
 				messages = append(messages, ChatMessage{
 					Role:       "tool",
 					ToolCallID: tc.ID,
-					Content:    fmt.Sprintf("工具调用解析失败: %s", err.Error()),
+					Content:    fmt.Sprintf("failed to parse tool invocation: %s", err.Error()),
 				})
 				continue
 			}
@@ -239,7 +239,7 @@ func (a *AgentService) RunAgentLoop(
 				messages = append(messages, ChatMessage{
 					Role:       "tool",
 					ToolCallID: tc.ID,
-					Content:    fmt.Sprintf("参数解析失败: %s", err.Error()),
+					Content:    fmt.Sprintf("failed to parse arguments: %s", err.Error()),
 				})
 				continue
 			}
@@ -251,7 +251,7 @@ func (a *AgentService) RunAgentLoop(
 					messages = append(messages, ChatMessage{
 						Role:       "tool",
 						ToolCallID: tc.ID,
-						Content:    fmt.Sprintf("skill 激活失败: %s", activateErr.Error()),
+						Content:    fmt.Sprintf("failed to activate skill: %s", activateErr.Error()),
 					})
 					continue
 				}
@@ -271,7 +271,7 @@ func (a *AgentService) RunAgentLoop(
 				RequiresApproval: invocation.requiresApproval,
 				Preamble:         preamble,
 			}); err != nil {
-				return "", fmt.Errorf("推送工具调用审批请求失败: %w", err)
+				return "", fmt.Errorf("failed to push tool approval request: %w", err)
 			}
 
 			approved, rejectionMessage := waitApprovalIfNeeded(ctx, callbacks, tc, invocation, params, preamble)
@@ -305,14 +305,14 @@ func (a *AgentService) RunAgentLoop(
 		}
 	}
 
-	return finalAnswer.String(), fmt.Errorf("agent 循环达到最大迭代次数 (%d)", consts.AgentMaxIterations)
+	return finalAnswer.String(), fmt.Errorf("agent loop reached max iterations (%d)", consts.AgentMaxIterations)
 }
 
 // parseToolCallName 解析 "{tool}__{command}" 格式的函数名
 func parseToolCallName(funcName string) (toolName, command string, err error) {
 	parts := strings.SplitN(funcName, "__", 2)
 	if len(parts) != 2 {
-		return "", "", fmt.Errorf("无效的工具函数名格式: %s", funcName)
+		return "", "", fmt.Errorf("invalid tool function name format: %s", funcName)
 	}
 	return parts[0], parts[1], nil
 }
@@ -323,7 +323,7 @@ func parseToolCallArgs(arguments string) (map[string]string, error) {
 	}
 	var raw map[string]any
 	if err := json.Unmarshal([]byte(arguments), &raw); err != nil {
-		return nil, fmt.Errorf("JSON 解析失败: %w", err)
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
 	result := make(map[string]string, len(raw))
 	for k, v := range raw {
@@ -345,7 +345,7 @@ func parseToolCallArgsAny(arguments string) (map[string]any, error) {
 	}
 	var raw map[string]any
 	if err := json.Unmarshal([]byte(arguments), &raw); err != nil {
-		return nil, fmt.Errorf("JSON 解析失败: %w", err)
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
 	return raw, nil
 }
@@ -367,7 +367,7 @@ func parseOptionalInt(raw string, defaultValue int) int {
 func executeToolCall(toolName, command string, params map[string]string) *tools.ExecuteResult {
 	t, ok := tools.Get(toolName)
 	if !ok {
-		return &tools.ExecuteResult{Error: fmt.Sprintf("工具 %s 不存在", toolName)}
+		return &tools.ExecuteResult{Error: fmt.Sprintf("tool %s not found", toolName)}
 	}
 	result, err := t.Execute(command, params)
 	if err != nil {

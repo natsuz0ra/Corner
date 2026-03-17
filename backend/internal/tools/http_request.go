@@ -23,19 +23,19 @@ func init() {
 func (h *httpRequestTool) Name() string { return "http_request" }
 
 func (h *httpRequestTool) Description() string {
-	return "HTTP 请求工具，可以向指定 URL 发送 HTTP 请求并返回响应状态码、响应头和响应体"
+	return "Send HTTP requests to a URL and return status, headers, and body."
 }
 
 func (h *httpRequestTool) Commands() []Command {
 	return []Command{
 		{
 			Name:        "request",
-			Description: "发送一个 HTTP 请求，返回响应的状态码、headers 和 body",
+			Description: "Send an HTTP request and return status code, headers, and body.",
 			Params: []CommandParam{
-				{Name: "method", Required: true, Description: "HTTP 方法，如 GET、POST、PUT、DELETE 等", Example: "GET"},
-				{Name: "url", Required: true, Description: "请求的完整 URL", Example: "https://api.example.com/data"},
-				{Name: "headers", Required: false, Description: "请求头，JSON 对象格式，key 为 header 名，value 为 header 值", Example: `{"Content-Type":"application/json","Authorization":"Bearer xxx"}`},
-				{Name: "body", Required: false, Description: "请求体内容，仅 POST/PUT/PATCH 等方法时有效", Example: `{"key":"value"}`},
+				{Name: "method", Required: true, Description: "HTTP method, such as GET, POST, PUT, DELETE, etc.", Example: "GET"},
+				{Name: "url", Required: true, Description: "Full request URL.", Example: "https://api.example.com/data"},
+				{Name: "headers", Required: false, Description: "Request headers as a JSON object where key is header name and value is header value.", Example: `{"Content-Type":"application/json","Authorization":"Bearer xxx"}`},
+				{Name: "body", Required: false, Description: "Request body content, used for methods like POST/PUT/PATCH.", Example: `{"key":"value"}`},
 			},
 		},
 	}
@@ -98,6 +98,6 @@ func (h *httpRequestTool) request(params map[string]string) (*ExecuteResult, err
 	}
 	headersJSON, _ := json.Marshal(respHeaders)
 
-	result := fmt.Sprintf("状态码: %d\n响应头: %s\n响应体:\n%s", resp.StatusCode, string(headersJSON), string(bodyBytes))
+	result := fmt.Sprintf("Status: %d\nHeaders: %s\nBody:\n%s", resp.StatusCode, string(headersJSON), string(bodyBytes))
 	return &ExecuteResult{Output: result}, nil
 }

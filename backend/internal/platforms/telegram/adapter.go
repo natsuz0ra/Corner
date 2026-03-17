@@ -137,8 +137,8 @@ func (a *Adapter) SendApprovalKeyboard(chatID string, text string, approveData s
 		"reply_markup": map[string]any{
 			"inline_keyboard": []any{
 				[]map[string]string{
-					{"text": "批准", "callback_data": approveData},
-					{"text": "拒绝", "callback_data": rejectData},
+					{"text": "Approve", "callback_data": approveData},
+					{"text": "Reject", "callback_data": rejectData},
 				},
 			},
 		},

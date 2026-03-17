@@ -92,7 +92,7 @@ func (s *ChatService) EnsureSession(sessionID string) (*models.Session, error) {
 			return existing, nil
 		}
 	}
-	return s.repo.CreateSession("新会话")
+	return s.repo.CreateSession("New Chat")
 }
 
 // EnsureMessagePlatformSession 确保固定的消息平台会话存在。
@@ -185,7 +185,7 @@ func (s *ChatService) buildContextMessages(ctx context.Context, sessionID string
 
 	// 拼接环境信息到系统提示词
 	envInfo := CollectEnvInfo()
-	systemPrompt = systemPrompt + "\n\n## 当前运行环境\n" + envInfo.FormatForPrompt()
+	systemPrompt = systemPrompt + "\n\n## Runtime Environment\n" + envInfo.FormatForPrompt()
 	if s.skillRuntime != nil {
 		catalogPrompt, _, catalogErr := s.skillRuntime.BuildCatalogPrompt()
 		if catalogErr != nil {
@@ -249,8 +249,8 @@ func (s *ChatService) buildContextMessages(ctx context.Context, sessionID string
 			if memoryContext != "" {
 				msgs = append(msgs, ChatMessage{
 					Role: "developer",
-					Content: "以下是系统提供的 memory_context，请优先用于理解历史偏好、约束与长期任务；" +
-						"若与用户当前输入冲突，以用户当前输入为准。\n\n<memory_context>\n" +
+					Content: "The following memory_context is provided by the system. Use it primarily to understand historical preferences, constraints, and long-term tasks; " +
+						"if it conflicts with the user's current input, always follow the current input.\n\n<memory_context>\n" +
 						memoryContext +
 						"\n</memory_context>",
 				})

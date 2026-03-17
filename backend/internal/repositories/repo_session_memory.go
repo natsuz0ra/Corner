@@ -50,7 +50,7 @@ func (r *Repository) UpsertSessionMemoryIfNewer(input SessionMemoryUpsertInput) 
 	now := time.Now()
 	sessionID := strings.TrimSpace(input.SessionID)
 	if sessionID == "" {
-		return false, fmt.Errorf("session_id 不能为空")
+		return false, fmt.Errorf("session_id cannot be empty")
 	}
 	keywords := normalizeKeywords(input.Keywords)
 	keywordsJSONBytes, err := json.Marshal(keywords)

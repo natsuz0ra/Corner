@@ -122,7 +122,7 @@ func (w *Worker) dispatchInboundAsync(ctx context.Context, inbound platforms.Inb
 	case w.dispatchSlots <- struct{}{}:
 	default:
 		log.Printf("telegram_worker_dispatch_throttled chat_id=%s", chatID)
-		_ = sender.SendText(chatID, "系统繁忙，请稍后重试。")
+		_ = sender.SendText(chatID, "System is busy. Please try again later.")
 		return
 	}
 
@@ -132,7 +132,7 @@ func (w *Worker) dispatchInboundAsync(ctx context.Context, inbound platforms.Inb
 		defer cancel()
 		if err := w.dispatchInbound(taskCtx, inbound, sender); err != nil {
 			log.Printf("telegram_worker_dispatch_failed chat_id=%s err=%v", chatID, err)
-			_ = sender.SendText(chatID, "处理消息失败，请稍后重试。")
+			_ = sender.SendText(chatID, "Failed to process the message. Please try again later.")
 		}
 	}()
 }
@@ -163,11 +163,11 @@ func (w *Worker) handleApprovalCallback(query *callbackQuery, adapter *Adapter) 
 	}
 	if approved {
 		log.Printf("telegram_worker_callback_approved chat_id=%s callback_id=%s", chatID, strings.TrimSpace(query.ID))
-		_ = adapter.AnswerCallbackQuery(query.ID, "已批准，正在执行。")
+		_ = adapter.AnswerCallbackQuery(query.ID, "Approved. Executing now.")
 		return
 	}
 	log.Printf("telegram_worker_callback_rejected chat_id=%s callback_id=%s", chatID, strings.TrimSpace(query.ID))
-	_ = adapter.AnswerCallbackQuery(query.ID, "已拒绝本次执行。")
+	_ = adapter.AnswerCallbackQuery(query.ID, "Execution has been rejected.")
 }
 
 // parseTelegramToken 从平台 authConfig JSON 中解析 botToken；

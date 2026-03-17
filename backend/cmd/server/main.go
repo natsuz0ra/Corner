@@ -32,32 +32,32 @@ import (
 
 func main() {
 	if err := godotenv.Load(); err != nil {
-		log.Printf(".env 未加载（将继续使用系统环境变量）: %v", err)
+		log.Printf(".env not loaded (falling back to system environment variables): %v", err)
 	}
 
 	cfg := config.Load()
 	if err := validateConfig(cfg); err != nil {
-		log.Fatalf("配置校验失败: %v", err)
+		log.Fatalf("config validation failed: %v", err)
 	}
 	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), os.ModePerm); err != nil {
-		log.Fatalf("创建数据库目录失败: %v", err)
+		log.Fatalf("failed to create database directory: %v", err)
 	}
 	if err := os.MkdirAll(cfg.SkillsRoot, os.ModePerm); err != nil {
-		log.Fatalf("创建 skills 目录失败: %v", err)
+		log.Fatalf("failed to create skills directory: %v", err)
 	}
 
 	db, err := database.NewSQLite(cfg.DBPath)
 	if err != nil {
-		log.Fatalf("数据库初始化失败: %v", err)
+		log.Fatalf("database initialization failed: %v", err)
 	}
 
 	repo := repositories.New(db)
 	if err := ensureDefaultAdmin(repo); err != nil {
-		log.Fatalf("初始化默认账号失败: %v", err)
+		log.Fatalf("failed to initialize default admin account: %v", err)
 	}
 	tokenManager, err := auth.NewTokenManager(cfg.JWTSecret, cfg.JWTExpireMinutes)
 	if err != nil {
-		log.Fatalf("鉴权初始化失败: %v", err)
+		log.Fatalf("authentication initialization failed: %v", err)
 	}
 	openaiClient := services.NewOpenAIClient()
 	mcpManager := mcp.NewManager()
@@ -83,16 +83,16 @@ func main() {
 		Handler: engine,
 	}
 	if err := runServerWithGracefulShutdown(appCtx, server); err != nil {
-		log.Fatalf("服务启动失败: %v", err)
+		log.Fatalf("server startup failed: %v", err)
 	}
 }
 
 func validateConfig(cfg config.Config) error {
 	if strings.TrimSpace(cfg.JWTSecret) == "" {
-		return errors.New("JWT_SECRET 未配置")
+		return errors.New("JWT_SECRET is not configured")
 	}
 	if cfg.JWTExpireMinutes <= 0 {
-		return errors.New("JWT_EXPIRE 必须大于 0（单位：分钟）")
+		return errors.New("JWT_EXPIRE must be greater than 0 (minutes)")
 	}
 	return nil
 }
