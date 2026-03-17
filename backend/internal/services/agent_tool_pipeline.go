@@ -55,7 +55,7 @@ func notifyToolResult(callbacks AgentCallbacks, result ToolCallResult) {
 		return
 	}
 	if err := callbacks.OnToolCallResult(result); err != nil {
-		log.Printf("推送工具结果失败: %v", err)
+		log.Printf("failed to push tool result: %v", err)
 	}
 }
 

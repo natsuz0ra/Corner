@@ -56,19 +56,19 @@ func newWebSearchTool(baseURL string, client *http.Client, getAPIKey func() stri
 func (w *webSearchTool) Name() string { return "web_search" }
 
 func (w *webSearchTool) Description() string {
-	return "联网搜索工具，适合查询最新公开信息。输入 query 后会返回答案摘要与来源链接，可用于事实核验与补充背景。"
+	return "Search the web for recent public information and return answer summaries with source links."
 }
 
 func (w *webSearchTool) Commands() []Command {
 	return []Command{
 		{
 			Name:        "search",
-			Description: "执行网络搜索并返回结构化结果。适用于需要实时信息或来源引用的场景；失败时会返回参数/鉴权/上游错误信息。",
+			Description: "Run a web search and return structured results, including upstream/validation/auth errors when they occur.",
 			Params: []CommandParam{
 				{
 					Name:        "query",
 					Required:    true,
-					Description: "搜索问题，建议使用完整、明确的问题句，避免空字符串或过于模糊的关键词。",
+					Description: "Search query. Prefer complete and specific questions over empty or vague keywords.",
 					Example:     "Who is Leo Messi?",
 				},
 			},
@@ -165,10 +165,10 @@ func extractDetailError(detail any) string {
 func formatTavilyOutput(data tavilySearchResponse) string {
 	var b strings.Builder
 	if q := strings.TrimSpace(data.Query); q != "" {
-		b.WriteString("查询: " + q + "\n")
+		b.WriteString("Query: " + q + "\n")
 	}
 	if a := strings.TrimSpace(data.Answer); a != "" {
-		b.WriteString("答案:\n")
+		b.WriteString("Answer:\n")
 		b.WriteString(a + "\n")
 	}
 
@@ -176,7 +176,7 @@ func formatTavilyOutput(data tavilySearchResponse) string {
 		return strings.TrimSpace(b.String())
 	}
 
-	b.WriteString("来源:\n")
+	b.WriteString("Sources:\n")
 	limit := len(data.Results)
 	if limit > consts.WebSearchMaxSources {
 		limit = consts.WebSearchMaxSources
@@ -188,14 +188,14 @@ func formatTavilyOutput(data tavilySearchResponse) string {
 		content := truncateRunes(strings.TrimSpace(item.Content), consts.WebSearchMaxContentRunes)
 
 		if title == "" {
-			title = "未命名来源"
+			title = "Untitled source"
 		}
 		b.WriteString(fmt.Sprintf("%d. %s\n", i+1, title))
 		if url != "" {
 			b.WriteString("   URL: " + url + "\n")
 		}
 		if content != "" {
-			b.WriteString("   摘要: " + content + "\n")
+			b.WriteString("   Snippet: " + content + "\n")
 		}
 	}
 	return strings.TrimSpace(b.String())

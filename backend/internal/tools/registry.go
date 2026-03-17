@@ -24,7 +24,7 @@ func Register(tool Tool) {
 
 	name := tool.Name()
 	if _, exists := globalRegistry.tools[name]; exists {
-		panic(fmt.Sprintf("工具名称重复: %s", name))
+		panic(fmt.Sprintf("duplicate tool name: %s", name))
 	}
 	globalRegistry.tools[name] = tool
 	log.Printf("tool_registered name=%s commands=%d", name, len(tool.Commands()))

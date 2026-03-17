@@ -11,7 +11,7 @@ const (
 const (
 	// Fixed session for message platforms.
 	MessagePlatformSessionID   = "im-platform-session"
-	MessagePlatformSessionName = "消息平台会话"
+	MessagePlatformSessionName = "Message Platform Session"
 )
 
 const (

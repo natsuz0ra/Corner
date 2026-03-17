@@ -33,20 +33,20 @@ func init() {
 func (e *execTool) Name() string { return "exec" }
 
 func (e *execTool) Description() string {
-	return "命令行工具，可以在运行服务的设备上执行系统命令并返回输出结果"
+	return "Run system commands on the host and return command output."
 }
 
 func (e *execTool) Commands() []Command {
 	return []Command{
 		{
 			Name:        "run",
-			Description: "执行一条系统命令，返回标准输出和标准错误的合并结果",
+			Description: "Run a system command and return combined stdout/stderr output.",
 			Params: []CommandParam{
-				{Name: "program", Required: false, Description: "可执行程序名（推荐，优先于 command）", Example: "python"},
-				{Name: "args", Required: false, Description: "程序参数（JSON 字符串数组）", Example: "[\"-c\",\"print('hello')\"]"},
-				{Name: "shell", Required: false, Description: "command 模式下使用的 shell：none|powershell|cmd（Windows 默认 none=PowerShell）", Example: "none"},
-				{Name: "command", Required: false, Description: "要执行的命令字符串（兼容模式）", Example: "echo hello"},
-				{Name: "timeout", Required: false, Description: "命令执行超时秒数，默认30秒，最大300秒", Example: "60"},
+				{Name: "program", Required: false, Description: "Executable name (recommended; takes precedence over command).", Example: "python"},
+				{Name: "args", Required: false, Description: "Program arguments (JSON string array).", Example: "[\"-c\",\"print('hello')\"]"},
+				{Name: "shell", Required: false, Description: "Shell used in command mode: none|powershell|cmd (Windows default none=PowerShell).", Example: "none"},
+				{Name: "command", Required: false, Description: "Command string to execute (compatibility mode).", Example: "echo hello"},
+				{Name: "timeout", Required: false, Description: "Command timeout in seconds, default 30, max 300.", Example: "60"},
 			},
 		},
 	}

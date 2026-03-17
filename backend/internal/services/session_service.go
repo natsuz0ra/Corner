@@ -23,7 +23,7 @@ func (s *SessionService) List() ([]models.Session, error) {
 func (s *SessionService) Create(name string) (*models.Session, error) {
 	trimmed := strings.TrimSpace(name)
 	if trimmed == "" {
-		trimmed = "新会话"
+		trimmed = "New Chat"
 	}
 	return s.store.CreateSession(trimmed)
 }

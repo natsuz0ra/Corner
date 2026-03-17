@@ -16,7 +16,7 @@ var nonWordRuneRegex = regexp.MustCompile(`[^\p{L}\p{N}_\-]+`)
 func parseMemoryDecision(raw string) (MemoryDecision, error) {
 	text := strings.TrimSpace(raw)
 	if text == "" {
-		return MemoryDecision{}, fmt.Errorf("记忆决策为空")
+		return MemoryDecision{}, fmt.Errorf("memory decision is empty")
 	}
 	text = strings.TrimPrefix(text, "```json")
 	text = strings.TrimPrefix(text, "```")
@@ -26,7 +26,7 @@ func parseMemoryDecision(raw string) (MemoryDecision, error) {
 	start := strings.Index(text, "{")
 	end := strings.LastIndex(text, "}")
 	if start < 0 || end <= start {
-		return MemoryDecision{}, fmt.Errorf("记忆决策 JSON 格式错误")
+		return MemoryDecision{}, fmt.Errorf("invalid memory decision JSON format")
 	}
 	jsonText := text[start : end+1]
 

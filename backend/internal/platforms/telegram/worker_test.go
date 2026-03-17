@@ -86,7 +86,7 @@ func TestDispatchInboundAsync_ConcurrencyGuard(t *testing.T) {
 	if len(texts) == 0 {
 		t.Fatal("expected busy message when dispatch slots are full")
 	}
-	if !strings.Contains(texts[0], "系统繁忙") {
+	if !strings.Contains(texts[0], "System is busy") {
 		t.Fatalf("unexpected busy message: %s", texts[0])
 	}
 }
