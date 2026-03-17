@@ -76,6 +76,8 @@ export function useHomeChatPage() {
   return {
     t,
     store,
+    hasMoreHistory: store.hasMoreHistory,
+    loadingOlderHistory: store.loadingOlderHistory,
     drawerOpen: uiState.drawerOpen,
     renameVisible: uiState.renameVisible,
     renameValue: uiState.renameValue,

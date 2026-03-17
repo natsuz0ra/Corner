@@ -1,4 +1,4 @@
-import { computed, nextTick, onMounted, onUnmounted, type Ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { MESSAGE_PLATFORM_SESSION_ID, sessionAPI } from '@/api/chat'
 import { useToast } from '@/composables/useToast'
@@ -41,6 +41,8 @@ export function useHomeSessionActions(options: {
 
   const router = useRouter()
   const route = useRoute()
+  const messagePlatformPollingTimer = ref<number | null>(null)
+  const MESSAGE_PLATFORM_POLLING_INTERVAL_MS = 5000
 
   const isMessagePlatformSession = computed(() => store.currentSessionId === MESSAGE_PLATFORM_SESSION_ID)
   const currentSession = computed(() => {
@@ -63,6 +65,21 @@ export function useHomeSessionActions(options: {
 
   function showError(message: string) {
     toast.error(message)
+  }
+
+  function stopMessagePlatformPolling() {
+    if (messagePlatformPollingTimer.value !== null) {
+      window.clearInterval(messagePlatformPollingTimer.value)
+      messagePlatformPollingTimer.value = null
+    }
+  }
+
+  function startMessagePlatformPolling() {
+    if (messagePlatformPollingTimer.value !== null) return
+    messagePlatformPollingTimer.value = window.setInterval(() => {
+      if (store.currentSessionId !== MESSAGE_PLATFORM_SESSION_ID) return
+      void store.loadNewMessagesForSession(MESSAGE_PLATFORM_SESSION_ID)
+    }, MESSAGE_PLATFORM_POLLING_INTERVAL_MS)
   }
 
   async function boot() {
@@ -193,7 +210,20 @@ export function useHomeSessionActions(options: {
     void boot()
   })
 
+  watch(
+    () => store.currentSessionId,
+    (sessionId) => {
+      if (sessionId === MESSAGE_PLATFORM_SESSION_ID) {
+        startMessagePlatformPolling()
+        return
+      }
+      stopMessagePlatformPolling()
+    },
+    { immediate: true },
+  )
+
   onUnmounted(() => {
+    stopMessagePlatformPolling()
     store.disconnectSocket()
   })
 

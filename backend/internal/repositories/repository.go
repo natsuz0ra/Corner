@@ -1,6 +1,8 @@
 package repositories
 
 import (
+	"time"
+
 	"gorm.io/gorm"
 	"slimebot/backend/internal/models"
 )
@@ -19,6 +21,7 @@ type SessionStore interface {
 	RenameSessionByUser(id, name string) error
 	DeleteSession(id string) error
 	ListSessionMessages(sessionID string) ([]models.Message, error)
+	ListSessionMessagesPage(sessionID string, limit int, before *time.Time, after *time.Time) ([]models.Message, bool, error)
 	ListSessionToolCallRecords(sessionID string) ([]models.ToolCallRecord, error)
 	SetSessionModel(sessionID, modelConfigID string) error
 }

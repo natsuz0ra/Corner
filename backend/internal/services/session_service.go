@@ -2,6 +2,7 @@ package services
 
 import (
 	"strings"
+	"time"
 
 	"slimebot/backend/internal/models"
 	"slimebot/backend/internal/repositories"
@@ -38,6 +39,10 @@ func (s *SessionService) Delete(id string) error {
 
 func (s *SessionService) ListMessages(sessionID string) ([]models.Message, error) {
 	return s.store.ListSessionMessages(sessionID)
+}
+
+func (s *SessionService) ListMessagesPage(sessionID string, limit int, before *time.Time, after *time.Time) ([]models.Message, bool, error) {
+	return s.store.ListSessionMessagesPage(sessionID, limit, before, after)
 }
 
 func (s *SessionService) ListToolCallRecords(sessionID string) ([]models.ToolCallRecord, error) {

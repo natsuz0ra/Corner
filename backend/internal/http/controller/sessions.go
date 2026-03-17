@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"slimebot/backend/internal/consts"
 	"slimebot/backend/internal/models"
@@ -16,6 +18,7 @@ import (
 type sessionMessagesResponse struct {
 	Messages                      []models.Message                    `json:"messages"`
 	ToolCallsByAssistantMessageID map[string][]sessionToolCallHistory `json:"toolCallsByAssistantMessageId"`
+	HasMore                       bool                                `json:"hasMore"`
 }
 
 type sessionToolCallHistory struct {
@@ -42,6 +45,18 @@ func parseToolCallParams(raw string) map[string]string {
 		return map[string]string{}
 	}
 	return params
+}
+
+func parseSessionMessagesCursor(raw string) (*time.Time, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, true
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, trimmed)
+	if err != nil {
+		return nil, false
+	}
+	return &parsed, true
 }
 
 // ListSessions 返回当前用户的会话列表。
@@ -108,10 +123,41 @@ func (h *HTTPController) DeleteSession(c *gin.Context) {
 // ListMessages 返回会话消息，并附带 assistant 消息关联的工具调用历史。
 func (h *HTTPController) ListMessages(c *gin.Context) {
 	sessionID := c.Param("id")
-	messages, err := h.sessions.ListMessages(sessionID)
+	limit := 10
+	if rawLimit := strings.TrimSpace(c.Query("limit")); rawLimit != "" {
+		parsedLimit, err := strconv.Atoi(rawLimit)
+		if err != nil || parsedLimit <= 0 {
+			jsonError(c, http.StatusBadRequest, "limit must be a positive integer.")
+			return
+		}
+		if parsedLimit > 50 {
+			parsedLimit = 50
+		}
+		limit = parsedLimit
+	}
+	before, ok := parseSessionMessagesCursor(c.Query("before"))
+	if !ok {
+		jsonError(c, http.StatusBadRequest, "before must be RFC3339 format.")
+		return
+	}
+	after, ok := parseSessionMessagesCursor(c.Query("after"))
+	if !ok {
+		jsonError(c, http.StatusBadRequest, "after must be RFC3339 format.")
+		return
+	}
+	if before != nil && after != nil {
+		jsonError(c, http.StatusBadRequest, "before and after cannot be used together.")
+		return
+	}
+
+	messages, hasMore, err := h.sessions.ListMessagesPage(sessionID, limit, before, after)
 	if err != nil {
 		jsonInternalError(c, err)
 		return
+	}
+	messageIDSet := make(map[string]struct{}, len(messages))
+	for _, message := range messages {
+		messageIDSet[message.ID] = struct{}{}
 	}
 	records, err := h.sessions.ListToolCallRecords(sessionID)
 	if err != nil {
@@ -125,6 +171,9 @@ func (h *HTTPController) ListMessages(c *gin.Context) {
 			continue
 		}
 		key := strings.TrimSpace(*record.AssistantMessageID)
+		if _, ok := messageIDSet[key]; !ok {
+			continue
+		}
 		item := sessionToolCallHistory{
 			ToolCallID:       record.ToolCallID,
 			ToolName:         record.ToolName,
@@ -144,6 +193,7 @@ func (h *HTTPController) ListMessages(c *gin.Context) {
 	c.JSON(http.StatusOK, sessionMessagesResponse{
 		Messages:                      messages,
 		ToolCallsByAssistantMessageID: toolCallsByAssistantMessageID,
+		HasMore:                       hasMore,
 	})
 }
 

@@ -2,6 +2,7 @@ import { computed, nextTick, onUnmounted, ref, watch, type Ref } from 'vue'
 import { useChatStore } from '@/stores/chat'
 
 const BOTTOM_STICK_THRESHOLD_PX = 32
+const TOP_LOAD_THRESHOLD_PX = 24
 const SCROLL_TO_BOTTOM_PENDING_MAX_MS = 2000
 
 export function useHomeScroll(options: {
@@ -16,6 +17,7 @@ export function useHomeScroll(options: {
   const scrollToBottomPending = ref(false)
   const scrollToBottomPendingTimer = ref<number | null>(null)
   const scrollToBottomEndHandler = ref<(() => void) | null>(null)
+  const loadingOlderFromScroll = ref(false)
   const scrollTimers = new Map<HTMLElement, ReturnType<typeof setTimeout>>()
   const scrollHandlers = new Map<HTMLElement, () => void>()
 
@@ -137,11 +139,31 @@ export function useHomeScroll(options: {
     }, SCROLL_TO_BOTTOM_PENDING_MAX_MS)
   }
 
+  async function maybeLoadOlderMessages(el: HTMLElement) {
+    if (loadingOlderFromScroll.value) return
+    if (store.loadingOlderHistory || !store.hasMoreHistory) return
+    if (el.scrollTop > TOP_LOAD_THRESHOLD_PX) return
+    loadingOlderFromScroll.value = true
+    const previousScrollHeight = el.scrollHeight
+    try {
+      const loaded = await store.loadOlderMessages()
+      if (!loaded) return
+      await nextTick()
+      const addedHeight = el.scrollHeight - previousScrollHeight
+      if (addedHeight > 0) {
+        el.scrollTop = el.scrollTop + addedHeight
+      }
+    } finally {
+      loadingOlderFromScroll.value = false
+    }
+  }
+
   watch(messagesRef, (el, prev) => {
     if (prev) unbindScrollFade(prev)
     if (el) {
       bindScrollFade(el, () => {
         syncAutoStickToBottom(el)
+        void maybeLoadOlderMessages(el)
       })
       syncAutoStickToBottom(el)
     }
@@ -156,6 +178,7 @@ export function useHomeScroll(options: {
     () => store.currentSessionId,
     () => {
       autoStickToBottom.value = true
+      loadingOlderFromScroll.value = false
       queueScrollMessagesToBottom(true)
     },
   )

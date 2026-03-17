@@ -13,6 +13,8 @@ const props = defineProps<{
   waiting: boolean
   isMessagePlatformSession: boolean
   showScrollToBottom: boolean
+  hasMoreHistory: boolean
+  loadingOlderHistory: boolean
   setMessagesRef: (el: unknown) => void
   isFailedUserMessage: (messageId: string) => boolean
   isAssistantErrorMessage: (messageId: string) => boolean
@@ -42,6 +44,10 @@ const { t } = useI18n()
   >
     <div v-if="isMessagePlatformSession" class="max-w-[720px] mx-auto mb-3 px-1">
       <p class="text-xs text-muted">{{ t('messagePlatformReadonlyTip') }}</p>
+    </div>
+    <div class="max-w-[720px] mx-auto mb-3 px-1 text-center">
+      <p v-if="loadingOlderHistory" class="text-xs text-muted">加载更早消息中...</p>
+      <p v-else-if="!hasMoreHistory" class="text-xs text-muted">没有更多历史消息</p>
     </div>
     <div class="flex flex-col gap-5 max-w-[720px] mx-auto">
       <ChatMessageItem
