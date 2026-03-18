@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -29,9 +31,39 @@ type update struct {
 }
 
 type message struct {
-	MessageID int64  `json:"message_id"`
-	Chat      chat   `json:"chat"`
-	Text      string `json:"text"`
+	MessageID int64            `json:"message_id"`
+	Chat      chat             `json:"chat"`
+	Text      string           `json:"text"`
+	Caption   string           `json:"caption"`
+	Photo     []photoSize      `json:"photo"`
+	Voice     *voiceAttachment `json:"voice"`
+	Audio     *audioAttachment `json:"audio"`
+	Document  *docAttachment   `json:"document"`
+}
+
+type photoSize struct {
+	FileID   string `json:"file_id"`
+	FileSize int64  `json:"file_size"`
+}
+
+type voiceAttachment struct {
+	FileID   string `json:"file_id"`
+	MimeType string `json:"mime_type"`
+	FileSize int64  `json:"file_size"`
+}
+
+type audioAttachment struct {
+	FileID   string `json:"file_id"`
+	FileName string `json:"file_name"`
+	MimeType string `json:"mime_type"`
+	FileSize int64  `json:"file_size"`
+}
+
+type docAttachment struct {
+	FileID   string `json:"file_id"`
+	FileName string `json:"file_name"`
+	MimeType string `json:"mime_type"`
+	FileSize int64  `json:"file_size"`
 }
 
 type chat struct {
@@ -49,6 +81,23 @@ type user struct {
 	ID int64 `json:"id"`
 }
 
+type getFileResponse struct {
+	OK     bool          `json:"ok"`
+	Result *telegramFile `json:"result"`
+}
+
+type telegramFile struct {
+	FilePath string `json:"file_path"`
+}
+
+type mediaCandidate struct {
+	Source         string
+	ProviderFileID string
+	Name           string
+	MimeType       string
+	SizeBytes      int64
+}
+
 func NewAdapter(token string) *Adapter {
 	return &Adapter{
 		token: strings.TrimSpace(token),
@@ -58,6 +107,10 @@ func NewAdapter(token string) *Adapter {
 
 func (a *Adapter) getAPIURL(method string) string {
 	return "https://api.telegram.org/bot" + a.token + "/" + method
+}
+
+func (a *Adapter) getFileURL(filePath string) string {
+	return "https://api.telegram.org/file/bot" + a.token + "/" + strings.TrimLeft(strings.TrimSpace(filePath), "/")
 }
 
 // GetUpdates 调用 Telegram getUpdates 长轮询接口拉取增量更新。
@@ -94,6 +147,138 @@ func (a *Adapter) GetUpdates(ctx context.Context, offset int64, timeoutSeconds i
 		return nil, fmt.Errorf("telegram getUpdates returned ok=false")
 	}
 	return payload.Result, nil
+}
+
+func (a *Adapter) ResolveFilePath(ctx context.Context, fileID string) (string, error) {
+	if a == nil || strings.TrimSpace(a.token) == "" {
+		return "", fmt.Errorf("telegram token is empty")
+	}
+	trimmedFileID := strings.TrimSpace(fileID)
+	if trimmedFileID == "" {
+		return "", fmt.Errorf("telegram file id is empty")
+	}
+	query := url.Values{}
+	query.Set("file_id", trimmedFileID)
+	apiURL := a.getAPIURL("getFile") + "?" + query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := a.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return "", fmt.Errorf("telegram getFile failed: status=%d", resp.StatusCode)
+	}
+	var payload getFileResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", err
+	}
+	if !payload.OK || payload.Result == nil || strings.TrimSpace(payload.Result.FilePath) == "" {
+		return "", fmt.Errorf("telegram getFile returned empty file path")
+	}
+	return payload.Result.FilePath, nil
+}
+
+func (a *Adapter) DownloadFile(ctx context.Context, fileID string, maxBytes int64) ([]byte, string, error) {
+	filePath, err := a.ResolveFilePath(ctx, fileID)
+	if err != nil {
+		return nil, "", err
+	}
+	data, err := a.DownloadFileByPath(ctx, filePath, maxBytes)
+	if err != nil {
+		return nil, "", err
+	}
+	return data, filepath.Base(strings.TrimSpace(filePath)), nil
+}
+
+func (a *Adapter) DownloadFileByPath(ctx context.Context, filePath string, maxBytes int64) ([]byte, error) {
+	if a == nil || strings.TrimSpace(a.token) == "" {
+		return nil, fmt.Errorf("telegram token is empty")
+	}
+	trimmedPath := strings.TrimSpace(filePath)
+	if trimmedPath == "" {
+		return nil, fmt.Errorf("telegram file path is empty")
+	}
+	if maxBytes <= 0 {
+		return nil, fmt.Errorf("max bytes must be greater than 0")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.getFileURL(trimmedPath), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := a.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("telegram file download failed: status=%d", resp.StatusCode)
+	}
+	limited := io.LimitReader(resp.Body, maxBytes+1)
+	body, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > maxBytes {
+		return nil, fmt.Errorf("telegram file exceeds max size limit")
+	}
+	return body, nil
+}
+
+func collectMediaCandidates(msg *message) []mediaCandidate {
+	if msg == nil {
+		return nil
+	}
+	items := make([]mediaCandidate, 0, 4)
+	if len(msg.Photo) > 0 {
+		best := msg.Photo[0]
+		for _, p := range msg.Photo[1:] {
+			if p.FileSize > best.FileSize {
+				best = p
+			}
+		}
+		if strings.TrimSpace(best.FileID) != "" {
+			items = append(items, mediaCandidate{
+				Source:         "photo",
+				ProviderFileID: strings.TrimSpace(best.FileID),
+				Name:           "photo.jpg",
+				MimeType:       "image/jpeg",
+				SizeBytes:      best.FileSize,
+			})
+		}
+	}
+	if msg.Voice != nil && strings.TrimSpace(msg.Voice.FileID) != "" {
+		items = append(items, mediaCandidate{
+			Source:         "voice",
+			ProviderFileID: strings.TrimSpace(msg.Voice.FileID),
+			Name:           "voice.ogg",
+			MimeType:       strings.TrimSpace(msg.Voice.MimeType),
+			SizeBytes:      msg.Voice.FileSize,
+		})
+	}
+	if msg.Audio != nil && strings.TrimSpace(msg.Audio.FileID) != "" {
+		items = append(items, mediaCandidate{
+			Source:         "audio",
+			ProviderFileID: strings.TrimSpace(msg.Audio.FileID),
+			Name:           strings.TrimSpace(msg.Audio.FileName),
+			MimeType:       strings.TrimSpace(msg.Audio.MimeType),
+			SizeBytes:      msg.Audio.FileSize,
+		})
+	}
+	if msg.Document != nil && strings.TrimSpace(msg.Document.FileID) != "" {
+		items = append(items, mediaCandidate{
+			Source:         "document",
+			ProviderFileID: strings.TrimSpace(msg.Document.FileID),
+			Name:           strings.TrimSpace(msg.Document.FileName),
+			MimeType:       strings.TrimSpace(msg.Document.MimeType),
+			SizeBytes:      msg.Document.FileSize,
+		})
+	}
+	return items
 }
 
 // SendText 发送纯文本消息，作为平台统一回包能力。

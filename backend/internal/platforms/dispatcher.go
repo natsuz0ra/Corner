@@ -27,6 +27,7 @@ type platformChatService interface {
 		requestID string,
 		content string,
 		modelID string,
+		attachmentIDs []string,
 		callbacks services.AgentCallbacks,
 	) (*services.ChatStreamResult, error)
 }
@@ -47,7 +48,15 @@ func (d *Dispatcher) HandleInbound(ctx context.Context, message InboundMessage, 
 		return fmt.Errorf("dispatcher is not initialized")
 	}
 	content := strings.TrimSpace(message.Text)
-	if content == "" {
+	attachmentIDs := make([]string, 0, len(message.AttachmentIDs))
+	for _, id := range message.AttachmentIDs {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			continue
+		}
+		attachmentIDs = append(attachmentIDs, trimmed)
+	}
+	if content == "" && len(attachmentIDs) == 0 {
 		return nil
 	}
 	chatID := strings.TrimSpace(message.ChatID)
@@ -98,6 +107,7 @@ func (d *Dispatcher) HandleInbound(ctx context.Context, message InboundMessage, 
 		uuid.NewString(),
 		content,
 		modelID,
+		attachmentIDs,
 		callbacks,
 	)
 	if err != nil {
