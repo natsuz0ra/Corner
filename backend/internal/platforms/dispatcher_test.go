@@ -29,6 +29,7 @@ func (m *mockPlatformChatService) HandleChatStream(
 	_ string,
 	_ string,
 	_ string,
+	_ []string,
 	callbacks services.AgentCallbacks,
 ) (*services.ChatStreamResult, error) {
 	_ = callbacks.OnToolCallStart(services.ApprovalRequest{
@@ -48,6 +49,33 @@ func (m *mockPlatformChatService) HandleChatStream(
 	return &services.ChatStreamResult{Answer: "hello-from-mock"}, nil
 }
 
+type captureAttachmentChatService struct {
+	lastContent       string
+	lastAttachmentIDs []string
+}
+
+func (m *captureAttachmentChatService) EnsureMessagePlatformSession() (*models.Session, error) {
+	return &models.Session{ID: consts.MessagePlatformSessionID, Name: consts.MessagePlatformSessionName}, nil
+}
+
+func (m *captureAttachmentChatService) ResolvePlatformModel() (string, error) {
+	return "mock-model-id", nil
+}
+
+func (m *captureAttachmentChatService) HandleChatStream(
+	_ context.Context,
+	_ string,
+	_ string,
+	content string,
+	_ string,
+	attachmentIDs []string,
+	_ services.AgentCallbacks,
+) (*services.ChatStreamResult, error) {
+	m.lastContent = content
+	m.lastAttachmentIDs = append([]string{}, attachmentIDs...)
+	return &services.ChatStreamResult{Answer: "ok"}, nil
+}
+
 type mockApprovalChatService struct{}
 
 func (m *mockApprovalChatService) EnsureMessagePlatformSession() (*models.Session, error) {
@@ -64,6 +92,7 @@ func (m *mockApprovalChatService) HandleChatStream(
 	_ string,
 	_ string,
 	_ string,
+	_ []string,
 	callbacks services.AgentCallbacks,
 ) (*services.ChatStreamResult, error) {
 	_ = callbacks.OnToolCallStart(services.ApprovalRequest{
@@ -276,5 +305,30 @@ func TestDispatcherHandleInbound_ApprovalByCallback(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("handle inbound timed out after approval")
+	}
+}
+
+func TestDispatcherHandleInbound_PassesAttachmentIDs(t *testing.T) {
+	chatSvc := &captureAttachmentChatService{}
+	dispatcher := NewDispatcher(chatSvc, newMockApprovalBroker())
+	sender := &mockSender{}
+
+	err := dispatcher.HandleInbound(context.Background(), InboundMessage{
+		Platform:      consts.TelegramPlatformName,
+		ChatID:        "30001",
+		Text:          "",
+		AttachmentIDs: []string{" att_a ", "", "att_b"},
+	}, sender)
+	if err != nil {
+		t.Fatalf("handle inbound failed: %v", err)
+	}
+	if len(chatSvc.lastAttachmentIDs) != 2 {
+		t.Fatalf("expected 2 attachment ids, got=%d", len(chatSvc.lastAttachmentIDs))
+	}
+	if chatSvc.lastAttachmentIDs[0] != "att_a" || chatSvc.lastAttachmentIDs[1] != "att_b" {
+		t.Fatalf("unexpected attachment ids: %#v", chatSvc.lastAttachmentIDs)
+	}
+	if chatSvc.lastContent != "" {
+		t.Fatalf("expected empty content for attachment-only input, got=%q", chatSvc.lastContent)
 	}
 }

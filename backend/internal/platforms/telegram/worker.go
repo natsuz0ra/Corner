@@ -2,7 +2,9 @@ package telegram
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -10,24 +12,33 @@ import (
 	"slimebot/backend/internal/consts"
 	"slimebot/backend/internal/platforms"
 	"slimebot/backend/internal/repositories"
+	"slimebot/backend/internal/services"
 )
 
 type Worker struct {
 	repo            *repositories.Repository
 	dispatcher      *platforms.Dispatcher
+	uploads         workerUploadService
 	dispatchInbound func(context.Context, platforms.InboundMessage, platforms.OutboundSender) error
 	dispatchSlots   chan struct{}
+}
+
+type workerUploadService interface {
+	RegisterLocalFiles(sessionID string, files []services.LocalAttachmentFile) ([]services.UploadedAttachment, error)
 }
 
 const (
 	workerMaxConcurrentDispatch = 8
 	workerDispatchTimeout       = 180 * time.Second
+	workerMaxMediaBytes         = 10 * 1024 * 1024
+	workerMaxAttachmentsPerMsg  = 5
 )
 
-func NewWorker(repo *repositories.Repository, dispatcher *platforms.Dispatcher) *Worker {
+func NewWorker(repo *repositories.Repository, dispatcher *platforms.Dispatcher, uploads workerUploadService) *Worker {
 	w := &Worker{
 		repo:          repo,
 		dispatcher:    dispatcher,
+		uploads:       uploads,
 		dispatchSlots: make(chan struct{}, workerMaxConcurrentDispatch),
 	}
 	w.dispatchInbound = func(ctx context.Context, inbound platforms.InboundMessage, sender platforms.OutboundSender) error {
@@ -99,10 +110,35 @@ func (w *Worker) processUpdates(ctx context.Context, adapter *Adapter, updates [
 		if item.Message == nil {
 			continue
 		}
-		w.dispatchInboundAsync(ctx, platforms.InboundMessage{
+		chatID := strconv.FormatInt(item.Message.Chat.ID, 10)
+		text := strings.TrimSpace(item.Message.Text)
+		if text == "" {
+			text = strings.TrimSpace(item.Message.Caption)
+		}
+		inbound := platforms.InboundMessage{
 			Platform: consts.TelegramPlatformName,
-			ChatID:   strconv.FormatInt(item.Message.Chat.ID, 10),
-			Text:     strings.TrimSpace(item.Message.Text),
+			ChatID:   chatID,
+			Text:     text,
+		}
+		candidates := collectMediaCandidates(item.Message)
+		if len(candidates) > 0 {
+			attachmentIDs, attachments, warnErr := w.buildInboundAttachments(ctx, adapter, candidates)
+			inbound.AttachmentIDs = attachmentIDs
+			inbound.Attachments = attachments
+			if warnErr != nil {
+				log.Printf("telegram_worker_media_partial_failed chat_id=%s err=%v", chatID, warnErr)
+				_ = adapter.SendText(chatID, "Some attachments failed to process and were skipped.")
+			}
+		}
+		if strings.TrimSpace(inbound.Text) == "" && len(inbound.AttachmentIDs) == 0 {
+			continue
+		}
+		w.dispatchInboundAsync(ctx, platforms.InboundMessage{
+			Platform:      inbound.Platform,
+			ChatID:        inbound.ChatID,
+			Text:          inbound.Text,
+			Attachments:   inbound.Attachments,
+			AttachmentIDs: inbound.AttachmentIDs,
 		}, adapter)
 	}
 	return nextOffset
@@ -114,7 +150,7 @@ func (w *Worker) dispatchInboundAsync(ctx context.Context, inbound platforms.Inb
 		return
 	}
 	chatID := strings.TrimSpace(inbound.ChatID)
-	if strings.TrimSpace(inbound.Text) == "" {
+	if strings.TrimSpace(inbound.Text) == "" && len(inbound.AttachmentIDs) == 0 {
 		return
 	}
 	select {
@@ -134,6 +170,99 @@ func (w *Worker) dispatchInboundAsync(ctx context.Context, inbound platforms.Inb
 			_ = sender.SendText(chatID, "Failed to process the message. Please try again later.")
 		}
 	}()
+}
+
+func (w *Worker) buildInboundAttachments(ctx context.Context, adapter *Adapter, candidates []mediaCandidate) ([]string, []platforms.InboundAttachment, error) {
+	if w == nil || w.uploads == nil || adapter == nil || len(candidates) == 0 {
+		return nil, nil, nil
+	}
+	if len(candidates) > workerMaxAttachmentsPerMsg {
+		candidates = candidates[:workerMaxAttachmentsPerMsg]
+	}
+	inputs := make([]services.LocalAttachmentFile, 0, len(candidates))
+	inboundMeta := make([]platforms.InboundAttachment, 0, len(candidates))
+	var skipped int
+
+	for _, candidate := range candidates {
+		data, fallbackName, err := adapter.DownloadFile(ctx, candidate.ProviderFileID, workerMaxMediaBytes)
+		if err != nil {
+			skipped++
+			continue
+		}
+		name := selectAttachmentName(candidate.Name, fallbackName, candidate.Source, candidate.MimeType)
+		inputs = append(inputs, services.LocalAttachmentFile{
+			Name:     name,
+			MimeType: candidate.MimeType,
+			Data:     data,
+		})
+		inboundMeta = append(inboundMeta, platforms.InboundAttachment{
+			Source:         candidate.Source,
+			ProviderFileID: candidate.ProviderFileID,
+			Name:           name,
+			MimeType:       strings.TrimSpace(candidate.MimeType),
+			SizeBytes:      int64(len(data)),
+		})
+	}
+	if len(inputs) == 0 {
+		if skipped > 0 {
+			return nil, nil, fmt.Errorf("no attachment can be downloaded")
+		}
+		return nil, nil, nil
+	}
+
+	registered, err := w.uploads.RegisterLocalFiles(consts.MessagePlatformSessionID, inputs)
+	if err != nil {
+		return nil, nil, err
+	}
+	ids := make([]string, 0, len(registered))
+	for i, item := range registered {
+		ids = append(ids, item.ID)
+		if i < len(inboundMeta) {
+			inboundMeta[i].Category = strings.TrimSpace(item.Category)
+			inboundMeta[i].MimeType = strings.TrimSpace(item.MimeType)
+			inboundMeta[i].SizeBytes = item.SizeBytes
+			if strings.TrimSpace(item.Name) != "" {
+				inboundMeta[i].Name = item.Name
+			}
+		}
+	}
+	if skipped > 0 {
+		return ids, inboundMeta, fmt.Errorf("%d attachments failed to process", skipped)
+	}
+	return ids, inboundMeta, nil
+}
+
+func selectAttachmentName(preferred string, fallback string, source string, mimeType string) string {
+	name := strings.TrimSpace(preferred)
+	if name == "" {
+		name = strings.TrimSpace(fallback)
+	}
+	if name == "" {
+		name = strings.TrimSpace(source)
+	}
+	if name == "" {
+		name = "attachment"
+	}
+	ext := strings.TrimSpace(filepath.Ext(name))
+	if ext != "" {
+		return name
+	}
+	switch strings.ToLower(strings.TrimSpace(mimeType)) {
+	case "image/jpeg":
+		return name + ".jpg"
+	case "image/png":
+		return name + ".png"
+	case "audio/mpeg":
+		return name + ".mp3"
+	case "audio/wav", "audio/x-wav":
+		return name + ".wav"
+	case "audio/ogg":
+		return name + ".ogg"
+	case "application/pdf":
+		return name + ".pdf"
+	default:
+		return name
+	}
 }
 
 // handleApprovalCallback 处理审批按钮点击，并即时回执给 Telegram 客户端。

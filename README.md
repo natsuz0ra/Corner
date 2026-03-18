@@ -11,6 +11,7 @@
   - 按会话拉取历史消息
   - 基于 WebSocket 的实时流式回复（start/chunk/done）
   - 会话标题自动生成与更新推送
+  - 多模态能力
 - 工具与 Agent
   - Agent 多轮 tool call 执行链路
   - 工具调用审批机制（高风险工具需前端确认）
@@ -168,6 +169,7 @@ VITE_WS_URL=ws://localhost:8080
 - Skills 包管理与运行时激活
 - 会话持久化记忆与主动检索
 - 消息平台基础能力（当前支持 Telegram）
+- 多模态支持
 
 ### 待完成功能
 
