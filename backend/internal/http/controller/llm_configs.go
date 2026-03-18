@@ -2,7 +2,6 @@ package controller
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"slimebot/backend/internal/services"
@@ -29,7 +28,8 @@ func (h *HTTPController) CreateLLMConfig(c *gin.Context) {
 	if !bindJSONOrBadRequest(c, &req, "Invalid request payload format.") {
 		return
 	}
-	if strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.BaseURL) == "" || strings.TrimSpace(req.APIKey) == "" || strings.TrimSpace(req.Model) == "" {
+	trimSpaceFields(&req.Name, &req.BaseURL, &req.APIKey, &req.Model)
+	if !allFieldsPresent(req.Name, req.BaseURL, req.APIKey, req.Model) {
 		jsonError(c, http.StatusBadRequest, "name, baseUrl, apiKey, and model are all required.")
 		return
 	}

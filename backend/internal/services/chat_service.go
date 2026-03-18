@@ -26,6 +26,11 @@ type ChatService struct {
 	skillsBySess map[string]map[string]struct{}
 }
 
+type chatStreamAccumulator struct {
+	answerBuilder strings.Builder
+	pushErr       error
+}
+
 type ChatStreamResult struct {
 	Answer         string
 	TitleUpdated   bool
@@ -347,8 +352,7 @@ func (s *ChatService) HandleChatStream(
 
 	isTitleLocked := session.IsTitleLocked
 	parser := newTitleStreamParser(!isTitleLocked)
-	var answerBuilder strings.Builder
-	var pushErr error
+	accumulator := &chatStreamAccumulator{}
 	streamStart := time.Now()
 	var firstTokenAt time.Time
 
@@ -356,12 +360,12 @@ func (s *ChatService) HandleChatStream(
 		if body == "" {
 			return nil
 		}
-		answerBuilder.WriteString(body)
-		if pushErr != nil {
+		accumulator.answerBuilder.WriteString(body)
+		if accumulator.pushErr != nil {
 			return nil
 		}
 		if err := callbacks.OnChunk(body); err != nil {
-			pushErr = err
+			accumulator.pushErr = err
 		}
 		return nil
 	}
@@ -394,16 +398,7 @@ func (s *ChatService) HandleChatStream(
 		},
 		WaitApproval: callbacks.WaitApproval,
 		OnToolCallResult: func(result ToolCallResult) error {
-			status := strings.TrimSpace(result.Status)
-			if status == "" {
-				status = consts.ToolCallStatusCompleted
-				if result.Error != "" {
-					status = consts.ToolCallStatusError
-					if strings.Contains(strings.ToLower(result.Error), "rejected by the user") {
-						status = consts.ToolCallStatusRejected
-					}
-				}
-			}
+			status := normalizeToolCallResultStatus(result)
 			if err := s.recordToolCallResult(sessionID, requestID, result, status); err != nil {
 				return err
 			}
@@ -481,11 +476,29 @@ func (s *ChatService) HandleChatStream(
 	} else if s.memory != nil {
 		log.Printf("chat_summary_missing session=%s reason=empty_or_unparsed", sessionID)
 	}
-	if pushErr != nil {
+	if accumulator.pushErr != nil {
 		result.PushFailed = true
-		result.PushError = pushErr.Error()
+		result.PushError = accumulator.pushErr.Error()
 	}
 	return result, nil
+}
+
+// normalizeToolCallResultStatus 统一 tool result 状态推断：
+// - 显式状态优先；
+// - 无状态时按 error 自动推断 completed/error/rejected。
+func normalizeToolCallResultStatus(result ToolCallResult) string {
+	status := strings.TrimSpace(result.Status)
+	if status != "" {
+		return status
+	}
+	status = consts.ToolCallStatusCompleted
+	if result.Error == "" {
+		return status
+	}
+	if strings.Contains(strings.ToLower(result.Error), "rejected by the user") {
+		return consts.ToolCallStatusRejected
+	}
+	return consts.ToolCallStatusError
 }
 
 func (s *ChatService) recordToolCallStart(

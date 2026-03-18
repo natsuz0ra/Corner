@@ -43,10 +43,8 @@ func NewSkillPackageService(repo *repositories.Repository, skillsRoot string) *S
 	}
 }
 
-func (s *SkillPackageService) SkillsRootAbs() string {
-	return s.skillsRootAbs
-}
-
+// InstallFromZip 按“校验 -> 解压 -> 移动 -> 入库”流程安装技能包。
+// 注意文件系统与数据库不是原子事务：若入库失败会尝试回滚目标目录。
 func (s *SkillPackageService) InstallFromZip(filename string, data []byte) (*models.Skill, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("uploaded file is empty")
@@ -119,6 +117,7 @@ func (s *SkillPackageService) InstallFromZip(filename string, data []byte) (*mod
 	return item, nil
 }
 
+// validateZipAndCollect 校验 zip 结构与资源限制，并提取 SKILL.md 元数据。
 func (s *SkillPackageService) validateZipAndCollect(data []byte) (*parsedSkillMetadata, map[string]*zip.File, error) {
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
@@ -187,6 +186,7 @@ func (s *SkillPackageService) validateZipAndCollect(data []byte) (*parsedSkillMe
 	return meta, collected, nil
 }
 
+// extractZip 仅提取通过 validateZipAndCollect 白名单筛选后的条目，避免路径逃逸。
 func (s *SkillPackageService) extractZip(data []byte, targetRoot string, files map[string]*zip.File) error {
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {

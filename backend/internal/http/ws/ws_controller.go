@@ -66,6 +66,7 @@ func newApprovalBroker() *approvalBroker {
 func (b *approvalBroker) Register(toolCallID string) chan services.ApprovalResponse {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	// 使用容量 1 的缓冲通道，确保回调线程不会因等待方尚未 select 而阻塞。
 	ch := make(chan services.ApprovalResponse, 1)
 	b.channels[toolCallID] = ch
 	return ch
@@ -77,7 +78,9 @@ func (b *approvalBroker) Resolve(toolCallID string, resp services.ApprovalRespon
 	if ch, ok := b.channels[toolCallID]; ok {
 		select {
 		case ch <- resp:
+			// 成功投递后立即删除，保证每个 toolCallID 只消费一次审批结果。
 		default:
+			// 等待方已取消或通道已满时直接丢弃，避免回调链路卡住。
 		}
 		delete(b.channels, toolCallID)
 	}
@@ -86,6 +89,7 @@ func (b *approvalBroker) Resolve(toolCallID string, resp services.ApprovalRespon
 func (b *approvalBroker) Remove(toolCallID string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	// 超时/取消路径调用 Remove，确保悬挂审批不会泄漏在 map 中。
 	delete(b.channels, toolCallID)
 }
 

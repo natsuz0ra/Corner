@@ -226,21 +226,13 @@ func (a *AgentService) RunAgentLoop(
 		for _, tc := range result.ToolCalls {
 			invocation, err := resolveToolInvocation(tc, mcpToolMeta)
 			if err != nil {
-				messages = append(messages, ChatMessage{
-					Role:       "tool",
-					ToolCallID: tc.ID,
-					Content:    fmt.Sprintf("failed to parse tool invocation: %s", err.Error()),
-				})
+				messages = appendToolMessage(messages, tc.ID, fmt.Sprintf("failed to parse tool invocation: %s", err.Error()))
 				continue
 			}
 
 			params, err := parseToolCallArgs(tc.Arguments)
 			if err != nil {
-				messages = append(messages, ChatMessage{
-					Role:       "tool",
-					ToolCallID: tc.ID,
-					Content:    fmt.Sprintf("failed to parse arguments: %s", err.Error()),
-				})
+				messages = appendToolMessage(messages, tc.ID, fmt.Sprintf("failed to parse arguments: %s", err.Error()))
 				continue
 			}
 
@@ -248,18 +240,10 @@ func (a *AgentService) RunAgentLoop(
 				skillName := strings.TrimSpace(params["name"])
 				content, _, activateErr := a.skillRuntime.ActivateSkill(skillName, activatedSkills)
 				if activateErr != nil {
-					messages = append(messages, ChatMessage{
-						Role:       "tool",
-						ToolCallID: tc.ID,
-						Content:    fmt.Sprintf("failed to activate skill: %s", activateErr.Error()),
-					})
+					messages = appendToolMessage(messages, tc.ID, fmt.Sprintf("failed to activate skill: %s", activateErr.Error()))
 					continue
 				}
-				messages = append(messages, ChatMessage{
-					Role:       "tool",
-					ToolCallID: tc.ID,
-					Content:    content,
-				})
+				messages = appendToolMessage(messages, tc.ID, content)
 				continue
 			}
 
@@ -276,11 +260,7 @@ func (a *AgentService) RunAgentLoop(
 
 			approved, rejectionMessage := waitApprovalIfNeeded(ctx, callbacks, tc, invocation, params, preamble)
 			if !approved {
-				messages = append(messages, ChatMessage{
-					Role:       "tool",
-					ToolCallID: tc.ID,
-					Content:    rejectionMessage,
-				})
+				messages = appendToolMessage(messages, tc.ID, rejectionMessage)
 				continue
 			}
 
@@ -297,11 +277,7 @@ func (a *AgentService) RunAgentLoop(
 				Error:            execResult.Error,
 			})
 
-			messages = append(messages, ChatMessage{
-				Role:       "tool",
-				ToolCallID: tc.ID,
-				Content:    buildToolResultContent(execResult),
-			})
+			messages = appendToolMessage(messages, tc.ID, buildToolResultContent(execResult))
 		}
 	}
 
@@ -317,6 +293,8 @@ func parseToolCallName(funcName string) (toolName, command string, err error) {
 	return parts[0], parts[1], nil
 }
 
+// parseToolCallArgs 将工具参数统一转换为 string map，供内建工具执行层使用。
+// 非字符串值会转成紧凑 JSON 文本，保证参数信息不丢失。
 func parseToolCallArgs(arguments string) (map[string]string, error) {
 	if strings.TrimSpace(arguments) == "" {
 		return map[string]string{}, nil
@@ -382,4 +360,12 @@ func requiresToolApproval(toolName string, isMCP bool) bool {
 		return false
 	}
 	return toolName == consts.ExecToolName
+}
+
+func appendToolMessage(messages []ChatMessage, toolCallID string, content string) []ChatMessage {
+	return append(messages, ChatMessage{
+		Role:       "tool",
+		ToolCallID: toolCallID,
+		Content:    content,
+	})
 }
