@@ -49,15 +49,3 @@ func All() []Tool {
 	}
 	return result
 }
-
-// AllMap 返回工具名称到工具实例的映射
-func AllMap() map[string]Tool {
-	globalRegistry.mu.RLock()
-	defer globalRegistry.mu.RUnlock()
-
-	result := make(map[string]Tool, len(globalRegistry.tools))
-	for name, t := range globalRegistry.tools {
-		result[name] = t
-	}
-	return result
-}

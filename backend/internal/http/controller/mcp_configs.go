@@ -2,7 +2,6 @@ package controller
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"slimebot/backend/internal/services"
@@ -28,9 +27,8 @@ func (h *HTTPController) CreateMCPConfig(c *gin.Context) {
 	if !bindJSONOrBadRequest(c, &req, "Invalid request payload format.") {
 		return
 	}
-	req.Name = strings.TrimSpace(req.Name)
-	req.Config = strings.TrimSpace(req.Config)
-	if req.Name == "" || req.Config == "" {
+	trimSpaceFields(&req.Name, &req.Config)
+	if !allFieldsPresent(req.Name, req.Config) {
 		jsonError(c, http.StatusBadRequest, "Both name and config are required.")
 		return
 	}
@@ -61,9 +59,8 @@ func (h *HTTPController) UpdateMCPConfig(c *gin.Context) {
 	if !bindJSONOrBadRequest(c, &req, "Invalid request payload format.") {
 		return
 	}
-	req.Name = strings.TrimSpace(req.Name)
-	req.Config = strings.TrimSpace(req.Config)
-	if req.Name == "" || req.Config == "" {
+	trimSpaceFields(&req.Name, &req.Config)
+	if !allFieldsPresent(req.Name, req.Config) {
 		jsonError(c, http.StatusBadRequest, "Both name and config are required.")
 		return
 	}

@@ -2,7 +2,6 @@ package telegram
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"strconv"
 	"strings"
@@ -12,10 +11,6 @@ import (
 	"slimebot/backend/internal/platforms"
 	"slimebot/backend/internal/repositories"
 )
-
-type workerAuthConfig struct {
-	BotToken string `json:"botToken"`
-}
 
 type Worker struct {
 	repo            *repositories.Repository
@@ -73,7 +68,7 @@ func (w *Worker) run(ctx context.Context) {
 			continue
 		}
 
-		token := parseTelegramToken(cfg.AuthConfigJSON)
+		token := platforms.ParseTelegramBotToken(cfg.AuthConfigJSON)
 		if token == "" {
 			time.Sleep(consts.TelegramIdleWaitInterval)
 			continue
@@ -86,30 +81,31 @@ func (w *Worker) run(ctx context.Context) {
 			continue
 		}
 
-		for _, item := range updates {
-			if item.UpdateID >= updateOffset {
-				updateOffset = item.UpdateID + 1
-			}
-			if item.CallbackQuery != nil {
-				w.handleApprovalCallback(item.CallbackQuery, adapter)
-				continue
-			}
-			if item.Message == nil {
-				continue
-			}
-			text := strings.TrimSpace(item.Message.Text)
-			if text == "" {
-				continue
-			}
-			chatID := strconv.FormatInt(item.Message.Chat.ID, 10)
-			inbound := platforms.InboundMessage{
-				Platform: consts.TelegramPlatformName,
-				ChatID:   chatID,
-				Text:     text,
-			}
-			w.dispatchInboundAsync(ctx, inbound, adapter)
-		}
+		updateOffset = w.processUpdates(ctx, adapter, updates, updateOffset)
 	}
+}
+
+// processUpdates 逐条处理 Telegram 更新并推进 offset。
+func (w *Worker) processUpdates(ctx context.Context, adapter *Adapter, updates []update, updateOffset int64) int64 {
+	nextOffset := updateOffset
+	for _, item := range updates {
+		if item.UpdateID >= nextOffset {
+			nextOffset = item.UpdateID + 1
+		}
+		if item.CallbackQuery != nil {
+			w.handleApprovalCallback(item.CallbackQuery, adapter)
+			continue
+		}
+		if item.Message == nil {
+			continue
+		}
+		w.dispatchInboundAsync(ctx, platforms.InboundMessage{
+			Platform: consts.TelegramPlatformName,
+			ChatID:   strconv.FormatInt(item.Message.Chat.ID, 10),
+			Text:     strings.TrimSpace(item.Message.Text),
+		}, adapter)
+	}
+	return nextOffset
 }
 
 // dispatchInboundAsync 异步执行文本消息分发，避免审批等待阻塞轮询主循环。
@@ -118,6 +114,9 @@ func (w *Worker) dispatchInboundAsync(ctx context.Context, inbound platforms.Inb
 		return
 	}
 	chatID := strings.TrimSpace(inbound.ChatID)
+	if strings.TrimSpace(inbound.Text) == "" {
+		return
+	}
 	select {
 	case w.dispatchSlots <- struct{}{}:
 	default:
@@ -168,18 +167,4 @@ func (w *Worker) handleApprovalCallback(query *callbackQuery, adapter *Adapter) 
 	}
 	log.Printf("telegram_worker_callback_rejected chat_id=%s callback_id=%s", chatID, strings.TrimSpace(query.ID))
 	_ = adapter.AnswerCallbackQuery(query.ID, "Execution has been rejected.")
-}
-
-// parseTelegramToken 从平台 authConfig JSON 中解析 botToken；
-// 解析失败时返回空串，由上层按“未配置”路径处理。
-func parseTelegramToken(raw string) string {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return ""
-	}
-	var cfg workerAuthConfig
-	if err := json.Unmarshal([]byte(trimmed), &cfg); err != nil {
-		return ""
-	}
-	return strings.TrimSpace(cfg.BotToken)
 }

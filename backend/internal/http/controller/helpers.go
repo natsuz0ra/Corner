@@ -2,6 +2,7 @@ package controller
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,6 +25,30 @@ func bindJSONOrBadRequest(c *gin.Context, req any, message string) bool {
 	if err := c.ShouldBindJSON(req); err != nil {
 		jsonError(c, http.StatusBadRequest, message)
 		return false
+	}
+	return true
+}
+
+// trimSpaceFields 原地清洗字符串字段，确保后续校验/存储使用一致输入。
+func trimSpaceFields(fields ...*string) {
+	for _, field := range fields {
+		if field == nil {
+			continue
+		}
+		*field = strings.TrimSpace(*field)
+	}
+}
+
+// lowerTrim 统一执行 lower + trim 规范化。
+func lowerTrim(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func allFieldsPresent(values ...string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) == "" {
+			return false
+		}
 	}
 	return true
 }

@@ -1,41 +1,12 @@
 package controller
 
 import (
-	"encoding/json"
-	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
-	"slimebot/backend/internal/consts"
+	"slimebot/backend/internal/platforms"
 	"slimebot/backend/internal/services"
 )
-
-type telegramAuthConfig struct {
-	BotToken string `json:"botToken"`
-}
-
-// validatePlatformAuthConfig 校验平台鉴权 JSON，避免写入不可用配置。
-func validatePlatformAuthConfig(platform string, raw string) error {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return fmt.Errorf("auth config is empty")
-	}
-	var asObject map[string]any
-	if err := json.Unmarshal([]byte(trimmed), &asObject); err != nil {
-		return err
-	}
-	if strings.EqualFold(platform, consts.TelegramPlatformName) {
-		var cfg telegramAuthConfig
-		if err := json.Unmarshal([]byte(trimmed), &cfg); err != nil {
-			return err
-		}
-		if strings.TrimSpace(cfg.BotToken) == "" {
-			return fmt.Errorf("telegram botToken is required")
-		}
-	}
-	return nil
-}
 
 // ListMessagePlatformConfigs 列出全部消息平台配置。
 func (h *HTTPController) ListMessagePlatformConfigs(c *gin.Context) {
@@ -58,14 +29,13 @@ func (h *HTTPController) CreateMessagePlatformConfig(c *gin.Context) {
 	if !bindJSONOrBadRequest(c, &req, "Invalid request payload format.") {
 		return
 	}
-	req.Platform = strings.ToLower(strings.TrimSpace(req.Platform))
-	req.DisplayName = strings.TrimSpace(req.DisplayName)
-	req.AuthConfigJSON = strings.TrimSpace(req.AuthConfigJSON)
-	if req.Platform == "" || req.DisplayName == "" || req.AuthConfigJSON == "" {
+	req.Platform = lowerTrim(req.Platform)
+	trimSpaceFields(&req.DisplayName, &req.AuthConfigJSON)
+	if !allFieldsPresent(req.Platform, req.DisplayName, req.AuthConfigJSON) {
 		jsonError(c, http.StatusBadRequest, "platform, displayName, and authConfigJson are required.")
 		return
 	}
-	if err := validatePlatformAuthConfig(req.Platform, req.AuthConfigJSON); err != nil {
+	if err := platforms.ValidateAuthConfig(req.Platform, req.AuthConfigJSON); err != nil {
 		jsonError(c, http.StatusBadRequest, "authConfigJson is invalid or missing required fields.")
 		return
 	}
@@ -94,14 +64,13 @@ func (h *HTTPController) UpdateMessagePlatformConfig(c *gin.Context) {
 	if !bindJSONOrBadRequest(c, &req, "Invalid request payload format.") {
 		return
 	}
-	req.Platform = strings.ToLower(strings.TrimSpace(req.Platform))
-	req.DisplayName = strings.TrimSpace(req.DisplayName)
-	req.AuthConfigJSON = strings.TrimSpace(req.AuthConfigJSON)
-	if req.Platform == "" || req.DisplayName == "" || req.AuthConfigJSON == "" {
+	req.Platform = lowerTrim(req.Platform)
+	trimSpaceFields(&req.DisplayName, &req.AuthConfigJSON)
+	if !allFieldsPresent(req.Platform, req.DisplayName, req.AuthConfigJSON) {
 		jsonError(c, http.StatusBadRequest, "platform, displayName, and authConfigJson are required.")
 		return
 	}
-	if err := validatePlatformAuthConfig(req.Platform, req.AuthConfigJSON); err != nil {
+	if err := platforms.ValidateAuthConfig(req.Platform, req.AuthConfigJSON); err != nil {
 		jsonError(c, http.StatusBadRequest, "authConfigJson is invalid or missing required fields.")
 		return
 	}
