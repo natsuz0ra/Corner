@@ -32,6 +32,13 @@ type UploadedAttachment struct {
 	Path      string
 }
 
+// LocalAttachmentFile 描述由服务内部直接提供的附件内容（非 HTTP multipart 上传）。
+type LocalAttachmentFile struct {
+	Name     string
+	MimeType string
+	Data     []byte
+}
+
 // ToMessageAttachment 将运行时上传对象转换为可持久化的附件元信息。
 func (a UploadedAttachment) ToMessageAttachment() models.MessageAttachment {
 	return models.MessageAttachment{
@@ -176,6 +183,67 @@ func (s *ChatUploadService) SaveFiles(sessionID string, files []*multipart.FileH
 	}
 
 	// 统一注册到内存索引，后续由 Consume 一次性取走。
+	s.mu.Lock()
+	for _, item := range saved {
+		s.items[item.ID] = item
+	}
+	s.mu.Unlock()
+	return saved, nil
+}
+
+// RegisterLocalFiles 将内存中的文件内容注册为可消费附件，适用于平台侧下载后桥接。
+func (s *ChatUploadService) RegisterLocalFiles(sessionID string, files []LocalAttachmentFile) ([]UploadedAttachment, error) {
+	if s == nil {
+		return nil, fmt.Errorf("chat upload service is not initialized")
+	}
+	if strings.TrimSpace(sessionID) == "" {
+		return nil, fmt.Errorf("session id is required")
+	}
+	if len(files) == 0 {
+		return []UploadedAttachment{}, nil
+	}
+	if len(files) > maxChatUploadFiles {
+		return nil, fmt.Errorf("at most %d files can be uploaded", maxChatUploadFiles)
+	}
+
+	requestDir := filepath.Join(s.root, sessionID, time.Now().UTC().Format("20060102"), uuid.NewString())
+	if err := os.MkdirAll(requestDir, os.ModePerm); err != nil {
+		return nil, fmt.Errorf("failed to create upload directory: %w", err)
+	}
+
+	saved := make([]UploadedAttachment, 0, len(files))
+	for _, input := range files {
+		name := normalizeAttachmentName(input.Name)
+		if len(input.Data) == 0 {
+			return nil, fmt.Errorf("file %q is empty", name)
+		}
+		if int64(len(input.Data)) > maxChatUploadBytes {
+			return nil, fmt.Errorf("file %q exceeds 10MB size limit", name)
+		}
+
+		attachmentID := uuid.NewString()
+		ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(name)), ".")
+		dstPath := filepath.Join(requestDir, attachmentID+"_"+name)
+		if err := os.WriteFile(dstPath, input.Data, 0o600); err != nil {
+			return nil, fmt.Errorf("failed to save file %q: %w", name, err)
+		}
+
+		mimeType := detectStoredFileMime(dstPath, input.MimeType, ext)
+		category := classifyAttachmentCategory(mimeType, ext)
+		item := UploadedAttachment{
+			ID:        attachmentID,
+			SessionID: sessionID,
+			Name:      name,
+			Ext:       strings.ToUpper(ext),
+			SizeBytes: int64(len(input.Data)),
+			MimeType:  mimeType,
+			Category:  category,
+			IconType:  attachmentIconType(ext, mimeType),
+			Path:      dstPath,
+		}
+		saved = append(saved, item)
+	}
+
 	s.mu.Lock()
 	for _, item := range saved {
 		s.items[item.ID] = item

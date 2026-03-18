@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -52,5 +53,49 @@ func TestChatUploadService_ConsumeSessionMismatch(t *testing.T) {
 	_, err := svc.Consume("s2", []string{"att_2"})
 	if err == nil {
 		t.Fatal("expected session mismatch error")
+	}
+}
+
+func TestChatUploadService_RegisterLocalFiles(t *testing.T) {
+	svc := NewChatUploadService(t.TempDir())
+	items, err := svc.RegisterLocalFiles("s1", []LocalAttachmentFile{
+		{
+			Name:     "note.txt",
+			MimeType: "text/plain",
+			Data:     []byte("hello"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("register local files failed: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if items[0].ID == "" {
+		t.Fatal("expected generated attachment id")
+	}
+	if items[0].Category == "" {
+		t.Fatal("expected category to be populated")
+	}
+	consumed, err := svc.Consume("s1", []string{items[0].ID})
+	if err != nil {
+		t.Fatalf("consume registered local file failed: %v", err)
+	}
+	if len(consumed) != 1 {
+		t.Fatalf("expected 1 consumed item, got %d", len(consumed))
+	}
+}
+
+func TestChatUploadService_RegisterLocalFiles_SizeLimit(t *testing.T) {
+	svc := NewChatUploadService(t.TempDir())
+	_, err := svc.RegisterLocalFiles("s1", []LocalAttachmentFile{
+		{
+			Name:     "large.bin",
+			MimeType: "application/octet-stream",
+			Data:     bytes.Repeat([]byte("a"), maxChatUploadBytes+1),
+		},
+	})
+	if err == nil {
+		t.Fatal("expected size limit error")
 	}
 }

@@ -74,7 +74,7 @@ func main() {
 	chatService.SetUploadService(chatUploadService)
 	approvalBroker := telegram.NewApprovalBroker()
 	platformDispatcher := platforms.NewDispatcher(chatService, approvalBroker)
-	telegramWorker := telegram.NewWorker(repo, platformDispatcher)
+	telegramWorker := telegram.NewWorker(repo, platformDispatcher, chatUploadService)
 	appCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	telegramWorker.Start(appCtx)
