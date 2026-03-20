@@ -56,6 +56,7 @@ func (r *Repository) UpsertSessionMemory(input domain.SessionMemoryUpsertInput) 
 	return err
 }
 
+// UpsertSessionMemoryIfNewer 仅在消息计数不倒退时更新记忆，防止旧摘要覆盖新摘要。
 func (r *Repository) UpsertSessionMemoryIfNewer(input domain.SessionMemoryUpsertInput) (bool, error) {
 	now := time.Now()
 	sessionID := strings.TrimSpace(input.SessionID)
@@ -119,6 +120,7 @@ func (r *Repository) UpsertSessionMemoryIfNewer(input domain.SessionMemoryUpsert
 	return updated, nil
 }
 
+// SearchMemoriesByKeywords 基于关键词匹配和时间衰减评分返回 TopN 记忆。
 func (r *Repository) SearchMemoriesByKeywords(keywords []string, limit int, excludeSessionID string) ([]domain.SessionMemorySearchHit, error) {
 	normalizedKeywords := normalizeKeywords(keywords)
 	if len(normalizedKeywords) == 0 || limit <= 0 {
@@ -182,6 +184,7 @@ func isRecordNotFound(err error) bool {
 	return errors.Is(err, gorm.ErrRecordNotFound)
 }
 
+// normalizeKeywords 归一化、去空和去重关键词。
 func normalizeKeywords(keywords []string) []string {
 	seen := make(map[string]struct{}, len(keywords))
 	result := make([]string, 0, len(keywords))
@@ -199,6 +202,7 @@ func normalizeKeywords(keywords []string) []string {
 	return result
 }
 
+// parseStoredKeywords 优先解析 JSON 关键词，失败时回退到文本字段。
 func parseStoredKeywords(memory domain.SessionMemory) []string {
 	if strings.TrimSpace(memory.KeywordsJSON) != "" {
 		var parsed []string
@@ -212,6 +216,7 @@ func parseStoredKeywords(memory domain.SessionMemory) []string {
 	return normalizeKeywords(strings.Fields(memory.KeywordsText))
 }
 
+// intersectKeywords 计算查询词与候选词集合的交集。
 func intersectKeywords(queries []string, candidate []string) []string {
 	if len(queries) == 0 || len(candidate) == 0 {
 		return []string{}
@@ -230,6 +235,7 @@ func intersectKeywords(queries []string, candidate []string) []string {
 	return result
 }
 
+// scoreMemoryHit 按匹配数量与更新时间计算检索排序分值。
 func scoreMemoryHit(matchedCount int, updatedAt time.Time) float64 {
 	score := float64(matchedCount) * 100
 	ageHours := time.Since(updatedAt).Hours()

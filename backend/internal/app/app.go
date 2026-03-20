@@ -34,6 +34,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// App 聚合进程内核心运行组件。
 type App struct {
 	httpServer     *http.Server
 	telegramWorker *telegram.Worker
@@ -59,6 +60,7 @@ func RunFromEnv() error {
 	return app.Run(appCtx)
 }
 
+// New 按配置组装仓储、服务、控制器与路由，返回可运行应用实例。
 func New(cfg config.Config) (*App, error) {
 	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), os.ModePerm); err != nil {
 		return nil, err
@@ -132,11 +134,13 @@ func New(cfg config.Config) (*App, error) {
 	}, nil
 }
 
+// Run 启动 Telegram worker 并托管 HTTP 服务生命周期。
 func (a *App) Run(ctx context.Context) error {
 	a.telegramWorker.Start(ctx)
 	return runServerWithGracefulShutdown(ctx, a.httpServer)
 }
 
+// ValidateConfig 校验启动所需的关键配置项。
 func ValidateConfig(cfg config.Config) error {
 	if strings.TrimSpace(cfg.JWTSecret) == "" {
 		return errors.New("JWT_SECRET is not configured")
@@ -184,6 +188,7 @@ func configureMemoryVectorization(cfg config.Config, memoryService *memsvc.Memor
 	)
 }
 
+// runServerWithGracefulShutdown 监听退出信号并在超时窗口内优雅关闭 HTTP 服务。
 func runServerWithGracefulShutdown(ctx context.Context, server *http.Server) error {
 	errCh := make(chan error, 1)
 	go func() {

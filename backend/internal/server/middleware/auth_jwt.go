@@ -10,6 +10,7 @@ import (
 	"slimebot/backend/internal/constants"
 )
 
+// RequireJWT 校验请求中的 JWT，并把用户名写入请求上下文。
 func RequireJWT(tokenManager *auth.TokenManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36,6 +37,7 @@ func RequireJWT(tokenManager *auth.TokenManager) func(http.Handler) http.Handler
 	}
 }
 
+// extractToken 优先从 Authorization: Bearer 读取，失败时回退 query token。
 func extractToken(r *http.Request) string {
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 	if authHeader != "" {
