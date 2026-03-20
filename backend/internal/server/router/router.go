@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// New 构建 HTTP 路由树并注册 REST 与 WebSocket 入口。
 func New(cfg config.Config, tokenManager *auth.TokenManager, httpController *controller.HTTPController, wsController *ws.Controller) http.Handler {
 	r := chi.NewRouter()
 	r.Use(cors(cfg.Frontend))
@@ -68,12 +69,14 @@ func New(cfg config.Config, tokenManager *auth.TokenManager, httpController *con
 	return r
 }
 
+// adapt 将控制器的 WebContext 风格处理器适配为 net/http Handler。
 func adapt(fn func(controller.WebContext)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		fn(controller.NewChiContext(w, r))
 	}
 }
 
+// cors 返回基础跨域中间件，统一处理预检请求。
 func cors(allowOrigin string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

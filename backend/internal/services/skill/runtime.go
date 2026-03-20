@@ -11,11 +11,13 @@ import (
 	"slimebot/backend/internal/services/openai"
 )
 
+// SkillRuntimeService 负责技能目录注入、激活与运行期删除。
 type SkillRuntimeService struct {
 	store         domain.SkillStore
 	skillsRootAbs string
 }
 
+// NewSkillRuntimeService 创建技能运行时服务。
 func NewSkillRuntimeService(store domain.SkillStore, skillsRoot string) *SkillRuntimeService {
 	absRoot, _ := filepath.Abs(strings.TrimSpace(skillsRoot))
 	return &SkillRuntimeService{
@@ -24,10 +26,12 @@ func NewSkillRuntimeService(store domain.SkillStore, skillsRoot string) *SkillRu
 	}
 }
 
+// ListSkills 返回当前已安装技能列表。
 func (s *SkillRuntimeService) ListSkills() ([]domain.Skill, error) {
 	return s.store.ListSkills()
 }
 
+// BuildCatalogPrompt 生成可注入模型上下文的技能目录描述。
 func (s *SkillRuntimeService) BuildCatalogPrompt() (string, []domain.Skill, error) {
 	items, err := s.store.ListSkills()
 	if err != nil {
@@ -53,6 +57,7 @@ func (s *SkillRuntimeService) BuildCatalogPrompt() (string, []domain.Skill, erro
 	return b.String(), items, nil
 }
 
+// BuildActivateSkillToolDef 构造 activate_skill 工具定义，供模型触发技能加载。
 func (s *SkillRuntimeService) BuildActivateSkillToolDef(skills []domain.Skill) *openai.ToolDef {
 	if len(skills) == 0 {
 		return nil
@@ -79,6 +84,7 @@ func (s *SkillRuntimeService) BuildActivateSkillToolDef(skills []domain.Skill) *
 	}
 }
 
+// ActivateSkill 按名称加载 SKILL.md 内容并标记本轮会话已激活。
 func (s *SkillRuntimeService) ActivateSkill(name string, activated map[string]struct{}) (string, bool, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -135,6 +141,7 @@ func (s *SkillRuntimeService) ActivateSkill(name string, activated map[string]st
 	return b.String(), false, nil
 }
 
+// DeleteSkillByID 删除技能目录并移除数据库记录。
 func (s *SkillRuntimeService) DeleteSkillByID(id string) error {
 	item, err := s.store.GetSkillByID(id)
 	if err != nil {
@@ -159,6 +166,7 @@ func (s *SkillRuntimeService) DeleteSkillByID(id string) error {
 	return nil
 }
 
+// resolveSkillDir 根据存储路径解析技能目录并校验越界风险。
 func (s *SkillRuntimeService) resolveSkillDir(item domain.Skill) (string, error) {
 	base := filepath.Clean(s.skillsRootAbs)
 	candidate := filepath.Join(base, item.Name)
@@ -175,6 +183,7 @@ func (s *SkillRuntimeService) resolveSkillDir(item domain.Skill) (string, error)
 	return candidate, nil
 }
 
+// stripFrontmatter 解析并移除 SKILL.md 的 YAML frontmatter。
 func stripFrontmatter(content string) (string, error) {
 	text := strings.TrimPrefix(content, "\uFEFF")
 	if !strings.HasPrefix(text, "---") {
@@ -191,6 +200,7 @@ func stripFrontmatter(content string) (string, error) {
 	return body, nil
 }
 
+// escapeXML 对技能内容做 XML 转义，避免嵌入提示词时破坏结构。
 func escapeXML(s string) string {
 	replacer := strings.NewReplacer(
 		"&", "&amp;",

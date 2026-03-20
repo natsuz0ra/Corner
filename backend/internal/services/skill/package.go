@@ -18,6 +18,7 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
+// SkillPackageService 负责技能 zip 的校验、解压与安装入库。
 type SkillPackageService struct {
 	store         domain.SkillStore
 	skillsRoot    string
@@ -34,6 +35,7 @@ type skillFrontmatter struct {
 	Description string `yaml:"description"`
 }
 
+// NewSkillPackageService 创建技能包安装服务。
 func NewSkillPackageService(store domain.SkillStore, skillsRoot string) *SkillPackageService {
 	absRoot, _ := filepath.Abs(strings.TrimSpace(skillsRoot))
 	return &SkillPackageService{
@@ -241,6 +243,7 @@ func (s *SkillPackageService) extractZip(data []byte, targetRoot string, files m
 	return nil
 }
 
+// sanitizeZipPath 清洗 zip 内部路径并拒绝绝对路径、盘符和越界路径。
 func sanitizeZipPath(raw string) (string, error) {
 	normalized := strings.ReplaceAll(strings.TrimSpace(raw), "\\", "/")
 	normalized = strings.TrimPrefix(normalized, "./")
@@ -264,6 +267,7 @@ func sanitizeZipPath(raw string) (string, error) {
 	return cleaned, nil
 }
 
+// readSkillMetadata 从 SKILL.md 提取 frontmatter 元数据并做目录名一致性校验。
 func readSkillMetadata(file *zip.File, expectedName string) (*parsedSkillMetadata, error) {
 	rc, err := file.Open()
 	if err != nil {
@@ -285,6 +289,7 @@ func readSkillMetadata(file *zip.File, expectedName string) (*parsedSkillMetadat
 	return &parsedSkillMetadata{Name: name, Description: description}, nil
 }
 
+// parseSkillFrontmatter 解析 SKILL.md frontmatter，返回名称和描述。
 func parseSkillFrontmatter(content string) (string, string, error) {
 	text := strings.TrimPrefix(content, "\uFEFF")
 	if !strings.HasPrefix(text, "---") {
@@ -318,6 +323,7 @@ func parseSkillFrontmatter(content string) (string, string, error) {
 	return name, description, nil
 }
 
+// isValidSkillName 校验技能名格式：小写字母/数字/连字符。
 func isValidSkillName(name string) bool {
 	if len(name) == 0 || len(name) > 64 {
 		return false
@@ -334,6 +340,7 @@ func isValidSkillName(name string) bool {
 	return true
 }
 
+// isWithinRoot 判断目标路径是否仍在指定根目录内。
 func isWithinRoot(root, target string) bool {
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
@@ -350,6 +357,7 @@ func isWithinRoot(root, target string) bool {
 	return rel == "." || (!strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != "..")
 }
 
+// listSkillResourceFiles 列出技能目录资源文件，供激活时提示模型可用文件。
 func listSkillResourceFiles(skillDir string) ([]string, error) {
 	results := make([]string, 0, 64)
 	err := filepath.WalkDir(skillDir, func(p string, d fs.DirEntry, walkErr error) error {
