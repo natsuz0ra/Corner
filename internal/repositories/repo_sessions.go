@@ -3,15 +3,25 @@ package repositories
 import (
 	"errors"
 	"slimebot/internal/domain"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-func (r *Repository) ListSessions(limit int, offset int) ([]domain.Session, error) {
+func escapeSQLiteLikePattern(s string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(s)
+}
+
+func (r *Repository) ListSessions(limit int, offset int, query string) ([]domain.Session, error) {
 	var sessions []domain.Session
 	q := r.db.Order("updated_at desc")
+	if trimmed := strings.TrimSpace(query); trimmed != "" {
+		like := "%" + escapeSQLiteLikePattern(trimmed) + "%"
+		q = q.Where("name LIKE ? ESCAPE '\\'", like)
+	}
 	if limit > 0 {
 		q = q.Limit(limit).Offset(offset)
 	}

@@ -27,6 +27,7 @@
 
 .messages-section {
   background: var(--bg-main);
+  overflow-anchor: none;
 }
 
 .composer-footer {

@@ -26,6 +26,7 @@ type Message struct {
 	// Attachments 为运行时反序列化字段，对外返回给前端渲染附件卡片。
 	Attachments []MessageAttachment `gorm:"-" json:"attachments"`
 	CreatedAt   time.Time           `gorm:"index;index:idx_messages_session_created,priority:2" json:"createdAt"`
+	Seq         int64               `gorm:"not null;default:0;index:idx_messages_session_created,priority:3" json:"seq"`
 }
 
 // MessageAttachment 描述消息中的附件元信息（不包含源文件内容）。

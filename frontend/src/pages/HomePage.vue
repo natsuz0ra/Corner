@@ -136,7 +136,6 @@ provideChatContext({
           :is-dark="isDark"
           :set-sidebar-list-ref="setSidebarListRef"
           @create-session="createSession"
-          @close-sidebar="drawerOpen = false"
           @pick-session="pickSession"
           @toggle-session-menu="toggleSessionMenu"
           @toggle-theme="toggleTheme"
@@ -238,6 +237,7 @@ provideChatContext({
           <ChatMessageList
             :messages="store.messages"
             :show-scroll-to-bottom="showScrollToBottom"
+            :loading-older-history="store.loadingOlderHistory"
             :set-messages-ref="setMessagesRef"
             @scroll-to-bottom="scrollToBottomByButton"
           />
