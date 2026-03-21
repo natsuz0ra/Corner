@@ -112,6 +112,10 @@ func (m *mockQdrantClient) CreateCollection(_ context.Context, _ *qdrant.CreateC
 	return nil
 }
 
+func (m *mockQdrantClient) CreateFieldIndex(_ context.Context, _ *qdrant.CreateFieldIndexCollection) (*qdrant.UpdateResult, error) {
+	return &qdrant.UpdateResult{}, nil
+}
+
 func (m *mockQdrantClient) Upsert(_ context.Context, _ *qdrant.UpsertPoints) (*qdrant.UpdateResult, error) {
 	if m.upsertErr != nil {
 		return nil, m.upsertErr

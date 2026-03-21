@@ -100,6 +100,7 @@ func New(cfg config.Config) (*App, error) {
 	skillRuntimeService := skillsvc.NewSkillRuntimeService(repo, cfg.SkillsRoot)
 	memoryService := memsvc.NewMemoryService(repo, openaiClient)
 	configureMemoryVectorization(cfg, memoryService)
+	memoryService.WarmupTokenizer()
 	chatUploadService := chatsvc.NewChatUploadService(cfg.ChatUploadRoot)
 	chatService := chatsvc.NewChatService(repo, openaiClient, mcpManager, skillRuntimeService, memoryService, cfg.SystemPromptPath)
 	// ??????? chatService?? WS chat ????? attachmentIds?
@@ -180,6 +181,9 @@ func configureMemoryVectorization(cfg config.Config, memoryService *memsvc.Memor
 		ScriptPath:    cfg.EmbeddingScriptPath,
 		Timeout:       time.Duration(cfg.EmbeddingTimeoutMS) * time.Millisecond,
 	})
+	if err := embedding.StartPipe(context.Background()); err != nil {
+		log.Printf("embedding_pipe_start_failed err=%v", err)
+	}
 	memoryService.SetEmbeddingService(embedding)
 
 	vectorStore, err := repositories.NewMemoryVectorRepository(cfg.QdrantURL, cfg.QdrantCollection)

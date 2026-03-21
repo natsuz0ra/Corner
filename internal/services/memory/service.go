@@ -73,6 +73,13 @@ func (m *MemoryService) SetVectorSearchTopK(topK int) {
 	m.vectorTopK = topK
 }
 
+func (m *MemoryService) WarmupTokenizer() {
+	if m == nil {
+		return
+	}
+	m.TokenizeKeywords(" ")
+}
+
 // PersistSessionSummary 统一处理会话摘要持久化：摘要+关键词写库，并在启用时写入向量库。
 func (m *MemoryService) PersistSessionSummary(sessionID string, summary string) (bool, error) {
 	normalizedSessionID := strings.TrimSpace(sessionID)
@@ -160,7 +167,7 @@ Requirements:
 }
 
 // RetrieveMemories 根据关键词检索跨会话记忆，并可排除当前会话。
-func (m *MemoryService) RetrieveMemories(keywords []string, excludeSessionID string, limit int) ([]domain.SessionMemorySearchHit, error) {
+func (m *MemoryService) RetrieveMemories(ctx context.Context, keywords []string, excludeSessionID string, limit int) ([]domain.SessionMemorySearchHit, error) {
 	startAt := time.Now()
 	if limit <= 0 {
 		limit = constants.MemorySearchTopK
@@ -168,7 +175,7 @@ func (m *MemoryService) RetrieveMemories(keywords []string, excludeSessionID str
 	normalizedKeywords := m.TokenizeKeywords(strings.Join(keywords, " "))
 
 	if m.embedding != nil && m.vectorStore != nil {
-		hits, err := m.retrieveMemoriesByVector(normalizedKeywords, excludeSessionID, limit)
+		hits, err := m.retrieveMemoriesByVector(ctx, normalizedKeywords, excludeSessionID, limit)
 		if err != nil {
 			log.Printf("memory_vector_retrieve_fallback reason=vector_error err=%v", err)
 		} else if len(hits) > 0 {
@@ -234,7 +241,7 @@ func (m *MemoryService) FormatCurrentSessionContext(summary string) string {
 }
 
 // QueryForAgent 是 memory 工具入口，返回标准化的检索结果文本。
-func (m *MemoryService) QueryForAgent(sessionID string, query string, topK int) (MemoryQueryResult, error) {
+func (m *MemoryService) QueryForAgent(ctx context.Context, sessionID string, query string, topK int) (MemoryQueryResult, error) {
 	result := MemoryQueryResult{
 		Query: strings.TrimSpace(query),
 	}
@@ -254,7 +261,7 @@ func (m *MemoryService) QueryForAgent(sessionID string, query string, topK int) 
 		return result, nil
 	}
 
-	hits, err := m.RetrieveMemories(result.Keywords, strings.TrimSpace(sessionID), topK)
+	hits, err := m.RetrieveMemories(ctx, result.Keywords, strings.TrimSpace(sessionID), topK)
 	if err != nil {
 		return result, err
 	}
@@ -415,8 +422,8 @@ func (m *MemoryService) chatOnceWithRetry(
 	return "", attempts, time.Since(startAt), lastErr
 }
 
-func (m *MemoryService) retrieveMemoriesByVector(keywords []string, excludeSessionID string, limit int) ([]domain.SessionMemorySearchHit, error) {
-	return retrieveMemoriesByVectorImpl(m, keywords, excludeSessionID, limit)
+func (m *MemoryService) retrieveMemoriesByVector(ctx context.Context, keywords []string, excludeSessionID string, limit int) ([]domain.SessionMemorySearchHit, error) {
+	return retrieveMemoriesByVectorImpl(m, ctx, keywords, excludeSessionID, limit)
 }
 
 func (m *MemoryService) upsertSessionMemoryVector(ctx context.Context, sessionID string, summary string, keywords []string, messageCount int) error {

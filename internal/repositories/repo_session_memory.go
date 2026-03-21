@@ -15,8 +15,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var ErrStaleSessionMemoryWrite = errors.New("stale session memory write")
-
 func (r *Repository) GetSessionMemory(sessionID string) (*domain.SessionMemory, error) {
 	var item domain.SessionMemory
 	err := r.db.Where("session_id = ?", strings.TrimSpace(sessionID)).First(&item).Error

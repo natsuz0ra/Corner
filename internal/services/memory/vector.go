@@ -8,12 +8,12 @@ import (
 	"slimebot/internal/domain"
 )
 
-func retrieveMemoriesByVectorImpl(m *MemoryService, keywords []string, excludeSessionID string, limit int) ([]domain.SessionMemorySearchHit, error) {
+func retrieveMemoriesByVectorImpl(m *MemoryService, ctx context.Context, keywords []string, excludeSessionID string, limit int) ([]domain.SessionMemorySearchHit, error) {
 	if len(keywords) == 0 {
 		return []domain.SessionMemorySearchHit{}, nil
 	}
 	query := strings.Join(keywords, " ")
-	queryVector, err := m.embedding.Embed(context.Background(), query)
+	queryVector, err := m.embedding.Embed(ctx, query)
 	if err != nil {
 		log.Printf(
 			"memory_vector_query_embedding_failed keyword_count=%d exclude_session=%s err=%v",
@@ -34,7 +34,7 @@ func retrieveMemoriesByVectorImpl(m *MemoryService, keywords []string, excludeSe
 	if m.vectorTopK > searchLimit {
 		searchLimit = m.vectorTopK
 	}
-	vectorHits, err := m.vectorStore.SearchSimilarSessionIDs(context.Background(), queryVector, searchLimit, excludeSessionID)
+	vectorHits, err := m.vectorStore.SearchSimilarSessionIDs(ctx, queryVector, searchLimit, excludeSessionID)
 	if err != nil {
 		log.Printf(
 			"memory_vector_query_failed keyword_count=%d search_limit=%d exclude_session=%s err=%v",
