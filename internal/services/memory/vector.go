@@ -2,12 +2,13 @@ package memory
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"strings"
 
 	"slimebot/internal/domain"
 )
 
+// retrieveMemoriesByVectorImpl 关键词拼查询句嵌入 -> Qdrant 相似 session -> 反查 DB 记忆并与查询词算关键词交集。
 func retrieveMemoriesByVectorImpl(m *MemoryService, ctx context.Context, keywords []string, excludeSessionID string, limit int) ([]domain.SessionMemorySearchHit, error) {
 	if len(keywords) == 0 {
 		return []domain.SessionMemorySearchHit{}, nil
@@ -15,19 +16,17 @@ func retrieveMemoriesByVectorImpl(m *MemoryService, ctx context.Context, keyword
 	query := strings.Join(keywords, " ")
 	queryVector, err := m.embedding.Embed(ctx, query)
 	if err != nil {
-		log.Printf(
-			"memory_vector_query_embedding_failed keyword_count=%d exclude_session=%s err=%v",
-			len(keywords),
-			strings.TrimSpace(excludeSessionID),
-			err,
+		slog.Warn("memory_vector_query_embedding_failed",
+			"keyword_count", len(keywords),
+			"exclude_session", strings.TrimSpace(excludeSessionID),
+			"err", err,
 		)
 		return nil, err
 	}
-	log.Printf(
-		"memory_vector_query_embedding_succeeded keyword_count=%d vector_dim=%d exclude_session=%s",
-		len(keywords),
-		len(queryVector),
-		strings.TrimSpace(excludeSessionID),
+	slog.Info("memory_vector_query_embedding_succeeded",
+		"keyword_count", len(keywords),
+		"vector_dim", len(queryVector),
+		"exclude_session", strings.TrimSpace(excludeSessionID),
 	)
 
 	searchLimit := limit
@@ -36,30 +35,27 @@ func retrieveMemoriesByVectorImpl(m *MemoryService, ctx context.Context, keyword
 	}
 	vectorHits, err := m.vectorStore.SearchSimilarSessionIDs(ctx, queryVector, searchLimit, excludeSessionID)
 	if err != nil {
-		log.Printf(
-			"memory_vector_query_failed keyword_count=%d search_limit=%d exclude_session=%s err=%v",
-			len(keywords),
-			searchLimit,
-			strings.TrimSpace(excludeSessionID),
-			err,
+		slog.Warn("memory_vector_query_failed",
+			"keyword_count", len(keywords),
+			"search_limit", searchLimit,
+			"exclude_session", strings.TrimSpace(excludeSessionID),
+			"err", err,
 		)
 		return nil, err
 	}
 	if len(vectorHits) == 0 {
-		log.Printf(
-			"memory_vector_query_no_hit keyword_count=%d search_limit=%d exclude_session=%s",
-			len(keywords),
-			searchLimit,
-			strings.TrimSpace(excludeSessionID),
+		slog.Info("memory_vector_query_no_hit",
+			"keyword_count", len(keywords),
+			"search_limit", searchLimit,
+			"exclude_session", strings.TrimSpace(excludeSessionID),
 		)
 		return []domain.SessionMemorySearchHit{}, nil
 	}
-	log.Printf(
-		"memory_vector_query_hit keyword_count=%d search_limit=%d raw_hit_count=%d exclude_session=%s",
-		len(keywords),
-		searchLimit,
-		len(vectorHits),
-		strings.TrimSpace(excludeSessionID),
+	slog.Info("memory_vector_query_hit",
+		"keyword_count", len(keywords),
+		"search_limit", searchLimit,
+		"raw_hit_count", len(vectorHits),
+		"exclude_session", strings.TrimSpace(excludeSessionID),
 	)
 
 	sessionIDs := make([]string, 0, len(vectorHits))
@@ -91,33 +87,31 @@ func retrieveMemoriesByVectorImpl(m *MemoryService, ctx context.Context, keyword
 			break
 		}
 	}
-	log.Printf(
-		"memory_vector_query_resolved keyword_count=%d resolved_hit_count=%d limit=%d",
-		len(keywords),
-		len(results),
-		limit,
+	slog.Info("memory_vector_query_resolved",
+		"keyword_count", len(keywords),
+		"resolved_hit_count", len(results),
+		"limit", limit,
 	)
 	return results, nil
 }
 
+// upsertSessionMemoryVectorImpl 对摘要做嵌入并 Upsert 到向量库，payload 含 summary 与关键词等。
 func upsertSessionMemoryVectorImpl(m *MemoryService, ctx context.Context, sessionID string, summary string, keywords []string, messageCount int) error {
 	vector, err := m.embedding.Embed(ctx, summary)
 	if err != nil {
-		log.Printf(
-			"memory_vector_generate_failed session=%s summary_len=%d keyword_count=%d err=%v",
-			strings.TrimSpace(sessionID),
-			len(strings.TrimSpace(summary)),
-			len(keywords),
-			err,
+		slog.Warn("memory_vector_generate_failed",
+			"session", strings.TrimSpace(sessionID),
+			"summary_len", len(strings.TrimSpace(summary)),
+			"keyword_count", len(keywords),
+			"err", err,
 		)
 		return err
 	}
-	log.Printf(
-		"memory_vector_generate_succeeded session=%s summary_len=%d keyword_count=%d vector_dim=%d",
-		strings.TrimSpace(sessionID),
-		len(strings.TrimSpace(summary)),
-		len(keywords),
-		len(vector),
+	slog.Info("memory_vector_generate_succeeded",
+		"session", strings.TrimSpace(sessionID),
+		"summary_len", len(strings.TrimSpace(summary)),
+		"keyword_count", len(keywords),
+		"vector_dim", len(vector),
 	)
 	payload := map[string]any{
 		"summary":              summary,
@@ -135,22 +129,21 @@ func upsertSessionMemoryVectorImpl(m *MemoryService, ctx context.Context, sessio
 		Vector:    vector,
 		Payload:   payload,
 	}); err != nil {
-		log.Printf(
-			"memory_vector_upsert_failed session=%s vector_dim=%d err=%v",
-			strings.TrimSpace(sessionID),
-			len(vector),
-			err,
+		slog.Warn("memory_vector_upsert_failed",
+			"session", strings.TrimSpace(sessionID),
+			"vector_dim", len(vector),
+			"err", err,
 		)
 		return err
 	}
-	log.Printf(
-		"memory_vector_upsert_succeeded session=%s vector_dim=%d",
-		strings.TrimSpace(sessionID),
-		len(vector),
+	slog.Info("memory_vector_upsert_succeeded",
+		"session", strings.TrimSpace(sessionID),
+		"vector_dim", len(vector),
 	)
 	return nil
 }
 
+// intersectKeywordSlicesImpl 返回左右关键词列表的交集（用于向量命中后的可解释 matched 字段）。
 func intersectKeywordSlicesImpl(left []string, right []string) []string {
 	if len(left) == 0 || len(right) == 0 {
 		return []string{}

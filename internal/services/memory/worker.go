@@ -2,7 +2,7 @@ package memory
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -10,6 +10,7 @@ import (
 	"slimebot/internal/domain"
 )
 
+// updateSummaryAsyncImpl 异步触发摘要更新：同会话若已在跑则只打 pending，保证串行。
 func updateSummaryAsyncImpl(m *MemoryService, modelConfig ModelRuntimeConfig, sessionID string) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
@@ -25,19 +26,24 @@ func updateSummaryAsyncImpl(m *MemoryService, modelConfig ModelRuntimeConfig, se
 	if state.running {
 		state.pending = true
 		m.workerMu.Unlock()
-		log.Printf("memory_summary_queued session=%s reason=worker_running", sessionID)
+		slog.Info("memory_summary_queued", "session", sessionID, "reason", "worker_running")
 		return
 	}
 	state.running = true
 	m.workerMu.Unlock()
 
-	go runSummaryWorkerImpl(m, modelConfig, sessionID)
+	m.workerWg.Add(1)
+	go func() {
+		defer m.workerWg.Done()
+		runSummaryWorkerImpl(m, modelConfig, sessionID)
+	}()
 }
 
+// runSummaryWorkerImpl 循环执行 runSummaryOnceImpl，直至无 pending 或 workerCtx 取消；结束从 workers 表删除。
 func runSummaryWorkerImpl(m *MemoryService, modelConfig ModelRuntimeConfig, sessionID string) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("memory_summary_panic session=%s recovered=%v", sessionID, recovered)
+			slog.Error("memory_summary_panic", "session", sessionID, "recovered", recovered)
 		}
 		m.workerMu.Lock()
 		delete(m.workers, sessionID)
@@ -45,6 +51,11 @@ func runSummaryWorkerImpl(m *MemoryService, modelConfig ModelRuntimeConfig, sess
 	}()
 
 	for {
+		select {
+		case <-m.workerCtx.Done():
+			return
+		default:
+		}
 		runSummaryOnceImpl(m, modelConfig, sessionID)
 
 		m.workerMu.Lock()
@@ -56,7 +67,7 @@ func runSummaryWorkerImpl(m *MemoryService, modelConfig ModelRuntimeConfig, sess
 		if state.pending {
 			state.pending = false
 			m.workerMu.Unlock()
-			log.Printf("memory_summary_worker_continue session=%s reason=pending_trigger", sessionID)
+			slog.Info("memory_summary_worker_continue", "session", sessionID, "reason", "pending_trigger")
 			continue
 		}
 		m.workerMu.Unlock()
@@ -64,13 +75,17 @@ func runSummaryWorkerImpl(m *MemoryService, modelConfig ModelRuntimeConfig, sess
 	}
 }
 
+// runSummaryOnceImpl 单次摘要：读消息数与近期消息 -> MergeSummary -> Upsert；可选写向量。
 func runSummaryOnceImpl(m *MemoryService, modelConfig ModelRuntimeConfig, sessionID string) {
 	startAt := time.Now()
 
-	ctx := context.Background()
+	ctx := m.workerCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	totalMessages, err := m.store.CountSessionMessages(sessionID)
 	if err != nil {
-		log.Printf("memory_summary_skip session=%s reason=count_failed err=%v", sessionID, err)
+		slog.Warn("memory_summary_skip", "session", sessionID, "reason", "count_failed", "err", err)
 		return
 	}
 	if totalMessages == 0 {
@@ -79,7 +94,7 @@ func runSummaryOnceImpl(m *MemoryService, modelConfig ModelRuntimeConfig, sessio
 
 	recent, err := m.store.ListRecentSessionMessages(sessionID, constants.MemorySummaryRecentMessageSize)
 	if err != nil {
-		log.Printf("memory_summary_skip session=%s reason=recent_failed err=%v", sessionID, err)
+		slog.Warn("memory_summary_skip", "session", sessionID, "reason", "recent_failed", "err", err)
 		return
 	}
 	if len(recent) == 0 {
@@ -88,7 +103,7 @@ func runSummaryOnceImpl(m *MemoryService, modelConfig ModelRuntimeConfig, sessio
 
 	existing, err := m.store.GetSessionMemory(sessionID)
 	if err != nil {
-		log.Printf("memory_summary_skip session=%s reason=get_existing_failed err=%v", sessionID, err)
+		slog.Warn("memory_summary_skip", "session", sessionID, "reason", "get_existing_failed", "err", err)
 		return
 	}
 
@@ -99,14 +114,14 @@ func runSummaryOnceImpl(m *MemoryService, modelConfig ModelRuntimeConfig, sessio
 
 	mergedSummary, attempts, summaryCost, err := m.MergeSummary(ctx, modelConfig, oldSummary, recent)
 	if err != nil {
-		log.Printf(
-			"memory_summary_skip session=%s reason=merge_failed attempts=%d cost_ms=%d timeout_ms=%d err_class=%s err=%v",
-			sessionID,
-			attempts,
-			summaryCost.Milliseconds(),
-			constants.MemorySummaryTimeout.Milliseconds(),
-			classifyMemoryError(err),
-			err,
+		slog.Warn("memory_summary_skip",
+			"session", sessionID,
+			"reason", "merge_failed",
+			"attempts", attempts,
+			"cost_ms", summaryCost.Milliseconds(),
+			"timeout_ms", constants.MemorySummaryTimeout.Milliseconds(),
+			"err_class", classifyMemoryError(err),
+			"err", err,
 		)
 		return
 	}
@@ -118,28 +133,26 @@ func runSummaryOnceImpl(m *MemoryService, modelConfig ModelRuntimeConfig, sessio
 		SourceMessageCount: int(totalMessages),
 	})
 	if err != nil {
-		log.Printf("memory_summary_skip session=%s reason=upsert_failed err=%v", sessionID, err)
+		slog.Warn("memory_summary_skip", "session", sessionID, "reason", "upsert_failed", "err", err)
 		return
 	}
 	if !updated {
-		log.Printf("memory_summary_skip session=%s reason=stale_write source_message_count=%d", sessionID, totalMessages)
+		slog.Info("memory_summary_skip", "session", sessionID, "reason", "stale_write", "source_message_count", totalMessages)
 		return
 	}
 
 	if m.embedding != nil && m.vectorStore != nil {
 		if err := m.upsertSessionMemoryVector(ctx, sessionID, mergedSummary, keywords, int(totalMessages)); err != nil {
-			// 详细失败日志已在 upsertSessionMemoryVector 内记录，这里避免重复打印。
 		}
 	}
 
-	log.Printf(
-		"memory_summary_updated session=%s total_messages=%d keywords=%d attempts=%d summary_cost_ms=%d timeout_ms=%d total_cost_ms=%d",
-		sessionID,
-		totalMessages,
-		len(keywords),
-		attempts,
-		summaryCost.Milliseconds(),
-		constants.MemorySummaryTimeout.Milliseconds(),
-		time.Since(startAt).Milliseconds(),
+	slog.Info("memory_summary_updated",
+		"session", sessionID,
+		"total_messages", totalMessages,
+		"keywords", len(keywords),
+		"attempts", attempts,
+		"summary_cost_ms", summaryCost.Milliseconds(),
+		"timeout_ms", constants.MemorySummaryTimeout.Milliseconds(),
+		"total_cost_ms", time.Since(startAt).Milliseconds(),
 	)
 }

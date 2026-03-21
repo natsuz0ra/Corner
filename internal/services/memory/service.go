@@ -3,7 +3,7 @@ package memory
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +38,10 @@ type MemoryService struct {
 	workerMu sync.Mutex
 	workers  map[string]*memoryWorkerState
 
+	workerCtx    context.Context
+	workerCancel context.CancelFunc
+	workerWg     sync.WaitGroup
+
 	segOnce   sync.Once
 	segmenter gse.Segmenter
 }
@@ -48,14 +52,35 @@ type memoryWorkerState struct {
 }
 
 func NewMemoryService(store domain.MemoryStore, openai *OpenAIClient) *MemoryService {
+	wctx, wcancel := context.WithCancel(context.Background())
 	service := &MemoryService{
-		store:      store,
-		openai:     openai,
-		workers:    make(map[string]*memoryWorkerState),
-		vectorTopK: constants.MemorySearchTopK,
+		store:        store,
+		openai:       openai,
+		workers:      make(map[string]*memoryWorkerState),
+		vectorTopK:   constants.MemorySearchTopK,
+		workerCtx:    wctx,
+		workerCancel: wcancel,
 	}
 	service.chatInvoker = service.chatOnce
 	return service
+}
+
+func (m *MemoryService) Shutdown(ctx context.Context) error {
+	if m == nil {
+		return nil
+	}
+	m.workerCancel()
+	done := make(chan struct{})
+	go func() {
+		m.workerWg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (m *MemoryService) SetEmbeddingService(embedding EmbeddingService) {
@@ -155,13 +180,12 @@ Requirements:
 	if !decision.NeedMemory {
 		decision.Keywords = nil
 	}
-	log.Printf(
-		"memory_decision_done need_memory=%t keywords=%d attempts=%d cost_ms=%d timeout_ms=%d",
-		decision.NeedMemory,
-		len(decision.Keywords),
-		attempts,
-		elapsed.Milliseconds(),
-		constants.MemoryDecisionTimeout.Milliseconds(),
+	slog.Info("memory_decision_done",
+		"need_memory", decision.NeedMemory,
+		"keywords", len(decision.Keywords),
+		"attempts", attempts,
+		"cost_ms", elapsed.Milliseconds(),
+		"timeout_ms", constants.MemoryDecisionTimeout.Milliseconds(),
 	)
 	return decision, nil
 }
@@ -177,20 +201,20 @@ func (m *MemoryService) RetrieveMemories(ctx context.Context, keywords []string,
 	if m.embedding != nil && m.vectorStore != nil {
 		hits, err := m.retrieveMemoriesByVector(ctx, normalizedKeywords, excludeSessionID, limit)
 		if err != nil {
-			log.Printf("memory_vector_retrieve_fallback reason=vector_error err=%v", err)
+			slog.Warn("memory_vector_retrieve_fallback", "reason", "vector_error", "err", err)
 		} else if len(hits) > 0 {
-			log.Printf(
-				"memory_retrieve mode=vector hit_count=%d keyword_count=%d cost_ms=%d",
-				len(hits),
-				len(normalizedKeywords),
-				time.Since(startAt).Milliseconds(),
+			slog.Info("memory_retrieve",
+				"mode", "vector",
+				"hit_count", len(hits),
+				"keyword_count", len(normalizedKeywords),
+				"cost_ms", time.Since(startAt).Milliseconds(),
 			)
 			return hits, nil
 		} else {
-			log.Printf(
-				"memory_vector_retrieve_fallback reason=empty_result keyword_count=%d cost_ms=%d",
-				len(normalizedKeywords),
-				time.Since(startAt).Milliseconds(),
+			slog.Info("memory_vector_retrieve_fallback",
+				"reason", "empty_result",
+				"keyword_count", len(normalizedKeywords),
+				"cost_ms", time.Since(startAt).Milliseconds(),
 			)
 		}
 	}
@@ -198,11 +222,11 @@ func (m *MemoryService) RetrieveMemories(ctx context.Context, keywords []string,
 	if err != nil {
 		return nil, err
 	}
-	log.Printf(
-		"memory_retrieve mode=keyword hit_count=%d keyword_count=%d cost_ms=%d",
-		len(hits),
-		len(normalizedKeywords),
-		time.Since(startAt).Milliseconds(),
+	slog.Info("memory_retrieve",
+		"mode", "keyword",
+		"hit_count", len(hits),
+		"keyword_count", len(normalizedKeywords),
+		"cost_ms", time.Since(startAt).Milliseconds(),
 	)
 	return hits, nil
 }
@@ -400,14 +424,12 @@ func (m *MemoryService) chatOnceWithRetry(
 		lastErr = err
 
 		retryable := attempt < constants.MemoryCallMaxAttempts && isRetryableMemoryError(err) && parent.Err() == nil
-		log.Printf(
-			"%s_attempt_failed attempt=%d timeout_ms=%d retryable=%t err_class=%s err=%v",
-			stage,
-			attempt,
-			timeout.Milliseconds(),
-			retryable,
-			classifyMemoryError(err),
-			err,
+		slog.Warn(stage+"_attempt_failed",
+			"attempt", attempt,
+			"timeout_ms", timeout.Milliseconds(),
+			"retryable", retryable,
+			"err_class", classifyMemoryError(err),
+			"err", err,
 		)
 		if !retryable {
 			break

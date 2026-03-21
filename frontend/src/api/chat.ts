@@ -61,6 +61,11 @@ export interface SessionHistoryQuery {
   after?: string
 }
 
+export interface SessionListQuery {
+  limit?: number
+  offset?: number
+}
+
 export interface ToolCallItem {
   toolCallId: string
   toolName: string
@@ -74,7 +79,8 @@ export interface ToolCallItem {
 }
 
 export const sessionAPI = {
-  list: async () => (await apiClient.get<SessionItem[]>('/api/sessions')).data,
+  list: async (query: SessionListQuery = {}) =>
+    (await apiClient.get<SessionItem[]>('/api/sessions', { params: query })).data,
   create: async (name?: string) => (await apiClient.post<SessionItem>('/api/sessions', { name })).data,
   rename: async (id: string, name: string) => apiClient.patch(`/api/sessions/${id}/name`, { name }),
   remove: async (id: string) => apiClient.delete(`/api/sessions/${id}`),

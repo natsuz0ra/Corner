@@ -16,8 +16,17 @@ func NewSessionService(store domain.SessionStore) *SessionService {
 	return &SessionService{store: store}
 }
 
-func (s *SessionService) List() ([]domain.Session, error) {
-	return s.store.ListSessions()
+func (s *SessionService) List(limit, offset int) ([]domain.Session, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return s.store.ListSessions(limit, offset)
 }
 
 func (s *SessionService) Create(name string) (*domain.Session, error) {

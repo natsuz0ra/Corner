@@ -115,7 +115,56 @@ func (r *Repository) UpsertSessionMemoryIfNewer(input domain.SessionMemoryUpsert
 	if err != nil {
 		return false, err
 	}
+	if updated {
+		if err := r.syncSessionMemoryFTS(sessionID, keywordsText, input.Summary); err != nil {
+			return false, err
+		}
+	}
 	return updated, nil
+}
+
+func ftsMatchPhrase(keyword string) string {
+	k := strings.TrimSpace(keyword)
+	if k == "" {
+		return ""
+	}
+	k = strings.ReplaceAll(k, `"`, `""`)
+	return `"` + k + `"`
+}
+
+func buildFTSMatchQuery(keywords []string) string {
+	parts := make([]string, 0, len(keywords))
+	for _, kw := range keywords {
+		p := ftsMatchPhrase(kw)
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return strings.Join(parts, " OR ")
+}
+
+func (r *Repository) ftsSessionMemoriesTableExists() bool {
+	var n int64
+	_ = r.db.Raw(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='session_memories_fts'`).Scan(&n)
+	return n > 0
+}
+
+func (r *Repository) syncSessionMemoryFTS(sessionID, keywordsText, summary string) error {
+	if !r.ftsSessionMemoriesTableExists() {
+		return nil
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil
+	}
+	body := strings.TrimSpace(strings.TrimSpace(keywordsText) + " " + strings.TrimSpace(summary))
+	if err := r.db.Exec(`DELETE FROM session_memories_fts WHERE session_id = ?`, sessionID).Error; err != nil {
+		return err
+	}
+	if body == "" {
+		return nil
+	}
+	return r.db.Exec(`INSERT INTO session_memories_fts(session_id, body) VALUES (?, ?)`, sessionID, body).Error
 }
 
 // SearchMemoriesByKeywords 基于关键词匹配和时间衰减评分返回 TopN 记忆。
@@ -134,24 +183,63 @@ func (r *Repository) SearchMemoriesByKeywords(keywords []string, limit int, excl
 	}
 
 	var candidates []domain.SessionMemory
-	query := r.db.Order("updated_at desc").Limit(candidateLimit)
-	if sessionID := strings.TrimSpace(excludeSessionID); sessionID != "" {
-		query = query.Where("session_id <> ?", sessionID)
+	match := buildFTSMatchQuery(normalizedKeywords)
+	if r.ftsSessionMemoriesTableExists() && match != "" {
+		raw := `SELECT session_id FROM session_memories_fts WHERE session_memories_fts MATCH ?`
+		args := []any{match}
+		if sid := strings.TrimSpace(excludeSessionID); sid != "" {
+			raw += ` AND session_id <> ?`
+			args = append(args, sid)
+		}
+		raw += ` LIMIT ?`
+		args = append(args, candidateLimit)
+		var ftsIDs []struct {
+			SessionID string `gorm:"column:session_id"`
+		}
+		if err := r.db.Raw(raw, args...).Scan(&ftsIDs).Error; err == nil && len(ftsIDs) > 0 {
+			ordered := make([]string, 0, len(ftsIDs))
+			for _, row := range ftsIDs {
+				if strings.TrimSpace(row.SessionID) != "" {
+					ordered = append(ordered, row.SessionID)
+				}
+			}
+			if len(ordered) > 0 {
+				if err := r.db.Where("session_id IN ?", ordered).Find(&candidates).Error; err != nil {
+					return nil, err
+				}
+				byID := make(map[string]domain.SessionMemory, len(candidates))
+				for _, c := range candidates {
+					byID[c.SessionID] = c
+				}
+				candidates = candidates[:0]
+				for _, id := range ordered {
+					if row, ok := byID[id]; ok {
+						candidates = append(candidates, row)
+					}
+				}
+			}
+		}
 	}
-	orLikeParts := make([]string, 0, len(normalizedKeywords)*2)
-	orLikeArgs := make([]any, 0, len(normalizedKeywords)*2)
-	for _, keyword := range normalizedKeywords {
-		like := "%" + keyword + "%"
-		orLikeParts = append(orLikeParts, "keywords_text LIKE ?")
-		orLikeArgs = append(orLikeArgs, like)
-		orLikeParts = append(orLikeParts, "summary LIKE ?")
-		orLikeArgs = append(orLikeArgs, like)
-	}
-	if len(orLikeParts) > 0 {
-		query = query.Where("("+strings.Join(orLikeParts, " OR ")+")", orLikeArgs...)
-	}
-	if err := query.Find(&candidates).Error; err != nil {
-		return nil, err
+	if len(candidates) == 0 {
+		query := r.db.Order("updated_at desc").Limit(candidateLimit)
+		if sessionID := strings.TrimSpace(excludeSessionID); sessionID != "" {
+			query = query.Where("session_id <> ?", sessionID)
+		}
+		orLikeParts := make([]string, 0, len(normalizedKeywords)*2)
+		orLikeArgs := make([]any, 0, len(normalizedKeywords)*2)
+		for _, keyword := range normalizedKeywords {
+			like := "%" + keyword + "%"
+			orLikeParts = append(orLikeParts, "keywords_text LIKE ?")
+			orLikeArgs = append(orLikeArgs, like)
+			orLikeParts = append(orLikeParts, "summary LIKE ?")
+			orLikeArgs = append(orLikeArgs, like)
+		}
+		if len(orLikeParts) > 0 {
+			query = query.Where("("+strings.Join(orLikeParts, " OR ")+")", orLikeArgs...)
+		}
+		if err := query.Find(&candidates).Error; err != nil {
+			return nil, err
+		}
 	}
 
 	hits := make([]domain.SessionMemorySearchHit, 0, len(candidates))
