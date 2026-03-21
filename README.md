@@ -55,10 +55,8 @@
 
 ### 架构说明
 
-项目采用前后端分离架构：
-
-- 前端通过 HTTP 调用后端 REST API（会话与设置相关）
-- 前端通过 WebSocket 与后端进行实时聊天流式通信
+- 生产：Go 进程同时提供 REST/WebSocket 与嵌入的前端静态资源（`web/dist`）
+- 开发：`npm run dev` 同时启动 Go 与 Vite，Vite 将 `/api`、`/ws` 代理到 `8080`
 - 后端通过服务层访问模型接口，并将数据持久化到 SQLite
 - 记忆检索采用混合策略：优先向量检索，失败时自动回退关键词检索
 
@@ -70,57 +68,28 @@
 
 ## 4. 如何启动
 
-> 默认端口：后端 `8080`，前端 `5173`
+> 默认端口：后端 `8080`，Vite `5173`
 
-### Windows（PowerShell）
-
-```powershell
-# 1) 启动后端
-cd G:\gitCode\SlimeBot\backend
-go mod tidy
-go run .\cmd\server\main.go
-```
+在项目根目录：
 
 ```powershell
-# 2) 启动前端（新开一个终端）
-cd G:\gitCode\SlimeBot\frontend
 npm install
+npm install --prefix frontend
 Copy-Item .env.example .env
+Copy-Item frontend\.env.example frontend\.env
 npm run dev
 ```
 
-### macOS（zsh/bash）
+生产构建（根目录生成嵌入前端的 `slimebot` 可执行文件）：
 
 ```bash
-# 1) 启动后端
-cd /path/to/SlimeBot/backend
-go mod tidy
+npm run build
+```
+
+单独运行已构建的后端（仅提供 API + 静态页）：
+
+```bash
 go run ./cmd/server/main.go
-```
-
-```bash
-# 2) 启动前端（新开一个终端）
-cd /path/to/SlimeBot/frontend
-npm install
-cp .env.example .env
-npm run dev
-```
-
-### Linux（bash）
-
-```bash
-# 1) 启动后端
-cd /path/to/SlimeBot/backend
-go mod tidy
-go run ./cmd/server/main.go
-```
-
-```bash
-# 2) 启动前端（新开一个终端）
-cd /path/to/SlimeBot/frontend
-npm install
-cp .env.example .env
-npm run dev
 ```
 
 ## 5. 记忆向量化准备（bge-m3）
@@ -137,29 +106,28 @@ pip install numpy onnxruntime transformers
 
 - 模型：`bge-m3`（ONNX 版本）
 - 下载地址：[BAAI/bge-m3 ONNX](https://huggingface.co/BAAI/bge-m3/tree/main/onnx)
-- 请将以下关键文件放到 `backend/onnx/`（或你自定义的路径）：
+- 请将以下关键文件放到 `onnx/`（或你自定义的路径）：
   - `model.onnx`
   - `model.onnx_data`
   - `tokenizer.json`
 - 如使用默认配置，目录结构示例：
 
 ```text
-backend/
-  onnx/
-    model.onnx
-    model.onnx_data
-    tokenizer.json
+onnx/
+  model.onnx
+  model.onnx_data
+  tokenizer.json
 ```
 
 ## 6. 配置文件使用方法
 
-### 后端配置：`backend/.env`
+### 后端配置：项目根目录 `.env`
 
 后端启动时会读取环境变量：
 
 - `SERVER_PORT`：服务端口，默认 `8080`
 - `DB_PATH`：SQLite 文件路径，默认 `./storage/data.db`
-- `FRONTEND_ORIGIN`：允许跨域的前端地址，默认 `http://localhost:5173`
+- `FRONTEND_ORIGIN`：与 Vite 联调时设为 `http://localhost:5173`；生产同源可留空
 - `WEB_SEARCH_API_KEY`：Tavily 网络搜索 API Key
 - `JWT_SECRET`：JWT 签名密钥（必填，未配置将启动失败）
 - `JWT_EXPIRE`：JWT 过期时间（单位：分钟，默认 `21600` 即 15 天）
@@ -173,7 +141,7 @@ backend/
 - `QDRANT_COLLECTION`：向量集合名，默认 `session_memories`
 - `MEMORY_VECTOR_TOPK`：向量检索返回条数，默认 `5`
 
-> 注意：上述相对路径均以 `backend` 目录作为启动工作目录。
+> 注意：上述相对路径均以项目根目录作为启动工作目录。
 
 示例：
 
