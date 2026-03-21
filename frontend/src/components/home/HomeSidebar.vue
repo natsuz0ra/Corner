@@ -13,6 +13,7 @@ import type { SessionItem } from '@/api/chat'
 import { MESSAGE_PLATFORM_SESSION_ID } from '@/api/chat'
 import MdiIcon from '@/components/ui/MdiIcon.vue'
 import AppLogo from '@/components/ui/AppLogo.vue'
+import TruncationTooltip from '@/components/ui/TruncationTooltip.vue'
 
 const props = defineProps<{
   sessions: SessionItem[]
@@ -65,7 +66,7 @@ const regularSessions = computed(() =>
 
     <div :ref="setSidebarListRef" class="scroll-area flex-1 overflow-y-auto py-2 px-2">
       <div
-        class="group relative flex items-center gap-1 px-3 h-9 rounded-xl cursor-pointer transition-all duration-150 mb-0.5"
+        class="group group/tip relative flex min-w-0 items-center gap-1 px-3 h-9 rounded-xl cursor-pointer transition-all duration-150 mb-0.5"
         :class="currentSessionId === MESSAGE_PLATFORM_SESSION_ID ? 'session-item-active' : 'session-item'"
         @click="emit('pickSession', MESSAGE_PLATFORM_SESSION_ID)"
       >
@@ -73,14 +74,19 @@ const regularSessions = computed(() =>
           v-if="currentSessionId === MESSAGE_PLATFORM_SESSION_ID"
           class="session-active-indicator absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
         />
-        <span class="sb-text-primary flex-1 truncate text-sm">{{ t('messagePlatformSession') }}</span>
+        <TruncationTooltip
+          inherit-group
+          :text="t('messagePlatformSession')"
+          wrapper-class="min-w-0 flex-1"
+          content-class="sb-text-primary text-sm"
+        />
         <span class="text-[10px] px-1.5 py-0.5 rounded-md platform-badge">IM</span>
       </div>
 
       <div
         v-for="item in regularSessions"
         :key="item.id"
-        class="group relative flex items-center gap-1 px-3 h-9 rounded-xl cursor-pointer transition-all duration-150 mb-0.5"
+        class="group group/tip relative flex min-w-0 items-center gap-1 px-3 h-9 rounded-xl cursor-pointer transition-all duration-150 mb-0.5"
         :class="item.id === currentSessionId ? 'session-item-active' : 'session-item'"
         @click="emit('pickSession', item.id)"
       >
@@ -88,7 +94,12 @@ const regularSessions = computed(() =>
           v-if="item.id === currentSessionId"
           class="session-active-indicator absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
         />
-        <span class="sb-text-primary flex-1 truncate text-sm">{{ item.name }}</span>
+        <TruncationTooltip
+          inherit-group
+          :text="item.name"
+          wrapper-class="min-w-0 flex-1"
+          content-class="sb-text-primary text-sm"
+        />
         <button
           type="button"
           class="sb-text-muted w-6 h-6 flex items-center justify-center rounded-md transition-colors duration-150 cursor-pointer opacity-0 group-hover:opacity-100 flex-shrink-0"
