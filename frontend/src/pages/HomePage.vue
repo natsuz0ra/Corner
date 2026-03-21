@@ -234,12 +234,14 @@ provideChatContext({
 
           <!-- ───── 有消息：消息列表 + 底部输入框 ───── -->
           <template v-else>
+          <div class="chat-content-scroll flex min-h-0 flex-1 flex-col overflow-hidden">
           <ChatMessageList
             :messages="store.messages"
             :show-scroll-to-bottom="showScrollToBottom"
             :set-messages-ref="setMessagesRef"
             @scroll-to-bottom="scrollToBottomByButton"
           />
+          </div>
 
           <!-- 底部输入区 -->
           <footer
