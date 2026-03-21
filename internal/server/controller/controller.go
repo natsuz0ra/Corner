@@ -18,7 +18,7 @@ type authService interface {
 }
 
 type sessionService interface {
-	List() ([]domain.Session, error)
+	List(limit int, offset int) ([]domain.Session, error)
 	Create(name string) (*domain.Session, error)
 	RenameByUser(id, name string) error
 	Delete(id string) error

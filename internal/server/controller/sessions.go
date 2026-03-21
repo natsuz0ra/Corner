@@ -59,7 +59,28 @@ func parseSessionMessagesCursor(raw string) (*time.Time, bool) {
 
 // ListSessions 返回当前用户的会话列表。
 func (h *HTTPController) ListSessions(c WebContext) {
-	sessions, err := h.sessions.List()
+	limit := 100
+	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			jsonError(c, http.StatusBadRequest, "limit must be a positive integer.")
+			return
+		}
+		if parsed > 500 {
+			parsed = 500
+		}
+		limit = parsed
+	}
+	offset := 0
+	if raw := strings.TrimSpace(c.Query("offset")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 0 {
+			jsonError(c, http.StatusBadRequest, "offset must be a non-negative integer.")
+			return
+		}
+		offset = parsed
+	}
+	sessions, err := h.sessions.List(limit, offset)
 	if err != nil {
 		jsonInternalError(c, err)
 		return

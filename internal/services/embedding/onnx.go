@@ -14,11 +14,13 @@ import (
 	"time"
 )
 
+// EmbeddingService 文本向量化统一接口（单条与批量）。
 type EmbeddingService interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 	EmbedBatch(ctx context.Context, texts []string) ([][]float32, error)
 }
 
+// ONNXRuntimeEmbeddingConfig ONNX 嵌入：模型/分词器路径、Python 与脚本、超时；Runner 非空则走一次性子进程模式。
 type ONNXRuntimeEmbeddingConfig struct {
 	ModelPath     string
 	TokenizerPath string
@@ -28,6 +30,7 @@ type ONNXRuntimeEmbeddingConfig struct {
 	Runner        func(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
+// ONNXRuntimeEmbeddingService 基于 Python ONNX 脚本的嵌入：默认长驻管道，或注入 Runner 时每批子进程。
 type ONNXRuntimeEmbeddingService struct {
 	modelPath     string
 	tokenizerPath string
@@ -95,6 +98,7 @@ func NewONNXRuntimeEmbeddingService(cfg ONNXRuntimeEmbeddingConfig) *ONNXRuntime
 	}
 }
 
+// StartPipe 预热管道模式下的 Python 子进程（子进程模式无操作）。
 func (s *ONNXRuntimeEmbeddingService) StartPipe(ctx context.Context) error {
 	if s.subprocess {
 		return nil
@@ -111,6 +115,7 @@ func (s *ONNXRuntimeEmbeddingService) StartPipe(ctx context.Context) error {
 	return s.ensurePipeProcess()
 }
 
+// Embed 单条嵌入：LRU 缓存命中即返回；否则对同文本并发去重（singleflight），再调 EmbedBatch。
 func (s *ONNXRuntimeEmbeddingService) Embed(ctx context.Context, text string) ([]float32, error) {
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {
@@ -143,6 +148,7 @@ func (s *ONNXRuntimeEmbeddingService) Embed(ctx context.Context, text string) ([
 	return vectors[0], nil
 }
 
+// registerInflight 若已有同文本在算，则登记等待通道并返回；否则占位返回 nil 表示当前协程负责计算。
 func (s *ONNXRuntimeEmbeddingService) registerInflight(text string) chan embedResult {
 	s.inflightMu.Lock()
 	defer s.inflightMu.Unlock()
@@ -155,6 +161,7 @@ func (s *ONNXRuntimeEmbeddingService) registerInflight(text string) chan embedRe
 	return nil
 }
 
+// finishInflight 广播本次计算结果给所有等待同文本的协程并清空 inflight 键。
 func (s *ONNXRuntimeEmbeddingService) finishInflight(text string, vector []float32, err error) {
 	s.inflightMu.Lock()
 	waiters := s.inflight[text]
@@ -174,6 +181,7 @@ func (s *ONNXRuntimeEmbeddingService) setCachedVector(text string, vector []floa
 	s.cache.put(text, vector)
 }
 
+// EmbedBatch 批量嵌入：去空后按配置走子进程或 stdin/stdout 管道；空输入返回空切片。
 func (s *ONNXRuntimeEmbeddingService) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
 	normalized := make([]string, 0, len(texts))
 	for _, text := range texts {
@@ -196,6 +204,7 @@ func (s *ONNXRuntimeEmbeddingService) EmbedBatch(ctx context.Context, texts []st
 	return s.embedBatchPipe(ctx, normalized)
 }
 
+// embedBatchSubprocess 每次调用启动 Python 子进程，经 --texts-json 传入文本并解析 stdout JSON。
 func (s *ONNXRuntimeEmbeddingService) embedBatchSubprocess(ctx context.Context, normalized []string) ([][]float32, error) {
 	args := []string{
 		s.scriptPath,
@@ -219,6 +228,7 @@ func (s *ONNXRuntimeEmbeddingService) embedBatchSubprocess(ctx context.Context, 
 	return vectors, nil
 }
 
+// embedBatchPipe 管道模式：最多重试一次，失败则杀进程以便下次 ensure 重建。
 func (s *ONNXRuntimeEmbeddingService) embedBatchPipe(ctx context.Context, normalized []string) ([][]float32, error) {
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
@@ -247,6 +257,7 @@ func (s *ONNXRuntimeEmbeddingService) embedBatchPipe(ctx context.Context, normal
 	return nil, fmt.Errorf("onnx embedding pipe failed")
 }
 
+// ensurePipeProcess 懒启动或复用已存活 Python 进程，并绑定 stdin/stdout。
 func (s *ONNXRuntimeEmbeddingService) ensurePipeProcess() error {
 	if s.pipeCmd != nil && s.pipeCmd.Process != nil && s.pipeCmd.ProcessState == nil {
 		return nil
@@ -284,6 +295,7 @@ func (s *ONNXRuntimeEmbeddingService) killPipeProcess() {
 	s.pipeStdout = nil
 }
 
+// pipeRoundTrip 向 stdin 写入一行 JSON（含 texts），从 stdout 读一行解析 vectors。
 func (s *ONNXRuntimeEmbeddingService) pipeRoundTrip(ctx context.Context, texts []string) ([][]float32, error) {
 	req := map[string][]string{"texts": texts}
 	payload, err := json.Marshal(req)
@@ -357,4 +369,15 @@ func runCommandOutput(ctx context.Context, name string, args ...string) ([]byte,
 		return nil, err
 	}
 	return output, nil
+}
+
+// Close 关闭管道子进程（子进程嵌入模式无操作）。
+func (s *ONNXRuntimeEmbeddingService) Close() error {
+	if s == nil || s.subprocess {
+		return nil
+	}
+	s.pipeMu.Lock()
+	defer s.pipeMu.Unlock()
+	s.killPipeProcess()
+	return nil
 }

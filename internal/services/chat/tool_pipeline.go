@@ -3,7 +3,7 @@ package chat
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"slimebot/internal/domain"
 	"strings"
 
@@ -63,7 +63,7 @@ func notifyToolResult(callbacks AgentCallbacks, result ToolCallResult) {
 		return
 	}
 	if err := callbacks.OnToolCallResult(result); err != nil {
-		log.Printf("failed to push tool result: %v", err)
+		slog.Warn("failed_to_push_tool_result", "err", err)
 	}
 }
 
@@ -140,7 +140,7 @@ func (a *AgentService) executeInvocation(
 		}
 		return &tools.ExecuteResult{Output: queryResult.Output}
 	}
-	return executeToolCall(invocation.toolName, invocation.command, params)
+	return executeToolCall(ctx, invocation.toolName, invocation.command, params)
 }
 
 // buildToolResultStatus 将执行结果映射为标准状态字段。

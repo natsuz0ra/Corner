@@ -31,5 +31,6 @@ func NewSQLiteDBTest(t testing.TB, namespace string) *gorm.DB {
 	); err != nil {
 		t.Fatalf("auto migrate failed: %v", err)
 	}
+	_ = ensureSessionMemoriesFTS(db)
 	return db
 }
