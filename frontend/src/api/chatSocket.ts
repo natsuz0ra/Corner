@@ -126,7 +126,8 @@ export class ChatSocket {
       return
     }
 
-    const wsBase = import.meta.env.VITE_WS_URL || 'ws://localhost:8080'
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsBase = import.meta.env.VITE_WS_URL || `${protocol}//${location.host}`
     const query = new URLSearchParams({ token })
     const url = `${wsBase}/ws/chat?${query.toString()}`
     this.emitStatus('reconnecting')
