@@ -134,7 +134,7 @@ func (a *AgentService) executeInvocation(
 		}
 		*memoryToolUsed = true
 		topK := parseOptionalInt(params["top_k"], constants.MemoryToolDefaultTopK)
-		queryResult, queryErr := a.memory.QueryForAgent(sessionID, params["query"], topK)
+		queryResult, queryErr := a.memory.QueryForAgent(ctx, sessionID, params["query"], topK)
 		if queryErr != nil {
 			return &tools.ExecuteResult{Output: queryResult.Output, Error: queryErr.Error()}
 		}

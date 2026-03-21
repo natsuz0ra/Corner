@@ -10,6 +10,8 @@ import (
 	"sync"
 
 	"github.com/qdrant/go-client/qdrant"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"slimebot/internal/domain"
 )
 
@@ -25,6 +27,7 @@ type MemoryVectorRepository struct {
 type qdrantVectorClient interface {
 	CollectionExists(ctx context.Context, collectionName string) (bool, error)
 	CreateCollection(ctx context.Context, request *qdrant.CreateCollection) error
+	CreateFieldIndex(ctx context.Context, request *qdrant.CreateFieldIndexCollection) (*qdrant.UpdateResult, error)
 	Upsert(ctx context.Context, request *qdrant.UpsertPoints) (*qdrant.UpdateResult, error)
 	Query(ctx context.Context, request *qdrant.QueryPoints) ([]*qdrant.ScoredPoint, error)
 	Close() error
@@ -91,7 +94,7 @@ func (r *MemoryVectorRepository) UpsertSessionMemoryVector(ctx context.Context, 
 
 	_, err = r.client.Upsert(ctx, &qdrant.UpsertPoints{
 		CollectionName: r.collection,
-		Wait:           qdrant.PtrOf(true),
+		Wait:           qdrant.PtrOf(false),
 		Points: []*qdrant.PointStruct{
 			{
 				Id:      buildPointID(sessionID),
@@ -160,24 +163,40 @@ func (r *MemoryVectorRepository) ensureCollection(ctx context.Context, vectorDim
 	if err != nil {
 		return err
 	}
-	if exists {
-		r.collectionEnsured = true
-		return nil
+	if !exists {
+		err = r.client.CreateCollection(ctx, &qdrant.CreateCollection{
+			CollectionName: r.collection,
+			VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
+				Size:     uint64(vectorDim),
+				Distance: qdrant.Distance_Cosine,
+			}),
+		})
+		if err != nil {
+			return fmt.Errorf("qdrant ensure collection failed: %w", err)
+		}
 	}
-
-	err = r.client.CreateCollection(ctx, &qdrant.CreateCollection{
-		CollectionName: r.collection,
-		VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
-			Size:     uint64(vectorDim),
-			Distance: qdrant.Distance_Cosine,
-		}),
-	})
-	if err != nil {
-		return fmt.Errorf("qdrant ensure collection failed: %w", err)
+	if err := r.ensureSessionIDPayloadIndex(ctx); err != nil {
+		return err
 	}
 
 	r.collectionEnsured = true
 	return nil
+}
+
+func (r *MemoryVectorRepository) ensureSessionIDPayloadIndex(ctx context.Context) error {
+	_, err := r.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+		CollectionName: r.collection,
+		FieldName:      "session_id",
+		FieldType:      qdrant.PtrOf(qdrant.FieldType_FieldTypeKeyword),
+		Wait:           qdrant.PtrOf(true),
+	})
+	if err == nil {
+		return nil
+	}
+	if st, ok := status.FromError(err); ok && st.Code() == codes.AlreadyExists {
+		return nil
+	}
+	return fmt.Errorf("qdrant session_id payload index: %w", err)
 }
 
 func (r *MemoryVectorRepository) Close() error {

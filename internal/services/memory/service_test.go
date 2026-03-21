@@ -89,7 +89,7 @@ func TestMemoryServiceRetrieveMemoriesRanking(t *testing.T) {
 		t.Fatalf("upsert memory failed: %v", err)
 	}
 
-	hits, err := svc.RetrieveMemories([]string{"golang", "rag"}, "", 5)
+	hits, err := svc.RetrieveMemories(context.Background(), []string{"golang", "rag"}, "", 5)
 	if err != nil {
 		t.Fatalf("retrieve memories failed: %v", err)
 	}
@@ -385,7 +385,7 @@ func TestMemoryServiceRetrieveMemories_UsesVectorStore(t *testing.T) {
 		t.Fatalf("upsert s2 failed: %v", err)
 	}
 
-	hits, err := svc.RetrieveMemories([]string{"golang", "rag"}, "", 2)
+	hits, err := svc.RetrieveMemories(context.Background(), []string{"golang", "rag"}, "", 2)
 	if err != nil {
 		t.Fatalf("retrieve failed: %v", err)
 	}
@@ -416,7 +416,7 @@ func TestMemoryServiceRetrieveMemories_VectorErrorFallsBackToKeyword(t *testing.
 		t.Fatalf("upsert s1 failed: %v", err)
 	}
 
-	hits, err := svc.RetrieveMemories([]string{"golang"}, "", 1)
+	hits, err := svc.RetrieveMemories(context.Background(), []string{"golang"}, "", 1)
 	if err != nil {
 		t.Fatalf("retrieve failed: %v", err)
 	}
@@ -611,7 +611,7 @@ func TestMemoryRetrievalSampleSet_VectorPathBeatsKeywordBaseline(t *testing.T) {
 	keywordTop1 := 0
 	vectorTop1 := 0
 	for _, tc := range cases {
-		kHits, err := keywordSvc.RetrieveMemories([]string{tc.query}, "", 1)
+		kHits, err := keywordSvc.RetrieveMemories(context.Background(), []string{tc.query}, "", 1)
 		if err != nil {
 			t.Fatalf("keyword retrieve failed: %v", err)
 		}
@@ -619,7 +619,7 @@ func TestMemoryRetrievalSampleSet_VectorPathBeatsKeywordBaseline(t *testing.T) {
 			keywordTop1++
 		}
 
-		vHits, err := vectorSvc.RetrieveMemories([]string{tc.query}, "", 1)
+		vHits, err := vectorSvc.RetrieveMemories(context.Background(), []string{tc.query}, "", 1)
 		if err != nil {
 			t.Fatalf("vector retrieve failed: %v", err)
 		}

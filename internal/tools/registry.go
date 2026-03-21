@@ -7,11 +7,10 @@ import (
 )
 
 var (
-	globalRegistry = &Registry{tools: make(map[string]Tool)}
+	globalRegistry = &registry{tools: make(map[string]Tool)}
 )
 
-// Registry 管理所有已注册的工具
-type Registry struct {
+type registry struct {
 	mu    sync.RWMutex
 	tools map[string]Tool
 }
