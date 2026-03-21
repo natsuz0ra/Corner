@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS messages (
     is_interrupted INTEGER NOT NULL DEFAULT 0,
     is_stop_placeholder INTEGER NOT NULL DEFAULT 0,
     attachments_json TEXT NOT NULL DEFAULT '[]',
+    seq INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);

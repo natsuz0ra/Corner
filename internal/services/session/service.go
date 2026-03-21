@@ -16,7 +16,7 @@ func NewSessionService(store domain.SessionStore) *SessionService {
 	return &SessionService{store: store}
 }
 
-func (s *SessionService) List(limit, offset int) ([]domain.Session, error) {
+func (s *SessionService) List(limit, offset int, query string) ([]domain.Session, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -26,7 +26,7 @@ func (s *SessionService) List(limit, offset int) ([]domain.Session, error) {
 	if offset < 0 {
 		offset = 0
 	}
-	return s.store.ListSessions(limit, offset)
+	return s.store.ListSessions(limit, offset, strings.TrimSpace(query))
 }
 
 func (s *SessionService) Create(name string) (*domain.Session, error) {
@@ -49,8 +49,8 @@ func (s *SessionService) ListMessages(sessionID string) ([]domain.Message, error
 	return s.store.ListSessionMessages(sessionID)
 }
 
-func (s *SessionService) ListMessagesPage(sessionID string, limit int, before *time.Time, after *time.Time) ([]domain.Message, bool, error) {
-	return s.store.ListSessionMessagesPage(sessionID, limit, before, after)
+func (s *SessionService) ListMessagesPage(sessionID string, limit int, before *time.Time, beforeSeq *int64, after *time.Time, afterSeq *int64) ([]domain.Message, bool, error) {
+	return s.store.ListSessionMessagesPage(sessionID, limit, before, beforeSeq, after, afterSeq)
 }
 
 func (s *SessionService) ListToolCallRecords(sessionID string) ([]domain.ToolCallRecord, error) {

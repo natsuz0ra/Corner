@@ -20,12 +20,12 @@ type SettingsStore interface {
 
 // SessionStore 会话 CRUD、消息列表/分页与工具调用记录查询。
 type SessionStore interface {
-	ListSessions(limit int, offset int) ([]Session, error)
+	ListSessions(limit int, offset int, query string) ([]Session, error)
 	CreateSession(name string) (*Session, error)
 	RenameSessionByUser(id, name string) error
 	DeleteSession(id string) error
 	ListSessionMessages(sessionID string) ([]Message, error)
-	ListSessionMessagesPage(sessionID string, limit int, before *time.Time, after *time.Time) ([]Message, bool, error)
+	ListSessionMessagesPage(sessionID string, limit int, before *time.Time, beforeSeq *int64, after *time.Time, afterSeq *int64) ([]Message, bool, error)
 	ListSessionToolCallRecords(sessionID string) ([]ToolCallRecord, error)
 	ListSessionToolCallRecordsByAssistantMessageIDs(sessionID string, messageIDs []string) ([]ToolCallRecord, error)
 	SetSessionModel(sessionID, modelConfigID string) error
