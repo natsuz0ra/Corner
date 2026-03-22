@@ -13,6 +13,7 @@ import (
 	"slimebot/internal/constants"
 	"slimebot/internal/domain"
 	"slimebot/internal/mcp"
+	"slimebot/internal/observability"
 )
 
 // ChatService 聊天服务主入口：管理会话生命周期、Agent 调度、记忆检索与附件处理等联动逻辑
@@ -283,34 +284,58 @@ func (b chatContextBuilder) Build(ctx context.Context, sessionID string, modelCo
 func (s *ChatService) buildContextMessages(ctx context.Context, sessionID string, modelConfig ModelRuntimeConfig) ([]ChatMessage, error) {
 	_ = modelConfig
 	buildStart := time.Now()
-	systemPrompt, err := s.loadSystemPrompt()
-	if err != nil {
-		return nil, err
-	}
-
-	// 拼接环境信息到系统提示词
-	envInfo := CollectEnvInfo()
-	systemPrompt = systemPrompt + "\n\n## Runtime Environment\n" + envInfo.FormatForPrompt()
-	if s.skillRuntime != nil {
-		catalogPrompt, _, catalogErr := s.skillRuntime.BuildCatalogPrompt()
-		if catalogErr != nil {
-			return nil, catalogErr
+	parallelStart := time.Now()
+	var (
+		systemPrompt string
+		history      []domain.Message
+		loadErr      error
+		histErr      error
+	)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		sp, err := s.loadSystemPrompt()
+		if err != nil {
+			loadErr = err
+			return
 		}
-		if strings.TrimSpace(catalogPrompt) != "" {
-			systemPrompt = systemPrompt + "\n\n" + catalogPrompt
+		envInfo := CollectEnvInfo()
+		sp = sp + "\n\n## Runtime Environment\n" + envInfo.FormatForPrompt()
+		if s.skillRuntime != nil {
+			catalogPrompt, _, catalogErr := s.skillRuntime.BuildCatalogPrompt()
+			if catalogErr != nil {
+				loadErr = catalogErr
+				return
+			}
+			if strings.TrimSpace(catalogPrompt) != "" {
+				sp = sp + "\n\n" + catalogPrompt
+			}
 		}
+		systemPrompt = sp
+	}()
+	go func() {
+		defer wg.Done()
+		var err error
+		history, err = s.store.ListRecentSessionMessagesWithContext(ctx, sessionID, constants.ContextHistoryLimit)
+		histErr = err
+	}()
+	wg.Wait()
+	observability.Span("context_parallel_system_history", parallelStart)
+	if loadErr != nil {
+		return nil, loadErr
 	}
-
-	var history []domain.Message
-	history, err = s.store.ListRecentSessionMessagesWithContext(ctx, sessionID, constants.ContextHistoryLimit)
-	if err != nil {
-		return nil, err
+	if histErr != nil {
+		return nil, histErr
 	}
 
 	msgs := []ChatMessage{{Role: "system", Content: systemPrompt}}
 	if s.memory != nil {
-		// 注入记忆上下文，优先用于历史偏好/约束，不应覆盖当前输入。
-		memoryContext := s.memory.BuildSessionMemoryContextForPrompt(ctx, sessionID, history)
+		memStart := time.Now()
+		memCtx, cancel := context.WithTimeout(ctx, constants.MemoryContextBuildBudget)
+		memoryContext := s.memory.BuildSessionMemoryContextForPrompt(memCtx, sessionID, history)
+		cancel()
+		observability.Span("memory_context_build", memStart)
 		if memoryContext != "" {
 			msgs = append(msgs, ChatMessage{
 				Role: "system",
@@ -333,6 +358,7 @@ func (s *ChatService) buildContextMessages(ctx context.Context, sessionID string
 		})
 	}
 	slog.Info("chat_context_ready", "session", sessionID, "history", len(history), "mode", "memory_plus_recent20", "cost_ms", time.Since(buildStart).Milliseconds())
+	observability.Span("context_build_total", buildStart)
 	return msgs, nil
 }
 
@@ -558,7 +584,9 @@ func (s *ChatService) HandleChatStream(
 	}
 
 	activatedSkills := s.getSessionActivatedSkills(sessionID)
+	agentStart := time.Now()
 	answer, err := s.agent.RunAgentLoop(ctx, modelConfig, sessionID, contextMessages, enabledMCPConfigs, activatedSkills, agentCallbacks)
+	observability.Span("agent_loop", agentStart)
 	s.mergeSessionActivatedSkills(sessionID, activatedSkills)
 	// 统一将取消/超时识别为“中断结束”，而非普通失败。
 	interrupted := errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)

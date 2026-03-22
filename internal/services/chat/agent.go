@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slimebot/internal/domain"
+	"slimebot/internal/observability"
 	"strconv"
 	"strings"
 	"sync"
@@ -167,7 +168,9 @@ func (a *AgentService) buildRuntimeToolDefs(ctx context.Context, configs []domai
 		return defs, metaByFunc, nil
 	}
 
+	loadStart := time.Now()
 	metas, mcpDefs, err := a.mcp.LoadTools(ctx, configs)
+	observability.Span("mcp_load_tools", loadStart)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -237,7 +240,7 @@ func (a *AgentService) setCachedToolDefs(cacheKey string, defs []ToolDef, metaBy
 	a.toolCache[cacheKey] = cachedToolDefs{
 		defs:       defsCopy,
 		metaByFunc: metaCopy,
-		expireAt:   time.Now().Add(10 * time.Second),
+		expireAt:   time.Now().Add(10 * time.Minute),
 	}
 }
 

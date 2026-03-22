@@ -288,9 +288,12 @@ func buildFTSMatchQuery(keywords []string) string {
 }
 
 func (r *Repository) ftsSessionMemoriesTableExists() bool {
-	var n int64
-	_ = r.db.Raw(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='session_memories_fts'`).Scan(&n)
-	return n > 0
+	r.ftsOnce.Do(func() {
+		var n int64
+		_ = r.db.Raw(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='session_memories_fts'`).Scan(&n)
+		r.ftsOK = n > 0
+	})
+	return r.ftsOK
 }
 
 func (r *Repository) SearchMemoriesByKeywords(keywords []string, limit int, excludeSessionID string) ([]domain.SessionMemorySearchHit, error) {

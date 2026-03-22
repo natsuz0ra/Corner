@@ -8,8 +8,10 @@ import (
 	"slimebot/internal/domain"
 	"strings"
 	"sync"
+	"time"
 
 	"slimebot/internal/constants"
+	"slimebot/internal/observability"
 )
 
 // ToolMeta 记录函数调用定义与 MCP 真实工具之间的映射关系
@@ -104,36 +106,60 @@ func (m *Manager) LoadTools(ctx context.Context, configs []domain.MCPConfig) ([]
 		}
 	}()
 
-	for _, t := range targets {
-		entry := t.entry
-		entry.clientMu.Lock()
-		tools, err := entry.client.ListTools(ctx)
-		entry.clientMu.Unlock()
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to load MCP tools (%s): %w", t.item.Name, err)
-		}
-
-		for _, tool := range tools {
-			// 控制函数名长度，兼容部分 OpenAI 协议实现对 name 长度的严格限制（如 <=64）。
-			funcName := buildMCPFuncName(entry.alias, tool.Name)
-			inputSchema := tool.InputSchema
-			if inputSchema == nil {
-				inputSchema = map[string]any{
-					"type":       "object",
-					"properties": map[string]any{},
-				}
+	type listResult struct {
+		metas []ToolMeta
+		defs  []map[string]any
+		err   error
+	}
+	results := make([]listResult, len(targets))
+	var wg sync.WaitGroup
+	parallelStart := time.Now()
+	for i, t := range targets {
+		wg.Add(1)
+		go func(i int, t target) {
+			defer wg.Done()
+			entry := t.entry
+			entry.clientMu.Lock()
+			tools, err := entry.client.ListTools(ctx)
+			entry.clientMu.Unlock()
+			if err != nil {
+				results[i].err = fmt.Errorf("failed to load MCP tools (%s): %w", t.item.Name, err)
+				return
 			}
-			defs = append(defs, map[string]any{
-				"name":        funcName,
-				"description": fmt.Sprintf("[mcp:%s] %s", t.item.Name, strings.TrimSpace(tool.Description)),
-				"parameters":  inputSchema,
-			})
-			metas = append(metas, ToolMeta{
-				FuncName:    funcName,
-				ServerAlias: entry.alias,
-				ToolName:    tool.Name,
-			})
+			var lm []ToolMeta
+			var ld []map[string]any
+			for _, tool := range tools {
+				funcName := buildMCPFuncName(entry.alias, tool.Name)
+				inputSchema := tool.InputSchema
+				if inputSchema == nil {
+					inputSchema = map[string]any{
+						"type":       "object",
+						"properties": map[string]any{},
+					}
+				}
+				ld = append(ld, map[string]any{
+					"name":        funcName,
+					"description": fmt.Sprintf("[mcp:%s] %s", t.item.Name, strings.TrimSpace(tool.Description)),
+					"parameters":  inputSchema,
+				})
+				lm = append(lm, ToolMeta{
+					FuncName:    funcName,
+					ServerAlias: entry.alias,
+					ToolName:    tool.Name,
+				})
+			}
+			results[i].metas = lm
+			results[i].defs = ld
+		}(i, t)
+	}
+	wg.Wait()
+	observability.Span("mcp_list_tools_parallel", parallelStart)
+	for _, r := range results {
+		if r.err != nil {
+			return nil, nil, r.err
 		}
+		metas = append(metas, r.metas...)
+		defs = append(defs, r.defs...)
 	}
 
 	return metas, defs, nil
