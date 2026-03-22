@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -32,6 +33,14 @@ type chatIncoming struct {
 	ToolCallID    string   `json:"toolCallId"`    // 工具调用ID（用于审批）
 	Approved      *bool    `json:"approved"`      // 审批结果
 }
+
+type wsOutChunk struct {
+	Type      string `json:"type"`
+	SessionID string `json:"sessionId"`
+	Content   string `json:"content"`
+}
+
+var wsChunkBufPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 
 type activeChatCanceler struct {
 	mu     sync.Mutex
@@ -130,13 +139,12 @@ func (w *Controller) Chat(wr http.ResponseWriter, req *http.Request) {
 	sessionCtx, cancelSession := context.WithCancel(req.Context())
 	defer cancelSession()
 
-	writeCh := make(chan map[string]any, 128)
+	writeCh := make(chan any, 128)
 	chatCh := make(chan chatIncoming, 16)
 	broker := newApprovalBroker()
 	activeCancel := &activeChatCanceler{}
 
-	// 统一入队写消息：会话结束后不再发送，避免 goroutine 悬挂。
-	enqueue := func(payload map[string]any) bool {
+	enqueue := func(payload any) bool {
 		select {
 		case <-sessionCtx.Done():
 			return false
@@ -155,16 +163,15 @@ func (w *Controller) startWriteLoop(
 	sessionCtx context.Context,
 	cancelSession context.CancelFunc,
 	conn *websocket.Conn,
-	writeCh <-chan map[string]any,
+	writeCh <-chan any,
 ) {
-	// 单写协程：保证 websocket 写操作串行化。
 	go func() {
 		for {
 			select {
 			case <-sessionCtx.Done():
 				return
 			case payload := <-writeCh:
-				if err := writeJSON(conn, payload); err != nil {
+				if err := writePayload(conn, payload); err != nil {
 					cancelSession()
 					return
 				}
@@ -178,7 +185,7 @@ func (w *Controller) startReadLoop(
 	sessionCtx context.Context,
 	cancelSession context.CancelFunc,
 	conn *websocket.Conn,
-	enqueue func(map[string]any) bool,
+	enqueue func(any) bool,
 	chatCh chan<- chatIncoming,
 	broker *approvalBroker,
 	activeCancel *activeChatCanceler,
@@ -241,7 +248,7 @@ func (w *Controller) startReadLoop(
 // runChatLoop 串行消费 chat 消息，避免同连接内并发处理导致状态错乱。
 func (w *Controller) runChatLoop(
 	sessionCtx context.Context,
-	enqueue func(map[string]any) bool,
+	enqueue func(any) bool,
 	chatCh <-chan chatIncoming,
 	broker *approvalBroker,
 	activeCancel *activeChatCanceler,
@@ -261,7 +268,7 @@ func (w *Controller) runChatLoop(
 // handleChatIncoming 处理单条 chat 请求并完成流式输出与收尾事件下发。
 func (w *Controller) handleChatIncoming(
 	sessionCtx context.Context,
-	enqueue func(map[string]any) bool,
+	enqueue func(any) bool,
 	broker *approvalBroker,
 	activeCancel *activeChatCanceler,
 	incoming chatIncoming,
@@ -364,7 +371,7 @@ func (w *Controller) handleChatIncoming(
 
 // buildCallbacks 构建 chatService 所需回调，桥接为 websocket 协议事件。
 func (w *Controller) buildCallbacks(
-	enqueue func(map[string]any) bool,
+	enqueue func(any) bool,
 	broker *approvalBroker,
 	sessionID string,
 	firstChunkSentAt *time.Time,
@@ -374,11 +381,7 @@ func (w *Controller) buildCallbacks(
 			if firstChunkSentAt != nil && firstChunkSentAt.IsZero() && chunk != "" {
 				*firstChunkSentAt = time.Now()
 			}
-			if !enqueue(map[string]any{
-				"type":      "chunk",
-				"sessionId": sessionID,
-				"content":   chunk,
-			}) {
+			if !enqueueWSChunk(enqueue, sessionID, chunk) {
 				return context.Canceled
 			}
 			return nil
@@ -427,7 +430,29 @@ func (w *Controller) buildCallbacks(
 	}
 }
 
-// writeJSON 作为统一写出入口，便于后续集中处理写链路增强（如埋点/压缩）。
-func writeJSON(conn *websocket.Conn, payload map[string]any) error {
-	return conn.WriteJSON(payload)
+func writePayload(conn *websocket.Conn, payload any) error {
+	switch v := payload.(type) {
+	case *wsOutChunk:
+		buf := wsChunkBufPool.Get().(*bytes.Buffer)
+		buf.Reset()
+		enc := json.NewEncoder(buf)
+		enc.SetEscapeHTML(false)
+		if err := enc.Encode(v); err != nil {
+			wsChunkBufPool.Put(buf)
+			return err
+		}
+		b := buf.Bytes()
+		if len(b) > 0 && b[len(b)-1] == '\n' {
+			b = b[:len(b)-1]
+		}
+		err := conn.WriteMessage(websocket.TextMessage, b)
+		wsChunkBufPool.Put(buf)
+		return err
+	default:
+		return conn.WriteJSON(payload)
+	}
+}
+
+func enqueueWSChunk(enqueue func(any) bool, sessionID, chunk string) bool {
+	return enqueue(&wsOutChunk{Type: "chunk", SessionID: sessionID, Content: chunk})
 }

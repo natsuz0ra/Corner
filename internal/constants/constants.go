@@ -32,10 +32,9 @@ const (
 	MemoryRecentFallback               = 3
 	MemoryFullInjectThreshold          = 10
 	MemoryDecisionTimeout              = 20 * time.Second
-	MemorySummaryTimeout               = 45 * time.Second
+	MemoryContextBuildBudget           = 5 * time.Second
 	MemoryCallMaxAttempts              = 2
 	MemoryRetryBackoff                 = 350 * time.Millisecond
-	MemorySummaryRecentMessageSize     = 20
 	MemoryKeywordMaxCount              = 12
 	MaxSkillZipBytes                   = 20 * 1024 * 1024
 	MaxSkillExtractedBytes             = 50 * 1024 * 1024

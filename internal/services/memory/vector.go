@@ -64,21 +64,44 @@ func retrieveMemoriesByVectorImpl(m *MemoryService, ctx context.Context, query s
 		"exclude_session", strings.TrimSpace(excludeSessionID),
 	)
 
-	// 命中可能只带 sessionID，需回查最近记忆 ID。
-	memoryIDs := make([]string, 0, len(vectorHits))
+	sessionLatest := make(map[string]string)
 	for _, hit := range vectorHits {
-		if strings.TrimSpace(hit.MemoryID) != "" {
-			memoryIDs = append(memoryIDs, hit.MemoryID)
+		sid := strings.TrimSpace(hit.SessionID)
+		if sid == "" || strings.TrimSpace(hit.MemoryID) != "" {
 			continue
 		}
-		if strings.TrimSpace(hit.SessionID) != "" {
-			rows, rerr := m.store.ListRecentActiveSessionMemories(hit.SessionID, 1)
-			if rerr == nil && len(rows) > 0 {
-				memoryIDs = append(memoryIDs, rows[0].ID)
-			}
+		if _, ok := sessionLatest[sid]; ok {
+			continue
+		}
+		rows, rerr := m.store.ListRecentActiveSessionMemories(sid, 1)
+		if rerr == nil && len(rows) > 0 {
+			sessionLatest[sid] = rows[0].ID
 		}
 	}
-	memories, err := m.store.GetSessionMemoriesByIDs(memoryIDs)
+	memoryIDs := make([]string, 0, len(vectorHits))
+	for _, hit := range vectorHits {
+		if id := strings.TrimSpace(hit.MemoryID); id != "" {
+			memoryIDs = append(memoryIDs, id)
+			continue
+		}
+		sid := strings.TrimSpace(hit.SessionID)
+		if id, ok := sessionLatest[sid]; ok {
+			memoryIDs = append(memoryIDs, id)
+		}
+	}
+	uniqIDs := make([]string, 0, len(memoryIDs))
+	seen := make(map[string]struct{}, len(memoryIDs))
+	for _, id := range memoryIDs {
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniqIDs = append(uniqIDs, id)
+	}
+	memories, err := m.store.GetSessionMemoriesByIDs(uniqIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -92,11 +115,15 @@ func retrieveMemoriesByVectorImpl(m *MemoryService, ctx context.Context, query s
 	for _, hit := range vectorHits {
 		lookupID := strings.TrimSpace(hit.MemoryID)
 		if lookupID == "" {
-			rows, rerr := m.store.ListRecentActiveSessionMemories(hit.SessionID, 1)
-			if rerr != nil || len(rows) == 0 {
+			sid := strings.TrimSpace(hit.SessionID)
+			if sid == "" {
 				continue
 			}
-			lookupID = rows[0].ID
+			var ok bool
+			lookupID, ok = sessionLatest[sid]
+			if !ok || lookupID == "" {
+				continue
+			}
 		}
 		memory, ok := memoryByID[lookupID]
 		if !ok {

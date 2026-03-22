@@ -1,10 +1,15 @@
 package repositories
 
-import "gorm.io/gorm"
+import (
+	"sync"
 
-// Repository 仓储聚合根，提供对数据库的访问入口
+	"gorm.io/gorm"
+)
+
 type Repository struct {
-	db *gorm.DB
+	db      *gorm.DB
+	ftsOnce sync.Once
+	ftsOK   bool
 }
 
 // New 创建 Repository 实例
