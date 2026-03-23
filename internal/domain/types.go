@@ -25,6 +25,59 @@ type SessionMemorySearchHit struct {
 	Score           float64
 }
 
+const (
+	MemoryTypePreference = "preference"
+	MemoryTypeConstraint = "constraint"
+	MemoryTypeTask       = "task"
+	MemoryTypeProfile    = "profile"
+	MemoryTypeProject    = "project"
+
+	MemoryStatusActive   = "active"
+	MemoryStatusStale    = "stale"
+	MemoryStatusArchived = "archived"
+)
+
+type MemoryFactCreateInput struct {
+	SessionID      string
+	MemoryType     string
+	Subject        string
+	Predicate      string
+	Value          string
+	Summary        string
+	Confidence     float64
+	SourceStartSeq int64
+	SourceEndSeq   int64
+	LastSeenAt     time.Time
+	ExpiresAt      *time.Time
+}
+
+type MemoryFactUpdateInput struct {
+	ID             string
+	SessionID      string
+	Value          string
+	Summary        string
+	Confidence     float64
+	SourceStartSeq int64
+	SourceEndSeq   int64
+	LastSeenAt     time.Time
+	ExpiresAt      *time.Time
+	Status         string
+}
+
+type MemoryFactSearchInput struct {
+	Query          string
+	MemoryTypes    []string
+	Limit          int
+	ExcludeSession string
+	Now            time.Time
+}
+
+type MemoryFactSearchHit struct {
+	Fact            MemoryFact
+	MatchedKeywords []string
+	Score           float64
+}
+
 type AddMessageInput struct {
 	SessionID         string
 	Role              string

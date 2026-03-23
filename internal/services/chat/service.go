@@ -12,6 +12,7 @@ import (
 	skillsvc "slimebot/internal/services/skill"
 )
 
+// ChatService 负责聊天主流程编排，串联上下文构建、Agent 调用、附件和技能状态缓存。
 type ChatService struct {
 	store            domain.ChatStore
 	agent            *AgentService
@@ -30,11 +31,13 @@ type ChatService struct {
 	platformModelAt time.Time
 }
 
+// chatStreamAccumulator 聚合流式文本，并记住首次推送失败后的错误状态。
 type chatStreamAccumulator struct {
 	answerBuilder strings.Builder
 	pushErr       error
 }
 
+// ChatStreamResult 描述一次聊天流结束后的最终结果与附加状态。
 type ChatStreamResult struct {
 	Answer            string
 	IsInterrupted     bool
@@ -46,6 +49,7 @@ type ChatStreamResult struct {
 	PushError         string
 }
 
+// NewChatService 创建聊天服务，并初始化会话级技能缓存。
 func NewChatService(store domain.ChatStore, openai *oaisvc.OpenAIClient, mcpManager *mcp.Manager, skillRuntime *skillsvc.SkillRuntimeService, memory *memsvc.MemoryService, systemPromptPath string) *ChatService {
 	return &ChatService{
 		store:            store,
@@ -58,10 +62,12 @@ func NewChatService(store domain.ChatStore, openai *oaisvc.OpenAIClient, mcpMana
 	}
 }
 
+// SetUploadService 注入附件暂存服务，供单轮消费与回收使用。
 func (s *ChatService) SetUploadService(uploads *ChatUploadService) {
 	s.uploads = uploads
 }
 
+// getSessionActivatedSkills 返回会话已激活技能的副本，避免调用方改写内部缓存。
 func (s *ChatService) getSessionActivatedSkills(sessionID string) map[string]struct{} {
 	if strings.TrimSpace(sessionID) == "" {
 		return map[string]struct{}{}
@@ -83,6 +89,7 @@ func (s *ChatService) getSessionActivatedSkills(sessionID string) map[string]str
 	return copyMap
 }
 
+// mergeSessionActivatedSkills 合并本轮新增技能，并在缓存过大时按最久未访问策略淘汰。
 func (s *ChatService) mergeSessionActivatedSkills(sessionID string, activated map[string]struct{}) {
 	if strings.TrimSpace(sessionID) == "" || len(activated) == 0 {
 		return
@@ -109,6 +116,7 @@ func (s *ChatService) mergeSessionActivatedSkills(sessionID string, activated ma
 	}
 }
 
+// evictOldSkillsSessionsLocked 淘汰最久未访问的技能会话缓存，调用方需已持有 skillsMu。
 func (s *ChatService) evictOldSkillsSessionsLocked(maxEvict int) {
 	for i := 0; i < maxEvict && len(s.skillTouchedAt) > 0; i++ {
 		var oldestSession string
@@ -127,12 +135,14 @@ func (s *ChatService) evictOldSkillsSessionsLocked(maxEvict int) {
 	}
 }
 
+// getSystemPromptCached 读取已缓存的 system prompt。
 func (s *ChatService) getSystemPromptCached() string {
 	s.promptMu.RLock()
 	defer s.promptMu.RUnlock()
 	return s.systemPrompt
 }
 
+// setSystemPromptCached 更新内存中的 system prompt 缓存。
 func (s *ChatService) setSystemPromptCached(prompt string) {
 	s.promptMu.Lock()
 	defer s.promptMu.Unlock()

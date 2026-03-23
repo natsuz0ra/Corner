@@ -2,103 +2,21 @@ package memory
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"slimebot/internal/domain"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
-	"slimebot/internal/constants"
+	"slimebot/internal/domain"
 	"slimebot/internal/repositories"
-	oaisvc "slimebot/internal/services/openai"
 )
 
-func TestParseMemoryDecision_WithCodeFence(t *testing.T) {
-	raw := "```json\n{\"need_memory\":true,\"keywords\":[\"golang\",\"rag\"],\"reason\":\"需要历史信息\"}\n```"
-	decision, err := parseMemoryDecision(raw)
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
-	}
-	if !decision.NeedMemory {
-		t.Fatal("expected need_memory=true")
-	}
-	if len(decision.Keywords) != 2 {
-		t.Fatalf("unexpected keywords length: %d", len(decision.Keywords))
+func TestParseMemoryFacts_RejectsInvalidPayload(t *testing.T) {
+	if _, err := parseMemoryFacts("not-json"); err == nil {
+		t.Fatal("expected parser error")
 	}
 }
 
-func TestMemoryServiceTokenizeKeywords_Multilingual(t *testing.T) {
-	svc := NewMemoryService(nil, nil)
-	words := svc.TokenizeKeywords("请帮我优化 Golang RAG memory retrieval，在 Windows 上运行")
-	if len(words) == 0 {
-		t.Fatal("expected non-empty keywords")
-	}
-	joined := strings.Join(words, " ")
-	if !strings.Contains(joined, "golang") {
-		t.Fatalf("expected token list to contain golang, got %v", words)
-	}
-}
-
-func TestMemoryServiceShouldCompressContext(t *testing.T) {
-	repo := newTestRepo(t)
-
-	session, err := repo.CreateSession(context.Background(), "s")
-	if err != nil {
-		t.Fatalf("create session failed: %v", err)
-	}
-	sessionID := session.ID
-	for i := 0; i < constants.CompressHistoryThreshold; i++ {
-		if _, err := addMessage(t, repo, sessionID, "user", "hello"); err != nil {
-			t.Fatalf("add message failed: %v", err)
-		}
-	}
-
-	count, err := repo.CountSessionMessages(sessionID)
-	if err != nil {
-		t.Fatalf("count messages failed: %v", err)
-	}
-	if count != constants.CompressHistoryThreshold {
-		t.Fatalf("unexpected count: %d", count)
-	}
-}
-
-func TestMemoryServiceRetrieveMemoriesRanking(t *testing.T) {
-	repo := newTestRepo(t)
-	svc := NewMemoryService(repo, nil)
-
-	if err := upsertSessionMemory(t, repo, domain.SessionMemoryUpsertInput{
-		SessionID:          "s1",
-		Summary:            "鐢ㄦ埛鍠滄 golang 涓?rag锛屽叧娉?token 鎴愭湰",
-		Keywords:           []string{"golang", "rag", "token"},
-		SourceMessageCount: 20,
-	}); err != nil {
-		t.Fatalf("upsert memory failed: %v", err)
-	}
-	time.Sleep(10 * time.Millisecond)
-	if err := upsertSessionMemory(t, repo, domain.SessionMemoryUpsertInput{
-		SessionID:          "s2",
-		Summary:            "鐢ㄦ埛鍙彁鍒颁簡 golang",
-		Keywords:           []string{"golang"},
-		SourceMessageCount: 10,
-	}); err != nil {
-		t.Fatalf("upsert memory failed: %v", err)
-	}
-
-	hits, err := svc.RetrieveMemories(context.Background(), "golang rag", "", 5)
-	if err != nil {
-		t.Fatalf("retrieve memories failed: %v", err)
-	}
-	if len(hits) < 2 {
-		t.Fatalf("expected at least 2 hits, got %d", len(hits))
-	}
-	if hits[0].Memory.SessionID != "s1" {
-		t.Fatalf("expected s1 ranked first, got %s", hits[0].Memory.SessionID)
-	}
-}
-
-func TestMemoryServiceUpdateSummaryAsync_NonBlocking(t *testing.T) {
+func TestMemoryServiceSyncFactsAsync_EventuallyPersistsStructuredFact(t *testing.T) {
 	repo := newTestRepo(t)
 	svc := NewMemoryService(repo, nil)
 
@@ -106,496 +24,143 @@ func TestMemoryServiceUpdateSummaryAsync_NonBlocking(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session failed: %v", err)
 	}
-	sessionID := session.ID
-	for i := 0; i < 3; i++ {
-		if _, err := addMessage(t, repo, sessionID, "user", "hello"); err != nil {
-			t.Fatalf("add message failed: %v", err)
-		}
-	}
-
-	start := time.Now()
-	svc.UpdateSummaryAsync(sessionID, `{"ops":[{"action":"create","content":"t"}]}`)
-	if elapsed := time.Since(start); elapsed > 50*time.Millisecond {
-		t.Fatalf("expected async call to return quickly, elapsed=%s", elapsed)
-	}
-}
-
-func TestMemoryServiceUpdateSummaryAsync_EventuallyPersistsSummary(t *testing.T) {
-	repo := newTestRepo(t)
-	svc := NewMemoryService(repo, nil)
-
-	session, err := repo.CreateSession(context.Background(), "s")
-	if err != nil {
-		t.Fatalf("create session failed: %v", err)
-	}
-	sessionID := session.ID
-	if _, err := addMessage(t, repo, sessionID, "user", "璇疯浣忔垜鍠滄 Go"); err != nil {
+	if _, err := addMessage(t, repo, session.ID, "user", "以后默认中文回复"); err != nil {
 		t.Fatalf("add message failed: %v", err)
 	}
-	if _, err := addMessage(t, repo, sessionID, "assistant", "好的，我会记住"); err != nil {
+	if _, err := addMessage(t, repo, session.ID, "assistant", "收到"); err != nil {
 		t.Fatalf("add message failed: %v", err)
 	}
 
-	svc.UpdateSummaryAsync(sessionID, `{"ops":[{"action":"create","content":"鐢ㄦ埛鍋忓ソ Go锛屽苟甯屾湜浼氳瘽瀛樻。寮傛鎵ц"}]}`)
-
-	deadline := time.Now().Add(6 * time.Second)
-	for time.Now().Before(deadline) {
-		item, getErr := repo.GetSessionMemory(context.Background(), sessionID)
-		if getErr != nil {
-			t.Fatalf("get session memory failed: %v", getErr)
-		}
-		if item != nil && strings.Contains(item.Summary, "寮傛鎵ц") {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatal("expected async summary to be eventually persisted")
-}
-
-func TestMemoryServiceChatOnceWithRetry_TimeoutThenSuccess(t *testing.T) {
-	svc := NewMemoryService(nil, nil)
-	callCount := int32(0)
-	svc.chatInvoker = func(_ context.Context, _ oaisvc.ModelRuntimeConfig, _ []oaisvc.ChatMessage) (string, error) {
-		attempt := atomic.AddInt32(&callCount, 1)
-		if attempt == 1 {
-			return "", context.DeadlineExceeded
-		}
-		return "{\"need_memory\":true,\"keywords\":[\"slimebot\"],\"reason\":\"ok\"}", nil
-	}
-
-	reply, attempts, _, err := svc.chatOnceWithRetry(
-		context.Background(),
-		oaisvc.ModelRuntimeConfig{},
-		[]oaisvc.ChatMessage{{Role: "user", Content: "test"}},
-		1*time.Second,
-		"memory_decision",
-	)
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
-	}
-	if strings.TrimSpace(reply) == "" {
-		t.Fatal("expected non-empty reply")
-	}
-	if attempts != 2 {
-		t.Fatalf("expected attempts=2, got %d", attempts)
-	}
-}
-
-func TestMemoryServiceUpdateSummaryAsync_SerializesSameSession(t *testing.T) {
-	repo := newTestRepo(t)
-	svc := NewMemoryService(repo, nil)
-
-	session, err := repo.CreateSession(context.Background(), "s")
-	if err != nil {
-		t.Fatalf("create session failed: %v", err)
-	}
-	sessionID := session.ID
-	for i := 0; i < 4; i++ {
-		if _, err := addMessage(t, repo, sessionID, "user", fmt.Sprintf("hello-%d", i)); err != nil {
-			t.Fatalf("add message failed: %v", err)
-		}
-	}
-
-	svc.UpdateSummaryAsync(sessionID, `{"ops":[{"action":"create","content":"a"}]}`)
-	svc.UpdateSummaryAsync(sessionID, `{"ops":[{"action":"create","content":"b"}]}`)
-	svc.UpdateSummaryAsync(sessionID, `{"ops":[{"action":"create","content":"c"}]}`)
+	svc.SyncFactsAsync(session.ID, `{"facts":[{"memory_type":"preference","subject":"user","predicate":"reply_language","value":"zh-cn","summary":"用户偏好中文回复","confidence":0.96}]}`)
 
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		all, _ := repo.ListActiveSessionMemories(context.Background(), sessionID)
-		if len(all) >= 2 {
-			break
+		fact, getErr := repo.FindActiveMemoryFact(context.Background(), session.ID, domain.MemoryTypePreference, "user", "reply_language")
+		if getErr != nil {
+			t.Fatalf("find fact failed: %v", getErr)
 		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	all, err := repo.ListActiveSessionMemories(context.Background(), sessionID)
-	if err != nil {
-		t.Fatalf("list memories failed: %v", err)
-	}
-	if len(all) < 2 {
-		t.Fatalf("expected at least 2 memory chunks (first run + coalesced pending), got %d", len(all))
-	}
-
-	deadline = time.Now().Add(6 * time.Second)
-	for time.Now().Before(deadline) {
-		svc.workerMu.Lock()
-		_, exists := svc.workers[sessionID]
-		svc.workerMu.Unlock()
-		if !exists {
+		if fact != nil {
+			if fact.Value != "zh-cn" {
+				t.Fatalf("unexpected fact value: %s", fact.Value)
+			}
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatal("worker state was not released")
+	t.Fatal("expected structured fact persisted")
 }
 
-func TestMemoryServiceBuildRecentHistory_UsesLimit(t *testing.T) {
+func TestMemoryServiceSyncFactsAsync_StalesConflictingPreference(t *testing.T) {
 	repo := newTestRepo(t)
 	svc := NewMemoryService(repo, nil)
-
 	session, err := repo.CreateSession(context.Background(), "s")
 	if err != nil {
 		t.Fatalf("create session failed: %v", err)
 	}
-	sessionID := session.ID
-	for i := 0; i < 24; i++ {
-		if _, err := addMessage(t, repo, sessionID, "user", fmt.Sprintf("msg-%d", i)); err != nil {
-			t.Fatalf("add message failed: %v", err)
-		}
-		time.Sleep(1 * time.Millisecond)
+	if _, err := repo.CreateMemoryFact(domain.MemoryFactCreateInput{
+		SessionID:      session.ID,
+		MemoryType:     domain.MemoryTypePreference,
+		Subject:        "user",
+		Predicate:      "theme",
+		Value:          "dark",
+		Summary:        "用户偏好深色主题",
+		Confidence:     0.89,
+		SourceStartSeq: 1,
+		SourceEndSeq:   2,
+		LastSeenAt:     time.Now(),
+	}); err != nil {
+		t.Fatalf("seed fact failed: %v", err)
 	}
-
-	history, err := svc.BuildRecentHistory(sessionID, constants.CompressedRecentHistoryLimit)
-	if err != nil {
-		t.Fatalf("build recent history failed: %v", err)
-	}
-	if len(history) != constants.CompressedRecentHistoryLimit {
-		t.Fatalf("expected recent=%d, got %d", constants.CompressedRecentHistoryLimit, len(history))
-	}
-	contents := make(map[string]struct{}, len(history))
-	for _, msg := range history {
-		contents[msg.Content] = struct{}{}
-	}
-	if _, exists := contents["msg-0"]; exists {
-		t.Fatalf("expected msg-0 trimmed, got history=%v", contents)
-	}
-	if _, exists := contents["msg-3"]; exists {
-		t.Fatalf("expected msg-3 trimmed, got history=%v", contents)
-	}
-	if _, exists := contents["msg-23"]; !exists {
-		t.Fatalf("expected latest message to remain, got history=%v", contents)
-	}
-}
-
-func TestExternalSummaryUpsert_ProducesKeywords(t *testing.T) {
-	repo := newTestRepo(t)
-	svc := NewMemoryService(repo, nil)
-
-	session, err := repo.CreateSession(context.Background(), "s")
-	if err != nil {
-		t.Fatalf("create session failed: %v", err)
-	}
-	sessionID := session.ID
-	if _, err := addMessage(t, repo, sessionID, "user", "璇疯浣忔垜鍋忓ソ golang 鍜?rag 瀹炵幇"); err != nil {
+	if _, err := addMessage(t, repo, session.ID, "user", "现在改成浅色主题"); err != nil {
 		t.Fatalf("add message failed: %v", err)
 	}
 
-	summary := "用户偏好 golang，当前在做 rag 方案设计，关注 token 成本。"
-	keywords := svc.TokenizeKeywords(summary)
-	updated, err := repo.UpsertSessionMemoryIfNewer(domain.SessionMemoryUpsertInput{
-		SessionID:          sessionID,
-		Summary:            summary,
-		Keywords:           keywords,
-		SourceMessageCount: 1,
-	})
-	if err != nil {
-		t.Fatalf("upsert summary failed: %v", err)
-	}
-	if !updated {
-		t.Fatal("expected summary upsert updated=true")
-	}
+	svc.SyncFactsAsync(session.ID, `{"facts":[{"memory_type":"preference","subject":"user","predicate":"theme","value":"light","summary":"用户改为偏好浅色主题","confidence":0.97}]}`)
 
-	item, err := repo.GetSessionMemory(context.Background(), sessionID)
-	if err != nil {
-		t.Fatalf("get session memory failed: %v", err)
-	}
-	if item == nil {
-		t.Fatal("expected session memory to exist")
-	}
-	if strings.TrimSpace(item.Summary) != summary {
-		t.Fatalf("unexpected summary: %q", item.Summary)
-	}
-	if strings.TrimSpace(item.KeywordsText) == "" {
-		t.Fatal("expected non-empty keywords_text")
-	}
-}
-
-func TestFlattenMessages_IncludesTimestamp(t *testing.T) {
-	at := time.Date(2026, 3, 18, 10, 0, 0, 0, time.Local)
-	text := flattenMessages([]domain.Message{
-		{Role: "user", Content: "hello", CreatedAt: at},
-	})
-	if !strings.Contains(text, "[") || !strings.Contains(text, "] user: hello") {
-		t.Fatalf("unexpected flattened format: %q", text)
-	}
-	if !strings.Contains(text, at.Format(time.RFC3339)) {
-		t.Fatalf("expected RFC3339 timestamp, got: %q", text)
-	}
-}
-
-func TestMemoryServiceRetrieveMemories_UsesVectorStore(t *testing.T) {
-	repo := newTestRepo(t)
-	svc := NewMemoryService(repo, nil)
-	svc.SetEmbeddingService(mockEmbeddingService{
-		vector: []float32{0.1, 0.2, 0.3},
-	})
-	svc.SetVectorStore(&mockVectorStore{
-		hits: []domain.MemoryVectorSearchHit{
-			{SessionID: "s2", Score: 0.95},
-			{SessionID: "s1", Score: 0.90},
-		},
-	})
-
-	if err := upsertSessionMemory(t, repo, domain.SessionMemoryUpsertInput{
-		SessionID:          "s1",
-		Summary:            "鐢ㄦ埛鍠滄 golang",
-		Keywords:           []string{"golang"},
-		SourceMessageCount: 1,
-	}); err != nil {
-		t.Fatalf("upsert s1 failed: %v", err)
-	}
-	if err := upsertSessionMemory(t, repo, domain.SessionMemoryUpsertInput{
-		SessionID:          "s2",
-		Summary:            "鐢ㄦ埛鍏虫敞 rag",
-		Keywords:           []string{"rag"},
-		SourceMessageCount: 2,
-	}); err != nil {
-		t.Fatalf("upsert s2 failed: %v", err)
-	}
-
-	hits, err := svc.RetrieveMemories(context.Background(), "golang rag", "", 2)
-	if err != nil {
-		t.Fatalf("retrieve failed: %v", err)
-	}
-	if len(hits) != 2 {
-		t.Fatalf("expected 2 hits, got %d", len(hits))
-	}
-	if hits[0].Memory.SessionID != "s2" {
-		t.Fatalf("expected vector-ranked s2 first, got %s", hits[0].Memory.SessionID)
-	}
-}
-
-func TestMemoryServiceRetrieveMemories_VectorErrorFallsBackToKeyword(t *testing.T) {
-	repo := newTestRepo(t)
-	svc := NewMemoryService(repo, nil)
-	svc.SetEmbeddingService(mockEmbeddingService{
-		vector: []float32{0.1, 0.2, 0.3},
-	})
-	svc.SetVectorStore(&mockVectorStore{
-		err: errors.New("vector unavailable"),
-	})
-
-	if err := upsertSessionMemory(t, repo, domain.SessionMemoryUpsertInput{
-		SessionID:          "s1",
-		Summary:            "鐢ㄦ埛鍠滄 golang",
-		Keywords:           []string{"golang"},
-		SourceMessageCount: 1,
-	}); err != nil {
-		t.Fatalf("upsert s1 failed: %v", err)
-	}
-
-	hits, err := svc.RetrieveMemories(context.Background(), "golang", "", 1)
-	if err != nil {
-		t.Fatalf("retrieve failed: %v", err)
-	}
-	if len(hits) != 1 {
-		t.Fatalf("expected fallback keyword hit, got %d", len(hits))
-	}
-	if hits[0].Memory.SessionID != "s1" {
-		t.Fatalf("expected keyword fallback s1, got %s", hits[0].Memory.SessionID)
-	}
-}
-
-type mockEmbeddingService struct {
-	vector []float32
-	err    error
-}
-
-func (m mockEmbeddingService) Embed(_ context.Context, _ string) ([]float32, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	return m.vector, nil
-}
-
-func (m mockEmbeddingService) EmbedBatch(_ context.Context, texts []string) ([][]float32, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	out := make([][]float32, 0, len(texts))
-	for range texts {
-		out = append(out, m.vector)
-	}
-	return out, nil
-}
-
-type mockVectorStore struct {
-	hits        []domain.MemoryVectorSearchHit
-	err         error
-	upsertCalls int
-}
-
-func (m *mockVectorStore) UpsertSessionMemoryVector(_ context.Context, _ domain.MemoryVectorUpsertInput) error {
-	m.upsertCalls++
-	return m.err
-}
-
-func (m *mockVectorStore) SearchSimilarSessionIDs(_ context.Context, _ []float32, _ int, _ string) ([]domain.MemoryVectorSearchHit, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	return m.hits, nil
-}
-
-func (m *mockVectorStore) SearchMemoriesInSession(_ context.Context, _ []float32, _ string, _ int) ([]domain.MemoryVectorSearchHit, error) {
-	return nil, nil
-}
-
-func (m *mockVectorStore) DeleteMemoryVector(_ context.Context, _ string) error {
-	return nil
-}
-
-func TestMemoryServiceRunSummaryOnce_UpsertsVectorWhenEnabled(t *testing.T) {
-	repo := newTestRepo(t)
-	svc := NewMemoryService(repo, nil)
-
-	session, err := repo.CreateSession(context.Background(), "s")
-	if err != nil {
-		t.Fatalf("create session failed: %v", err)
-	}
-	sessionID := session.ID
-	if _, err := addMessage(t, repo, sessionID, "user", "璇疯浣忔垜鍠滄 golang"); err != nil {
-		t.Fatalf("add message failed: %v", err)
-	}
-	if _, err := addMessage(t, repo, sessionID, "assistant", "好的，我会记住"); err != nil {
-		t.Fatalf("add message failed: %v", err)
-	}
-
-	vectorStore := &mockVectorStore{}
-	svc.SetEmbeddingService(mockEmbeddingService{
-		vector: []float32{0.1, 0.2, 0.3},
-	})
-	svc.SetVectorStore(vectorStore)
-
-	svc.UpdateSummaryAsync(sessionID, `{"ops":[{"action":"create","content":"鐢ㄦ埛鍠滄 golang"}]}`)
-	deadline := time.Now().Add(6 * time.Second)
+	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if vectorStore.upsertCalls > 0 {
+		active, getErr := repo.FindActiveMemoryFact(context.Background(), session.ID, domain.MemoryTypePreference, "user", "theme")
+		if getErr != nil {
+			t.Fatalf("find active failed: %v", getErr)
+		}
+		if active != nil && active.Value == "light" {
+			rows, err := repo.GetSessionMemoriesBySessionIDs([]string{session.ID})
+			if err != nil {
+				t.Fatalf("list facts failed: %v", err)
+			}
+			staleSeen := false
+			for _, row := range rows {
+				if row.Predicate == "theme" && row.Value == "dark" && row.Status == domain.MemoryStatusStale {
+					staleSeen = true
+				}
+			}
+			if !staleSeen {
+				t.Fatal("expected old preference to become stale")
+			}
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatal("expected vector upsert call after summary update")
+	t.Fatal("expected preference conflict resolved")
 }
 
-func TestMemoryRetrievalSampleSet_VectorPathBeatsKeywordBaseline(t *testing.T) {
+func TestMemoryServiceBuildSessionMemoryContextForPrompt_GroupsByType(t *testing.T) {
 	repo := newTestRepo(t)
-
-	memories := []domain.SessionMemoryUpsertInput{
-		{SessionID: "m1", Summary: "用户学习 golang 并发", Keywords: []string{"golang", "并发"}, SourceMessageCount: 10},
-		{SessionID: "m2", Summary: "用户正在做 RAG 架构", Keywords: []string{"rag", "检索"}, SourceMessageCount: 10},
-		{SessionID: "m3", Summary: "用户关注成本优化", Keywords: []string{"成本", "优化"}, SourceMessageCount: 10},
+	svc := NewMemoryService(repo, nil)
+	session, err := repo.CreateSession(context.Background(), "s")
+	if err != nil {
+		t.Fatalf("create session failed: %v", err)
 	}
-	for _, item := range memories {
-		if err := upsertSessionMemory(t, repo, item); err != nil {
-			t.Fatalf("seed memory failed: %v", err)
-		}
+	seedFact(t, repo, session.ID, domain.MemoryTypeConstraint, "project", "budget", "low_cost", "项目要求极致省钱", 0.99, nil)
+	seedFact(t, repo, session.ID, domain.MemoryTypeTask, "project", "current_task", "memory_refactor", "当前任务是重构记忆系统", 0.92, nil)
+	seedFact(t, repo, session.ID, domain.MemoryTypePreference, "user", "reply_language", "zh-cn", "用户偏好中文回复", 0.95, nil)
+
+	ctxText := svc.BuildSessionMemoryContextForPrompt(context.Background(), session.ID, nil)
+	if !strings.Contains(ctxText, "<constraints>") {
+		t.Fatalf("expected constraints group, got %q", ctxText)
 	}
-
-	keywordSvc := NewMemoryService(repo, nil)
-	vectorSvc := NewMemoryService(repo, nil)
-	vectorSvc.SetEmbeddingService(mockEmbeddingByQuery{
-		vectors: map[string][]float32{
-			"并发":  {1},
-			"知识库": {2},
-			"省钱":  {3},
-		},
-		defaultVec: []float32{9},
-	})
-	vectorSvc.SetVectorStore(&mockVectorStoreByQueryVec{
-		rules: map[float32]string{
-			1: "m1",
-			2: "m2",
-			3: "m3",
-		},
-	})
-
-	cases := []struct {
-		query  string
-		expect string
-	}{
-		{query: "并发", expect: "m1"},
-		{query: "知识库", expect: "m2"},
-		{query: "省钱", expect: "m3"},
+	if !strings.Contains(ctxText, "<active_tasks>") {
+		t.Fatalf("expected active_tasks group, got %q", ctxText)
 	}
-
-	keywordTop1 := 0
-	vectorTop1 := 0
-	for _, tc := range cases {
-		kHits, err := keywordSvc.RetrieveMemories(context.Background(), tc.query, "", 1)
-		if err != nil {
-			t.Fatalf("keyword retrieve failed: %v", err)
-		}
-		if len(kHits) > 0 && kHits[0].Memory.SessionID == tc.expect {
-			keywordTop1++
-		}
-
-		vHits, err := vectorSvc.RetrieveMemories(context.Background(), tc.query, "", 1)
-		if err != nil {
-			t.Fatalf("vector retrieve failed: %v", err)
-		}
-		if len(vHits) > 0 && vHits[0].Memory.SessionID == tc.expect {
-			vectorTop1++
-		}
-	}
-
-	if vectorTop1 <= keywordTop1 {
-		t.Fatalf("expected vector top1 better than keyword baseline, vector=%d keyword=%d", vectorTop1, keywordTop1)
+	if !strings.Contains(ctxText, "<preferences>") {
+		t.Fatalf("expected preferences group, got %q", ctxText)
 	}
 }
 
-type mockEmbeddingByQuery struct {
-	vectors    map[string][]float32
-	defaultVec []float32
-}
+func TestMemoryServiceQueryForAgent_OutputIncludesTypeAndStatus(t *testing.T) {
+	repo := newTestRepo(t)
+	svc := NewMemoryService(repo, nil)
+	seedFact(t, repo, "s2", domain.MemoryTypeConstraint, "project", "budget", "low_cost", "项目要求极致省钱并控制 token 成本", 0.98, nil)
 
-func (m mockEmbeddingByQuery) Embed(_ context.Context, text string) ([]float32, error) {
-	trimmed := strings.TrimSpace(text)
-	if vec, ok := m.vectors[trimmed]; ok {
-		return vec, nil
+	result, err := svc.QueryForAgent(context.Background(), "s1", "预算 省钱", 3)
+	if err != nil {
+		t.Fatalf("query for agent failed: %v", err)
 	}
-	return m.defaultVec, nil
-}
-
-func (m mockEmbeddingByQuery) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
-	result := make([][]float32, 0, len(texts))
-	for _, text := range texts {
-		vec, err := m.Embed(ctx, text)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, vec)
+	if !strings.Contains(result.Output, "type=constraint") {
+		t.Fatalf("expected type in output: %q", result.Output)
 	}
-	return result, nil
-}
-
-type mockVectorStoreByQueryVec struct {
-	rules map[float32]string
-}
-
-func (m *mockVectorStoreByQueryVec) UpsertSessionMemoryVector(_ context.Context, _ domain.MemoryVectorUpsertInput) error {
-	return nil
-}
-
-func (m *mockVectorStoreByQueryVec) SearchSimilarSessionIDs(_ context.Context, query []float32, _ int, _ string) ([]domain.MemoryVectorSearchHit, error) {
-	if len(query) == 0 {
-		return []domain.MemoryVectorSearchHit{}, nil
+	if !strings.Contains(result.Output, "status=active") {
+		t.Fatalf("expected status in output: %q", result.Output)
 	}
-	sessionID, ok := m.rules[query[0]]
-	if !ok {
-		return []domain.MemoryVectorSearchHit{}, nil
+}
+
+func seedFact(t *testing.T, repo *repositories.Repository, sessionID, memoryType, subject, predicate, value, summary string, confidence float64, expiresAt *time.Time) {
+	t.Helper()
+	if _, err := repo.CreateMemoryFact(domain.MemoryFactCreateInput{
+		SessionID:      sessionID,
+		MemoryType:     memoryType,
+		Subject:        subject,
+		Predicate:      predicate,
+		Value:          value,
+		Summary:        summary,
+		Confidence:     confidence,
+		SourceStartSeq: 1,
+		SourceEndSeq:   1,
+		LastSeenAt:     time.Now(),
+		ExpiresAt:      expiresAt,
+	}); err != nil {
+		t.Fatalf("seed fact failed: %v", err)
 	}
-	return []domain.MemoryVectorSearchHit{
-		{SessionID: sessionID, Score: 0.99},
-	}, nil
-}
-
-func (m *mockVectorStoreByQueryVec) SearchMemoriesInSession(_ context.Context, _ []float32, _ string, _ int) ([]domain.MemoryVectorSearchHit, error) {
-	return nil, nil
-}
-
-func (m *mockVectorStoreByQueryVec) DeleteMemoryVector(_ context.Context, _ string) error {
-	return nil
 }
 
 func addMessage(_ *testing.T, repo *repositories.Repository, sessionID, role, content string) (*domain.Message, error) {
@@ -606,10 +171,6 @@ func addMessage(_ *testing.T, repo *repositories.Repository, sessionID, role, co
 	})
 }
 
-func upsertSessionMemory(_ *testing.T, repo *repositories.Repository, input domain.SessionMemoryUpsertInput) error {
-	_, err := repo.UpsertSessionMemoryIfNewer(input)
-	return err
-}
 func newTestRepo(t *testing.T) *repositories.Repository {
 	t.Helper()
 	return repositories.New(repositories.NewSQLiteDBTest(t, "services_test"))
