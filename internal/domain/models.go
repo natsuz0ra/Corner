@@ -40,18 +40,26 @@ type MessageAttachment struct {
 	IconType  string `json:"iconType"`
 }
 
-// SessionMemory 会话内单条原子记忆与关键词，用于上下文与跨会话检索
-type SessionMemory struct {
-	ID                 string    `gorm:"primaryKey;size:36" json:"id"`
-	SessionID          string    `gorm:"size:36;not null;index:idx_session_memories_session_active" json:"sessionId"`
-	Summary            string    `gorm:"type:text;not null" json:"summary"`
-	KeywordsJSON       string    `gorm:"type:text;not null" json:"keywordsJson"`
-	KeywordsText       string    `gorm:"type:text;not null" json:"keywordsText"`
-	SourceMessageCount int       `gorm:"not null;default:0" json:"sourceMessageCount"`
-	IsActive           bool      `gorm:"not null;default:true;index:idx_session_memories_session_active" json:"isActive"`
-	CreatedAt          time.Time `json:"createdAt"`
-	UpdatedAt          time.Time `gorm:"index" json:"updatedAt"`
+type MemoryFact struct {
+	ID             string     `gorm:"primaryKey;size:36" json:"id"`
+	SessionID      string     `gorm:"size:36;not null;index:idx_memory_facts_lookup,priority:1;index:idx_memory_facts_prompt,priority:1" json:"sessionId"`
+	MemoryType     string     `gorm:"size:32;not null;index:idx_memory_facts_lookup,priority:2;index:idx_memory_facts_prompt,priority:2" json:"memoryType"`
+	Subject        string     `gorm:"size:128;not null;index:idx_memory_facts_lookup,priority:3" json:"subject"`
+	Predicate      string     `gorm:"size:128;not null;index:idx_memory_facts_lookup,priority:4" json:"predicate"`
+	Value          string     `gorm:"type:text;not null" json:"value"`
+	Summary        string     `gorm:"type:text;not null" json:"summary"`
+	Confidence     float64    `gorm:"not null;default:0" json:"confidence"`
+	Status         string     `gorm:"size:24;not null;index:idx_memory_facts_prompt,priority:3" json:"status"`
+	SourceStartSeq int64      `gorm:"not null;default:0" json:"sourceStartSeq"`
+	SourceEndSeq   int64      `gorm:"not null;default:0" json:"sourceEndSeq"`
+	LastSeenAt     time.Time  `gorm:"index" json:"lastSeenAt"`
+	ExpiresAt      *time.Time `gorm:"index" json:"expiresAt,omitempty"`
+	Version        int        `gorm:"not null;default:1" json:"version"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `gorm:"index" json:"updatedAt"`
 }
+
+type SessionMemory = MemoryFact
 
 // ToolCallRecord 持久化一次工具调用完整链路，支持历史会话回放工具详情
 type ToolCallRecord struct {

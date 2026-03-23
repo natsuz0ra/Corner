@@ -15,10 +15,12 @@ import (
 	oaisvc "slimebot/internal/services/openai"
 )
 
+// BuildContextMessages 构造发给模型的完整上下文消息。
 func (s *ChatService) BuildContextMessages(ctx context.Context, sessionID string, modelConfig oaisvc.ModelRuntimeConfig) ([]oaisvc.ChatMessage, error) {
 	return s.buildContextMessages(ctx, sessionID, modelConfig)
 }
 
+// buildContextMessages 并行加载系统提示词和最近历史，再按 system -> memory -> history 顺序组装上下文。
 func (s *ChatService) buildContextMessages(ctx context.Context, sessionID string, modelConfig oaisvc.ModelRuntimeConfig) ([]oaisvc.ChatMessage, error) {
 	_ = modelConfig
 	buildStart := time.Now()
@@ -100,6 +102,7 @@ func (s *ChatService) buildContextMessages(ctx context.Context, sessionID string
 	return msgs, nil
 }
 
+// loadSystemPrompt 按候选路径读取并缓存 system prompt，减少每轮聊天重复读盘。
 func (s *ChatService) loadSystemPrompt() (string, error) {
 	if cached := strings.TrimSpace(s.getSystemPromptCached()); cached != "" {
 		return cached, nil

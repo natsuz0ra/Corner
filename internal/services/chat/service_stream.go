@@ -15,6 +15,7 @@ import (
 	oaisvc "slimebot/internal/services/openai"
 )
 
+// HandleChatStream 执行一次完整聊天回合：写入用户消息、构建上下文、驱动 Agent、落库 assistant 结果。
 func (s *ChatService) HandleChatStream(
 	ctx context.Context,
 	sessionID string,
@@ -75,6 +76,7 @@ func (s *ChatService) HandleChatStream(
 		return nil, err
 	}
 
+	// 上下文消息与启用的 MCP 配置彼此独立，先并行准备以缩短回合启动耗时。
 	var (
 		contextMessages   []oaisvc.ChatMessage
 		enabledMCPConfigs []domain.MCPConfig
@@ -113,6 +115,7 @@ func (s *ChatService) HandleChatStream(
 	streamStart := time.Now()
 	var firstTokenAt time.Time
 
+	// pushBody 负责同时维护最终答案缓存与对外流式推送，推送失败后不影响后续落库。
 	pushBody := func(body string) error {
 		if body == "" {
 			return nil

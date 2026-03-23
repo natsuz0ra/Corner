@@ -30,6 +30,7 @@ import (
 	"slimebot/web"
 )
 
+// App 聚合进程级依赖，负责 HTTP 服务、平台 worker 与后台资源的生命周期。
 type App struct {
 	httpServer     *http.Server
 	telegramWorker *telegram.Worker
@@ -39,6 +40,7 @@ type App struct {
 	mcpManager     *mcp.Manager
 }
 
+// New 构建应用运行所需的仓储、服务、控制器与后台组件。
 func New(cfg config.Config) (*App, error) {
 	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), os.ModePerm); err != nil {
 		return nil, err
@@ -123,6 +125,7 @@ func New(cfg config.Config) (*App, error) {
 	}, nil
 }
 
+// Run 启动平台 worker 与 HTTP 服务，并在退出时统一触发资源清理。
 func (a *App) Run(ctx context.Context) error {
 	a.telegramWorker.Start(ctx)
 	err := runServerWithGracefulShutdown(ctx, a.httpServer)
@@ -132,6 +135,7 @@ func (a *App) Run(ctx context.Context) error {
 	return err
 }
 
+// cleanup 关闭内存、向量化与 MCP 等后台资源，避免进程退出时遗留句柄。
 func (a *App) cleanup(ctx context.Context) {
 	if a == nil {
 		return

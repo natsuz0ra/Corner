@@ -16,7 +16,6 @@ type memoryWorkerState struct {
 	pendingRawSummary string
 }
 
-// updateSummaryAsyncImpl 为单会话启动摘要 worker；若已运行则排队最新摘要。
 func updateSummaryAsyncImpl(m *MemoryService, sessionID string, rawSummary string) {
 	sessionID = strings.TrimSpace(sessionID)
 	rawSummary = strings.TrimSpace(rawSummary)
@@ -32,11 +31,10 @@ func updateSummaryAsyncImpl(m *MemoryService, sessionID string, rawSummary strin
 	}
 	state.lastRawSummary = rawSummary
 	if state.running {
-		// worker 运行中只保留最新待处理摘要。
 		state.pending = true
 		state.pendingRawSummary = rawSummary
 		m.workerMu.Unlock()
-		slog.Info("memory_summary_queued", "session", sessionID, "reason", "worker_running")
+		slog.Info("memory_facts_queued", "session", sessionID, "reason", "worker_running")
 		return
 	}
 	state.running = true
@@ -49,12 +47,8 @@ func updateSummaryAsyncImpl(m *MemoryService, sessionID string, rawSummary strin
 	}()
 }
 
-// runSummaryWorkerImpl 单会话 worker 循环：处理摘要并在 pending 时继续。
 func runSummaryWorkerImpl(m *MemoryService, sessionID string) {
 	defer func() {
-		if recovered := recover(); recovered != nil {
-			slog.Error("memory_summary_panic", "session", sessionID, "recovered", recovered)
-		}
 		m.workerMu.Lock()
 		delete(m.workers, sessionID)
 		m.workerMu.Unlock()
@@ -66,18 +60,16 @@ func runSummaryWorkerImpl(m *MemoryService, sessionID string) {
 			return
 		default:
 		}
-
-		var summary string
 		m.workerMu.Lock()
 		state := m.workers[sessionID]
 		if state == nil {
 			m.workerMu.Unlock()
 			return
 		}
-		summary = state.lastRawSummary
+		raw := state.lastRawSummary
 		m.workerMu.Unlock()
 
-		runSummaryOnceImpl(m, sessionID, summary)
+		runSummaryOnceImpl(m, sessionID, raw)
 
 		m.workerMu.Lock()
 		state = m.workers[sessionID]
@@ -86,12 +78,10 @@ func runSummaryWorkerImpl(m *MemoryService, sessionID string) {
 			return
 		}
 		if state.pending {
-			// 有新摘要待处理则继续下一轮。
 			state.pending = false
 			state.lastRawSummary = state.pendingRawSummary
 			state.pendingRawSummary = ""
 			m.workerMu.Unlock()
-			slog.Info("memory_summary_worker_continue", "session", sessionID, "reason", "pending_trigger")
 			continue
 		}
 		m.workerMu.Unlock()
@@ -99,7 +89,6 @@ func runSummaryWorkerImpl(m *MemoryService, sessionID string) {
 	}
 }
 
-// runSummaryOnceImpl 解析摘要 ops 并执行增删改，同步向量库。
 func runSummaryOnceImpl(m *MemoryService, sessionID string, rawSummary string) {
 	startAt := time.Now()
 	ctx := m.workerCtx
@@ -107,62 +96,98 @@ func runSummaryOnceImpl(m *MemoryService, sessionID string, rawSummary string) {
 		ctx = context.Background()
 	}
 
-	ops, err := parseMemoryOps(rawSummary)
+	facts, err := parseMemoryFacts(rawSummary)
 	if err != nil {
-		// 解析失败时降级为单条 create。
-		ops = parseMemoryOpsOrFallback(rawSummary)
-	}
-	if len(ops) == 0 {
+		slog.Warn("memory_facts_parse_failed", "session", sessionID, "err", err)
 		return
 	}
-
 	totalMessages, err := m.store.CountSessionMessages(sessionID)
 	if err != nil {
-		slog.Warn("memory_summary_skip", "session", sessionID, "reason", "count_failed", "err", err)
+		slog.Warn("memory_facts_skip", "session", sessionID, "reason", "count_failed", "err", err)
 		return
 	}
 
-	for _, op := range ops {
-		switch op.Action {
-		case "create":
-			kw := m.TokenizeKeywords(op.Content)
-			created, cerr := m.store.CreateSessionMemory(domain.SessionMemoryCreateInput{
-				SessionID:          sessionID,
-				Summary:            op.Content,
-				Keywords:           kw,
-				SourceMessageCount: int(totalMessages),
-			})
-			if cerr != nil {
-				slog.Warn("memory_create_failed", "session", sessionID, "err", cerr)
-				continue
-			}
-			if m.embedding != nil && m.vectorStore != nil && created != nil {
-				_ = upsertMemoryVector(m, ctx, created.ID, sessionID, created.Summary, kw, int(totalMessages))
-			}
-		case "update":
-			kw := m.TokenizeKeywords(op.Content)
-			if err := m.store.UpdateSessionMemoryContent(op.ID, sessionID, op.Content, kw, int(totalMessages)); err != nil {
-				slog.Warn("memory_update_failed", "session", sessionID, "id", op.ID, "err", err)
-				continue
-			}
-			if m.embedding != nil && m.vectorStore != nil {
-				_ = upsertMemoryVector(m, ctx, op.ID, sessionID, op.Content, kw, int(totalMessages))
-			}
-		case "delete":
-			if err := m.store.SoftDeleteSessionMemory(op.ID, sessionID); err != nil {
-				slog.Warn("memory_delete_failed", "session", sessionID, "id", op.ID, "err", err)
-				continue
-			}
-			if m.vectorStore != nil {
-				_ = m.vectorStore.DeleteMemoryVector(ctx, op.ID)
-			}
+	for _, fact := range facts {
+		if fact.Confidence < minFactConfidence {
+			continue
+		}
+		if err := applyFactCandidate(ctx, m, sessionID, fact, totalMessages); err != nil {
+			slog.Warn("memory_fact_apply_failed", "session", sessionID, "type", fact.MemoryType, "subject", fact.Subject, "predicate", fact.Predicate, "err", err)
 		}
 	}
+	slog.Info("memory_facts_updated", "session", sessionID, "facts", len(facts), "total_messages", totalMessages, "cost_ms", time.Since(startAt).Milliseconds())
+}
 
-	slog.Info("memory_summary_updated",
-		"session", sessionID,
-		"total_messages", totalMessages,
-		"ops", len(ops),
-		"total_cost_ms", time.Since(startAt).Milliseconds(),
-	)
+func applyFactCandidate(ctx context.Context, m *MemoryService, sessionID string, candidate memoryFactCandidate, totalMessages int64) error {
+	existing, err := m.store.FindActiveMemoryFact(ctx, sessionID, candidate.MemoryType, candidate.Subject, candidate.Predicate)
+	if err != nil {
+		return err
+	}
+	expiresAt := candidateExpiresAt(candidate)
+	if existing != nil {
+		if strings.EqualFold(strings.TrimSpace(existing.Value), strings.TrimSpace(candidate.Value)) {
+			updated, err := m.store.UpdateMemoryFact(domain.MemoryFactUpdateInput{
+				ID:             existing.ID,
+				SessionID:      sessionID,
+				Value:          candidate.Value,
+				Summary:        candidate.Summary,
+				Confidence:     candidate.Confidence,
+				SourceStartSeq: existing.SourceStartSeq,
+				SourceEndSeq:   totalMessages,
+				LastSeenAt:     time.Now(),
+				ExpiresAt:      expiresAt,
+				Status:         domain.MemoryStatusActive,
+			})
+			if err != nil {
+				return err
+			}
+			if m.embedding != nil && m.vectorStore != nil && updated != nil {
+				_ = upsertMemoryVector(m, ctx, updated.ID, sessionID, updated.Summary, updated.Value, updated.MemoryType)
+			}
+			return nil
+		}
+		if err := m.store.MarkMemoryFactStale(existing.ID, sessionID); err != nil {
+			return err
+		}
+		if m.vectorStore != nil {
+			_ = m.vectorStore.DeleteMemoryVector(ctx, existing.ID)
+		}
+	}
+	created, err := m.store.CreateMemoryFact(domain.MemoryFactCreateInput{
+		SessionID:      sessionID,
+		MemoryType:     candidate.MemoryType,
+		Subject:        candidate.Subject,
+		Predicate:      candidate.Predicate,
+		Value:          candidate.Value,
+		Summary:        candidate.Summary,
+		Confidence:     candidate.Confidence,
+		SourceStartSeq: totalMessages,
+		SourceEndSeq:   totalMessages,
+		LastSeenAt:     time.Now(),
+		ExpiresAt:      expiresAt,
+	})
+	if err != nil {
+		return err
+	}
+	if m.embedding != nil && m.vectorStore != nil && created != nil {
+		_ = upsertMemoryVector(m, ctx, created.ID, sessionID, created.Summary, created.Value, created.MemoryType)
+	}
+	return nil
+}
+
+func candidateExpiresAt(candidate memoryFactCandidate) *time.Time {
+	if candidate.MemoryType != domain.MemoryTypeTask {
+		return nil
+	}
+	if candidate.ExpiresIn == "" {
+		v := time.Now().Add(defaultTaskTTL)
+		return &v
+	}
+	d, err := time.ParseDuration(candidate.ExpiresIn)
+	if err != nil {
+		v := time.Now().Add(defaultTaskTTL)
+		return &v
+	}
+	v := time.Now().Add(d)
+	return &v
 }

@@ -12,6 +12,7 @@ import (
 
 const platformModelCacheTTL = 30 * time.Second
 
+// EnsureSession 确保普通聊天会话存在；传入有效 sessionID 时优先复用，否则创建新会话。
 func (s *ChatService) EnsureSession(ctx context.Context, sessionID string) (*domain.Session, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -28,6 +29,7 @@ func (s *ChatService) EnsureSession(ctx context.Context, sessionID string) (*dom
 	return s.store.CreateSession(ctx, "New Chat")
 }
 
+// EnsureMessagePlatformSession 确保消息平台桥接会话存在，并固定使用预定义 ID。
 func (s *ChatService) EnsureMessagePlatformSession(ctx context.Context) (*domain.Session, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -42,6 +44,7 @@ func (s *ChatService) EnsureMessagePlatformSession(ctx context.Context) (*domain
 	return s.store.CreateSessionWithID(ctx, constants.MessagePlatformSessionID, constants.MessagePlatformSessionName)
 }
 
+// ResolvePlatformModel 为消息平台入口解析默认模型，优先平台级设置，再回退全局设置和首个可用模型。
 func (s *ChatService) ResolvePlatformModel(ctx context.Context) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -60,6 +63,7 @@ func (s *ChatService) ResolvePlatformModel(ctx context.Context) (string, error) 
 		}
 	}
 
+	// 统一校验候选模型 ID 是否存在，避免重复写 store 查询逻辑。
 	resolveModel := func(modelID string) (string, bool, error) {
 		trimmed := strings.TrimSpace(modelID)
 		if trimmed == "" {
@@ -123,6 +127,7 @@ func (s *ChatService) ResolvePlatformModel(ctx context.Context) (string, error) 
 	return fallbackID, nil
 }
 
+// ResolveLLMConfig 读取并校验模型配置，保证发起请求前关键字段完整。
 func (s *ChatService) ResolveLLMConfig(ctx context.Context, modelID string) (*domain.LLMConfig, error) {
 	configID := strings.TrimSpace(modelID)
 	if configID == "" {

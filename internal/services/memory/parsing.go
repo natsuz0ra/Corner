@@ -21,6 +21,21 @@ type memoryOpsEnvelope struct {
 	Ops []MemoryOp `json:"ops"`
 }
 
+type memoryFactCandidate struct {
+	MemoryType string   `json:"memory_type"`
+	Subject    string   `json:"subject"`
+	Predicate  string   `json:"predicate"`
+	Value      string   `json:"value"`
+	Summary    string   `json:"summary"`
+	Confidence float64  `json:"confidence"`
+	ExpiresIn  string   `json:"expires_in"`
+	Keywords   []string `json:"keywords"`
+}
+
+type memoryFactsEnvelope struct {
+	Facts []memoryFactCandidate `json:"facts"`
+}
+
 // parseMemoryOps 从 summary 输出中提取 ops，并清洗/截断内容。
 func parseMemoryOps(raw string) ([]MemoryOp, error) {
 	text := strings.TrimSpace(raw)
@@ -90,6 +105,49 @@ func parseMemoryOpsOrFallback(raw string) []MemoryOp {
 		text = string(runes[:constants.MemoryChunkMaxLength])
 	}
 	return []MemoryOp{{Action: "create", Content: text}}
+}
+
+func parseMemoryFacts(raw string) ([]memoryFactCandidate, error) {
+	text := strings.TrimSpace(raw)
+	if text == "" {
+		return nil, fmt.Errorf("empty facts payload")
+	}
+	text = strings.TrimPrefix(text, "```json")
+	text = strings.TrimPrefix(text, "```")
+	text = strings.TrimSuffix(text, "```")
+	text = strings.TrimSpace(text)
+	start := strings.Index(text, "{")
+	end := strings.LastIndex(text, "}")
+	if start < 0 || end <= start {
+		return nil, fmt.Errorf("no json object in facts payload")
+	}
+	var env memoryFactsEnvelope
+	if err := json.Unmarshal([]byte(text[start:end+1]), &env); err != nil {
+		return nil, err
+	}
+	out := make([]memoryFactCandidate, 0, len(env.Facts))
+	for _, fact := range env.Facts {
+		fact.MemoryType = strings.TrimSpace(strings.ToLower(fact.MemoryType))
+		fact.Subject = strings.TrimSpace(strings.ToLower(fact.Subject))
+		fact.Predicate = strings.TrimSpace(strings.ToLower(fact.Predicate))
+		fact.Value = strings.TrimSpace(fact.Value)
+		fact.Summary = strings.TrimSpace(fact.Summary)
+		fact.ExpiresIn = strings.TrimSpace(strings.ToLower(fact.ExpiresIn))
+		if fact.MemoryType == "" || fact.Subject == "" || fact.Predicate == "" || fact.Value == "" || fact.Summary == "" {
+			continue
+		}
+		if fact.Confidence < 0 {
+			fact.Confidence = 0
+		}
+		if fact.Confidence > 1 {
+			fact.Confidence = 1
+		}
+		out = append(out, fact)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no valid facts")
+	}
+	return out, nil
 }
 
 var nonWordRuneRegex = regexp.MustCompile(`[^\p{L}\p{N}_\-]+`)

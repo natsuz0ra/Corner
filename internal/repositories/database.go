@@ -12,31 +12,38 @@ import (
 )
 
 func setupSessionMemoryFTS5(db *gorm.DB) error {
-	if err := db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS session_memories_fts USING fts5(
+	if err := db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS memory_facts_fts USING fts5(
+		memory_type,
+		subject,
+		predicate,
+		value,
 		summary,
-		keywords_text,
-		content='session_memories',
+		content='memory_facts',
 		content_rowid='rowid',
 		tokenize='unicode61'
 	)`).Error; err != nil {
-		slog.Warn("session_memories_fts_unavailable", "err", err)
+		slog.Warn("memory_facts_fts_unavailable", "err", err)
 		return nil
 	}
 	triggers := []string{
-		`CREATE TRIGGER IF NOT EXISTS session_memories_ai AFTER INSERT ON session_memories BEGIN
-			INSERT INTO session_memories_fts(rowid, summary, keywords_text) VALUES (new.rowid, new.summary, new.keywords_text);
+		`CREATE TRIGGER IF NOT EXISTS memory_facts_ai AFTER INSERT ON memory_facts BEGIN
+			INSERT INTO memory_facts_fts(rowid, memory_type, subject, predicate, value, summary)
+			VALUES (new.rowid, new.memory_type, new.subject, new.predicate, new.value, new.summary);
 		END`,
-		`CREATE TRIGGER IF NOT EXISTS session_memories_ad AFTER DELETE ON session_memories BEGIN
-			INSERT INTO session_memories_fts(session_memories_fts, rowid, summary, keywords_text) VALUES('delete', old.rowid, old.summary, old.keywords_text);
+		`CREATE TRIGGER IF NOT EXISTS memory_facts_ad AFTER DELETE ON memory_facts BEGIN
+			INSERT INTO memory_facts_fts(memory_facts_fts, rowid, memory_type, subject, predicate, value, summary)
+			VALUES('delete', old.rowid, old.memory_type, old.subject, old.predicate, old.value, old.summary);
 		END`,
-		`CREATE TRIGGER IF NOT EXISTS session_memories_au AFTER UPDATE ON session_memories BEGIN
-			INSERT INTO session_memories_fts(session_memories_fts, rowid, summary, keywords_text) VALUES('delete', old.rowid, old.summary, old.keywords_text);
-			INSERT INTO session_memories_fts(rowid, summary, keywords_text) VALUES (new.rowid, new.summary, new.keywords_text);
+		`CREATE TRIGGER IF NOT EXISTS memory_facts_au AFTER UPDATE ON memory_facts BEGIN
+			INSERT INTO memory_facts_fts(memory_facts_fts, rowid, memory_type, subject, predicate, value, summary)
+			VALUES('delete', old.rowid, old.memory_type, old.subject, old.predicate, old.value, old.summary);
+			INSERT INTO memory_facts_fts(rowid, memory_type, subject, predicate, value, summary)
+			VALUES (new.rowid, new.memory_type, new.subject, new.predicate, new.value, new.summary);
 		END`,
 	}
 	for _, sql := range triggers {
 		if err := db.Exec(sql).Error; err != nil {
-			slog.Warn("session_memories_fts_trigger_failed", "err", err)
+			slog.Warn("memory_facts_fts_trigger_failed", "err", err)
 			return nil
 		}
 	}
@@ -60,7 +67,7 @@ func NewSQLite(dbPath string) (*gorm.DB, error) {
 	if err := db.AutoMigrate(
 		&domain.Session{},
 		&domain.Message{},
-		&domain.SessionMemory{},
+		&domain.MemoryFact{},
 		&domain.ToolCallRecord{},
 		&domain.AppSetting{},
 		&domain.LLMConfig{},
