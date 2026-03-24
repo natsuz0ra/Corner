@@ -4,11 +4,11 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"slimebot/internal/constants"
 	"slimebot/internal/domain"
 	"slimebot/internal/mcp"
-	"slimebot/internal/repositories"
 	memsvc "slimebot/internal/services/memory"
 	oaisvc "slimebot/internal/services/openai"
 )
@@ -62,13 +62,19 @@ func TestExecuteInvocation_SearchMemory_OncePerResponse(t *testing.T) {
 	memorySvc := memsvc.NewMemoryService(repo, nil)
 	agent := &AgentService{memory: memorySvc}
 
-	if err := upsertSessionMemory(t, repo, domain.SessionMemoryUpsertInput{
-		SessionID:          "other-session",
-		Summary:            "鐢ㄦ埛鍋忓ソ golang",
-		Keywords:           []string{"golang"},
-		SourceMessageCount: 12,
+	if _, err := repo.CreateEpisodeMemory(domain.EpisodeMemoryCreateInput{
+		SessionID:      "current-session",
+		TopicKey:       "golang",
+		Title:          "Golang",
+		Summary:        "用户在聊 golang",
+		Keywords:       []string{"golang"},
+		State:          domain.EpisodeMemoryStateClosed,
+		SourceStartSeq: 1,
+		SourceEndSeq:   4,
+		TurnCount:      2,
+		LastActiveAt:   time.Now(),
 	}); err != nil {
-		t.Fatalf("upsert memory failed: %v", err)
+		t.Fatalf("create episode failed: %v", err)
 	}
 
 	memoryUsed := false
@@ -102,7 +108,40 @@ func TestExecuteInvocation_SearchMemory_OncePerResponse(t *testing.T) {
 	}
 }
 
-func upsertSessionMemory(_ *testing.T, repo *repositories.Repository, input domain.SessionMemoryUpsertInput) error {
-	_, err := repo.UpsertSessionMemoryIfNewer(input)
-	return err
+func TestExecuteInvocation_SearchMemory_SearchesAcrossSessions(t *testing.T) {
+	repo := newTestRepo(t)
+	memorySvc := memsvc.NewMemoryService(repo, nil)
+	agent := &AgentService{memory: memorySvc}
+
+	if _, err := repo.CreateEpisodeMemory(domain.EpisodeMemoryCreateInput{
+		SessionID:      "other-session",
+		TopicKey:       "golang",
+		Title:          "Cross Session Golang",
+		Summary:        "来自其他会话的 Go 记忆",
+		Keywords:       []string{"golang"},
+		State:          domain.EpisodeMemoryStateClosed,
+		SourceStartSeq: 1,
+		SourceEndSeq:   2,
+		TurnCount:      1,
+		LastActiveAt:   time.Now(),
+	}); err != nil {
+		t.Fatalf("create episode failed: %v", err)
+	}
+
+	memoryUsed := false
+	result := agent.executeInvocation(
+		context.Background(),
+		oaisvc.ToolCallInfo{ID: "call_5", Name: constants.SearchMemoryTool},
+		resolvedToolInvocation{toolName: constants.SearchMemoryTool, command: "query"},
+		map[string]string{"query": "golang"},
+		"current-session",
+		nil,
+		&memoryUsed,
+	)
+	if result == nil || strings.TrimSpace(result.Error) != "" {
+		t.Fatalf("expected search success, got %+v", result)
+	}
+	if !strings.Contains(result.Output, "Cross Session Golang") {
+		t.Fatalf("expected cross-session result, got %q", result.Output)
+	}
 }

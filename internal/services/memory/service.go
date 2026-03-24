@@ -17,29 +17,41 @@ import (
 )
 
 const (
-	minFactConfidence   = 0.55
-	defaultTaskTTL      = 24 * time.Hour
-	promptFactMaxCount  = 24
-	promptGroupOverhead = 64
+	reopenTopicWindow = 2 * time.Hour
+	splitSoftWindow   = 15 * time.Minute
+	splitHardWindow   = 6 * time.Hour
 )
 
-type MemoryDecision struct {
-	NeedMemory bool     `json:"need_memory"`
-	Keywords   []string `json:"keywords"`
-	Reason     string   `json:"reason"`
+type MemorySearchHit struct {
+	Kind     string
+	ID       string
+	Title    string
+	Summary  string
+	Score    float64
+	Status   string
+	Keywords []string
 }
 
 type MemoryQueryResult struct {
 	Query    string
 	Keywords []string
-	Hits     []domain.MemoryFactSearchHit
+	Hits     []MemorySearchHit
 	Output   string
+}
+
+type queuedTurnMemory struct {
+	assistantMessageID string
+	rawPayload         string
+}
+
+type memoryWorkerState struct {
+	running bool
+	pending []queuedTurnMemory
 }
 
 type MemoryService struct {
 	store       domain.MemoryStore
 	openai      *oaisvc.OpenAIClient
-	chatInvoker func(context.Context, oaisvc.ModelRuntimeConfig, []oaisvc.ChatMessage) (string, error)
 	embedding   embsvc.EmbeddingService
 	vectorStore domain.MemoryVectorStore
 	vectorTopK  int
@@ -57,16 +69,14 @@ type MemoryService struct {
 
 func NewMemoryService(store domain.MemoryStore, openai *oaisvc.OpenAIClient) *MemoryService {
 	wctx, wcancel := context.WithCancel(context.Background())
-	service := &MemoryService{
+	return &MemoryService{
 		store:        store,
 		openai:       openai,
-		workers:      make(map[string]*memoryWorkerState),
 		vectorTopK:   constants.MemorySearchTopK,
+		workers:      make(map[string]*memoryWorkerState),
 		workerCtx:    wctx,
 		workerCancel: wcancel,
 	}
-	service.chatInvoker = service.chatOnce
-	return service
 }
 
 func (m *MemoryService) Shutdown(ctx context.Context) error {
@@ -107,34 +117,30 @@ func (m *MemoryService) WarmupTokenizer() {
 	}
 }
 
-func (m *MemoryService) RetrieveMemories(ctx context.Context, query string, excludeSessionID string, limit int) ([]domain.MemoryFactSearchHit, error) {
-	startAt := time.Now()
+func (m *MemoryService) TokenizeKeywords(text string) []string {
+	return tokenizeKeywordsImpl(m, text)
+}
+
+func (m *MemoryService) EnqueueTurnMemory(sessionID, assistantMessageID, rawMemoryPayload string) {
+	enqueueTurnMemoryImpl(m, sessionID, assistantMessageID, rawMemoryPayload)
+}
+
+func (m *MemoryService) BuildMemoryContext(ctx context.Context, sessionID string, history []domain.Message) string {
+	if m == nil {
+		return ""
+	}
+	return m.buildMemoryContext(ctx, sessionID, history)
+}
+
+func (m *MemoryService) BuildSessionMemoryContextForPrompt(ctx context.Context, sessionID string, history []domain.Message) string {
+	return m.BuildMemoryContext(ctx, sessionID, history)
+}
+
+func (m *MemoryService) BuildRecentHistory(sessionID string, limit int) ([]domain.Message, error) {
 	if limit <= 0 {
-		limit = constants.MemorySearchTopK
+		limit = constants.CompressedRecentHistoryLimit
 	}
-	normalizedKeywords := m.TokenizeKeywords(strings.TrimSpace(query))
-
-	if m.embedding != nil && m.vectorStore != nil {
-		hits, err := m.retrieveMemoriesByVector(ctx, query, excludeSessionID, limit)
-		if err != nil {
-			slog.Warn("memory_vector_retrieve_fallback", "reason", "vector_error", "err", err)
-		} else if len(hits) > 0 {
-			slog.Info("memory_retrieve", "mode", "vector", "hit_count", len(hits), "keyword_count", len(normalizedKeywords), "cost_ms", time.Since(startAt).Milliseconds())
-			return hits, nil
-		}
-	}
-
-	hits, err := m.store.SearchMemoryFacts(domain.MemoryFactSearchInput{
-		Query:          query,
-		Limit:          limit,
-		ExcludeSession: strings.TrimSpace(excludeSessionID),
-		Now:            time.Now(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	slog.Info("memory_retrieve", "mode", "structured", "hit_count", len(hits), "keyword_count", len(normalizedKeywords), "cost_ms", time.Since(startAt).Milliseconds())
-	return hits, nil
+	return m.store.ListRecentSessionMessages(context.Background(), sessionID, limit)
 }
 
 func (m *MemoryService) QueryForAgent(ctx context.Context, sessionID string, query string, topK int) (MemoryQueryResult, error) {
@@ -143,19 +149,66 @@ func (m *MemoryService) QueryForAgent(ctx context.Context, sessionID string, que
 		return result, fmt.Errorf("memory_query query cannot be empty")
 	}
 	if topK <= 0 {
-		topK = 3
+		topK = constants.MemoryToolDefaultTopK
 	}
-	hits, err := m.RetrieveMemories(ctx, result.Query, strings.TrimSpace(sessionID), topK)
+	result.Keywords = m.TokenizeKeywords(result.Query)
+
+	episodeHits, err := m.RetrieveRelevantEpisodes(ctx, "", result.Query, 0, 0, topK)
 	if err != nil {
 		return result, err
 	}
-	result.Keywords = m.TokenizeKeywords(result.Query)
-	result.Hits = hits
-	result.Output = m.buildMemoryQueryOutput(result.Query, result.Keywords, hits)
+	stickyHits, err := m.store.SearchStickyMemories(ctx, "", result.Query, topK, time.Now())
+	if err != nil {
+		return result, err
+	}
+
+	result.Hits = mergeQueryHits(episodeHits, stickyHits, topK)
+	result.Output = buildMemoryQueryOutput(result.Query, result.Keywords, result.Hits)
 	return result, nil
 }
 
-func (m *MemoryService) buildMemoryQueryOutput(query string, keywords []string, hits []domain.MemoryFactSearchHit) string {
+func mergeQueryHits(episodes []domain.EpisodeMemorySearchHit, sticky []domain.StickyMemorySearchHit, topK int) []MemorySearchHit {
+	hits := make([]MemorySearchHit, 0, len(episodes)+len(sticky))
+	for _, item := range episodes {
+		hits = append(hits, MemorySearchHit{
+			Kind:     "episode",
+			ID:       item.Episode.ID,
+			Title:    item.Episode.Title,
+			Summary:  item.Episode.Summary,
+			Score:    item.Score,
+			Status:   item.Episode.State,
+			Keywords: decodeKeywordsJSON(item.Episode.KeywordsJSON),
+		})
+	}
+	for _, item := range sticky {
+		hits = append(hits, MemorySearchHit{
+			Kind:     "sticky",
+			ID:       item.Memory.ID,
+			Title:    item.Memory.Key,
+			Summary:  item.Memory.Summary,
+			Score:    item.Score,
+			Status:   item.Memory.Status,
+			Keywords: []string{item.Memory.Kind, item.Memory.Key},
+		})
+	}
+	sortMemoryHits(hits)
+	if len(hits) > topK {
+		hits = hits[:topK]
+	}
+	return hits
+}
+
+func sortMemoryHits(hits []MemorySearchHit) {
+	for i := 0; i < len(hits); i++ {
+		for j := i + 1; j < len(hits); j++ {
+			if hits[j].Score > hits[i].Score {
+				hits[i], hits[j] = hits[j], hits[i]
+			}
+		}
+	}
+}
+
+func buildMemoryQueryOutput(query string, keywords []string, hits []MemorySearchHit) string {
 	var b strings.Builder
 	b.WriteString("<memory_query_result>\n")
 	b.WriteString("query: ")
@@ -166,105 +219,21 @@ func (m *MemoryService) buildMemoryQueryOutput(query string, keywords []string, 
 	} else {
 		b.WriteString(strings.Join(keywords, ", "))
 	}
-	b.WriteString("\nhit_count: ")
-	b.WriteString(fmt.Sprintf("%d\n", len(hits)))
+	b.WriteString(fmt.Sprintf("\nhit_count: %d\n", len(hits)))
 	if len(hits) == 0 {
 		b.WriteString("No related memories found.\n</memory_query_result>")
 		return b.String()
 	}
-	for idx, hit := range hits {
-		b.WriteString(fmt.Sprintf("- [%d] id=%s session_id=%s type=%s status=%s score=%.1f confidence=%.2f matched=%s updated_at=%s\n",
-			idx+1,
-			hit.Fact.ID,
-			hit.Fact.SessionID,
-			hit.Fact.MemoryType,
-			hit.Fact.Status,
-			hit.Score,
-			hit.Fact.Confidence,
-			strings.Join(hit.MatchedKeywords, ","),
-			hit.Fact.UpdatedAt.Format(time.RFC3339),
-		))
+	for idx, item := range hits {
+		b.WriteString(fmt.Sprintf("- [%d] kind=%s id=%s status=%s score=%.2f title=%s\n", idx+1, item.Kind, item.ID, item.Status, item.Score, item.Title))
 		b.WriteString("  summary: ")
-		b.WriteString(strings.TrimSpace(hit.Fact.Summary))
+		b.WriteString(strings.TrimSpace(item.Summary))
 		b.WriteString("\n")
 	}
 	b.WriteString("</memory_query_result>")
 	return strings.TrimSpace(b.String())
 }
 
-func (m *MemoryService) BuildRecentHistory(sessionID string, limit int) ([]domain.Message, error) {
-	if limit <= 0 {
-		limit = constants.CompressedRecentHistoryLimit
-	}
-	return m.store.ListRecentSessionMessages(context.Background(), sessionID, limit)
-}
-
-func (m *MemoryService) TokenizeKeywords(text string) []string {
-	return tokenizeKeywordsImpl(m, text)
-}
-
-func (m *MemoryService) SyncFactsAsync(sessionID string, rawFacts string) {
-	updateSummaryAsyncImpl(m, sessionID, rawFacts)
-}
-
-func (m *MemoryService) UpdateSummaryAsync(sessionID string, rawSummary string) {
-	m.SyncFactsAsync(sessionID, rawSummary)
-}
-
-func (m *MemoryService) BuildSessionMemoryContextForPrompt(ctx context.Context, sessionID string, history []domain.Message) string {
-	if m == nil {
-		return ""
-	}
-	return m.buildSessionMemoryContextForPrompt(ctx, sessionID, history)
-}
-
-func (m *MemoryService) chatOnce(ctx context.Context, modelConfig oaisvc.ModelRuntimeConfig, messages []oaisvc.ChatMessage) (string, error) {
-	var builder strings.Builder
-	err := m.openai.StreamChat(ctx, modelConfig, messages, func(chunk string) error {
-		builder.WriteString(chunk)
-		return nil
-	})
-	if err != nil {
-		return "", err
-	}
-	return builder.String(), nil
-}
-
-func (m *MemoryService) chatOnceWithRetry(
-	parent context.Context,
-	modelConfig oaisvc.ModelRuntimeConfig,
-	messages []oaisvc.ChatMessage,
-	timeout time.Duration,
-	stage string,
-) (string, int, time.Duration, error) {
-	startAt := time.Now()
-	var lastErr error
-	attempts := 0
-
-	for attempt := 1; attempt <= constants.MemoryCallMaxAttempts; attempt++ {
-		attempts = attempt
-		attemptCtx, cancel := context.WithTimeout(parent, timeout)
-		invoker := m.chatInvoker
-		if invoker == nil {
-			invoker = m.chatOnce
-		}
-		reply, err := invoker(attemptCtx, modelConfig, messages)
-		cancel()
-		if err == nil {
-			return reply, attempts, time.Since(startAt), nil
-		}
-		lastErr = err
-		retryable := attempt < constants.MemoryCallMaxAttempts && isRetryableMemoryError(err) && parent.Err() == nil
-		slog.Warn(stage+"_attempt_failed", "attempt", attempt, "timeout_ms", timeout.Milliseconds(), "retryable", retryable, "err_class", classifyMemoryError(err), "err", err)
-		if !retryable {
-			break
-		}
-		select {
-		case <-parent.Done():
-			return "", attempts, time.Since(startAt), parent.Err()
-		case <-time.After(constants.MemoryRetryBackoff):
-		}
-	}
-
-	return "", attempts, time.Since(startAt), lastErr
+func enqueueLog(sessionID string, rawPayload string) {
+	slog.Info("memory_turn_enqueued", "session", sessionID, "payload_len", len(strings.TrimSpace(rawPayload)))
 }

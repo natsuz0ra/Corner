@@ -136,8 +136,7 @@ func (a *AgentService) executeInvocation(
 			return &tools.ExecuteResult{Error: "Memory service is not enabled."}
 		}
 		*memoryToolUsed = true
-		topK := parseOptionalInt(params["top_k"], constants.MemoryToolDefaultTopK)
-		queryResult, queryErr := a.memory.QueryForAgent(ctx, sessionID, params["query"], topK)
+		queryResult, queryErr := a.memory.QueryForAgent(ctx, sessionID, params["query"], constants.MemoryToolDefaultTopK)
 		if queryErr != nil {
 			return &tools.ExecuteResult{Output: queryResult.Output, Error: queryErr.Error()}
 		}

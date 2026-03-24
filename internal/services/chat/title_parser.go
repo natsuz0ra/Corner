@@ -5,12 +5,12 @@ import (
 )
 
 const (
-	openTitleTag     = "<title>"
-	closeTitleTag    = "</title>"
-	openSummaryTag   = "<summary>"
-	closeSummaryTag  = "</summary>"
-	parserTagTitle   = "title"
-	parserTagSummary = "summary"
+	openTitleTag    = "<title>"
+	closeTitleTag   = "</title>"
+	openMemoryTag   = "<memory>"
+	closeMemoryTag  = "</memory>"
+	parserTagTitle  = "title"
+	parserTagMemory = "memory"
 )
 
 type titleStreamParser struct {
@@ -19,8 +19,8 @@ type titleStreamParser struct {
 	// 最近一次成功解析出的标题。
 	title string
 	// 最近一次成功解析出的会话总结。
-	summary string
-	// 当前正在解析的协议标签：title / summary。
+	memory string
+	// 当前正在解析的协议标签：title / memory。
 	activeTag string
 	// 普通文本阶段下，可能跨 chunk 的开标签探测缓存。
 	openBuf []byte
@@ -86,8 +86,8 @@ func (p *titleStreamParser) Title() string {
 	return p.title
 }
 
-func (p *titleStreamParser) Summary() string {
-	return p.summary
+func (p *titleStreamParser) Memory() string {
+	return p.memory
 }
 
 // BeginAssistantTurn 在工具调用切轮时重置探测状态，避免协议跨轮污染。
@@ -170,9 +170,9 @@ func (p *titleStreamParser) finishActiveTag() {
 		if cleaned := cleanProtocolTitle(string(p.tagContent)); cleaned != "" {
 			p.title = cleaned
 		}
-	case parserTagSummary:
-		if cleaned := cleanProtocolSummary(string(p.tagContent)); cleaned != "" {
-			p.summary = cleaned
+	case parserTagMemory:
+		if cleaned := cleanProtocolMemory(string(p.tagContent)); cleaned != "" {
+			p.memory = cleaned
 		}
 	}
 	p.activeTag = ""
@@ -197,11 +197,11 @@ func cleanProtocolTitle(input string) string {
 	return strings.TrimSpace(title)
 }
 
-func cleanProtocolSummary(input string) string {
-	summary := strings.ReplaceAll(input, "\r\n", "\n")
-	summary = strings.ReplaceAll(summary, "\r", "\n")
-	summary = strings.TrimSpace(summary)
-	return summary
+func cleanProtocolMemory(input string) string {
+	memory := strings.ReplaceAll(input, "\r\n", "\n")
+	memory = strings.ReplaceAll(memory, "\r", "\n")
+	memory = strings.TrimSpace(memory)
+	return memory
 }
 
 // extractProtocolMetaAndBody 用于兜底提取协议元信息并剔除正文中的协议行。
@@ -212,7 +212,7 @@ func extractProtocolMetaAndBody(input string) (string, string, string) {
 
 	body := input
 	var extractedTitle string
-	var extractedSummary string
+	var extractedMemory string
 	hasTagBlock := false
 
 	if title, cleaned, foundValue, removed := extractAndRemoveTagBlocks(body, "title", cleanProtocolTitle); removed {
@@ -222,9 +222,9 @@ func extractProtocolMetaAndBody(input string) (string, string, string) {
 		body = cleaned
 		hasTagBlock = true
 	}
-	if summary, cleaned, foundValue, removed := extractAndRemoveTagBlocks(body, "summary", cleanProtocolSummary); removed {
+	if memory, cleaned, foundValue, removed := extractAndRemoveTagBlocks(body, "memory", cleanProtocolMemory); removed {
 		if foundValue {
-			extractedSummary = summary
+			extractedMemory = memory
 		}
 		body = cleaned
 		hasTagBlock = true
@@ -234,7 +234,7 @@ func extractProtocolMetaAndBody(input string) (string, string, string) {
 		return "", "", input
 	}
 
-	return extractedTitle, extractedSummary, strings.Trim(body, "\r\n")
+	return extractedTitle, extractedMemory, strings.Trim(body, "\r\n")
 }
 
 func extractAndRemoveTagBlocks(input string, tag string, cleaner func(string) string) (string, string, bool, bool) {
@@ -277,15 +277,15 @@ func isProtocolSeparatorByte(b byte) bool {
 }
 
 func isOpenTagPrefixBytes(candidate []byte) bool {
-	return hasBytePrefix([]byte(openTitleTag), candidate) || hasBytePrefix([]byte(openSummaryTag), candidate)
+	return hasBytePrefix([]byte(openTitleTag), candidate) || hasBytePrefix([]byte(openMemoryTag), candidate)
 }
 
 func matchOpenTagBytes(candidate []byte) (string, bool) {
 	switch {
 	case bytesEqual([]byte(openTitleTag), candidate):
 		return parserTagTitle, true
-	case bytesEqual([]byte(openSummaryTag), candidate):
-		return parserTagSummary, true
+	case bytesEqual([]byte(openMemoryTag), candidate):
+		return parserTagMemory, true
 	default:
 		return "", false
 	}
@@ -295,8 +295,8 @@ func parserEndTag(activeTag string) []byte {
 	switch activeTag {
 	case parserTagTitle:
 		return []byte(closeTitleTag)
-	case parserTagSummary:
-		return []byte(closeSummaryTag)
+	case parserTagMemory:
+		return []byte(closeMemoryTag)
 	default:
 		return nil
 	}

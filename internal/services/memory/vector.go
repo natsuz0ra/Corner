@@ -11,223 +11,189 @@ import (
 	"slimebot/internal/domain"
 )
 
-func retrieveMemoriesByVectorImpl(m *MemoryService, ctx context.Context, query string, excludeSessionID string, limit int) ([]domain.MemoryFactSearchHit, error) {
+func upsertEpisodeVector(m *MemoryService, ctx context.Context, item *domain.EpisodeMemory) error {
+	if item == nil {
+		return nil
+	}
+	vector, err := m.embedding.Embed(ctx, strings.TrimSpace(item.Title+"\n"+item.Summary+"\n"+strings.Join(decodeKeywordsJSON(item.KeywordsJSON), " ")))
+	if err != nil {
+		return err
+	}
+	return m.vectorStore.UpsertSessionMemoryVector(ctx, domain.MemoryVectorUpsertInput{
+		MemoryID:  item.ID,
+		SessionID: item.SessionID,
+		Vector:    vector,
+		Payload: map[string]any{
+			"title":     item.Title,
+			"topic_key": item.TopicKey,
+			"kind":      "episode",
+		},
+	})
+}
+
+func (m *MemoryService) RetrieveRelevantEpisodes(ctx context.Context, sessionID, query string, excludeStartSeq, excludeEndSeq int64, limit int) ([]domain.EpisodeMemorySearchHit, error) {
+	if limit <= 0 {
+		limit = constants.MemorySearchTopK
+	}
 	q := strings.TrimSpace(query)
 	if q == "" {
-		return []domain.MemoryFactSearchHit{}, nil
+		return []domain.EpisodeMemorySearchHit{}, nil
 	}
-	queryKeywords := m.TokenizeKeywords(q)
-	queryVector, err := m.embedding.Embed(ctx, q)
-	if err != nil {
-		slog.Warn("memory_vector_query_embedding_failed", "keyword_count", len(queryKeywords), "exclude_session", strings.TrimSpace(excludeSessionID), "err", err)
-		return nil, err
+	queryText := q
+	if keywords := m.TokenizeKeywords(q); len(keywords) > 0 {
+		queryText = strings.Join(keywords, " ")
 	}
 
+	if m.embedding != nil && m.vectorStore != nil {
+		hits, err := m.retrieveEpisodesByVector(ctx, sessionID, queryText, excludeStartSeq, excludeEndSeq, limit)
+		if err == nil && len(hits) > 0 {
+			return hits, nil
+		}
+		if err != nil {
+			slog.Warn("memory_vector_retrieve_fallback", "session", sessionID, "err", err)
+		}
+	}
+
+	return m.store.SearchEpisodeMemories(ctx, domain.EpisodeMemorySearchInput{
+		SessionID:       sessionID,
+		Query:           queryText,
+		Limit:           limit,
+		ExcludeStartSeq: excludeStartSeq,
+		ExcludeEndSeq:   excludeEndSeq,
+		Now:             time.Now(),
+	})
+}
+
+func (m *MemoryService) retrieveEpisodesByVector(ctx context.Context, sessionID, query string, excludeStartSeq, excludeEndSeq int64, limit int) ([]domain.EpisodeMemorySearchHit, error) {
+	vector, err := m.embedding.Embed(ctx, query)
+	if err != nil {
+		return nil, err
+	}
 	searchLimit := limit
 	if m.vectorTopK > searchLimit {
 		searchLimit = m.vectorTopK
 	}
-	vectorHits, err := m.vectorStore.SearchSimilarSessionIDs(ctx, queryVector, searchLimit, excludeSessionID)
+	vectorHits, err := m.vectorStore.SearchMemoriesInSession(ctx, vector, sessionID, searchLimit)
 	if err != nil {
 		return nil, err
 	}
 	if len(vectorHits) == 0 {
-		return []domain.MemoryFactSearchHit{}, nil
+		return []domain.EpisodeMemorySearchHit{}, nil
 	}
-
-	memoryIDs := make([]string, 0, len(vectorHits))
+	ids := make([]string, 0, len(vectorHits))
 	for _, hit := range vectorHits {
-		if id := strings.TrimSpace(hit.MemoryID); id != "" {
-			memoryIDs = append(memoryIDs, id)
+		if strings.TrimSpace(hit.MemoryID) != "" {
+			ids = append(ids, hit.MemoryID)
 		}
 	}
-	if len(memoryIDs) == 0 {
-		return []domain.MemoryFactSearchHit{}, nil
-	}
-	memories, err := m.store.GetSessionMemoriesByIDs(memoryIDs)
+	episodes, err := m.store.GetEpisodeMemoriesByIDs(ids)
 	if err != nil {
 		return nil, err
 	}
-	memoryByID := make(map[string]domain.SessionMemory, len(memories))
-	for _, item := range memories {
-		memoryByID[item.ID] = item
+	episodeByID := make(map[string]domain.EpisodeMemory, len(episodes))
+	for _, item := range episodes {
+		episodeByID[item.ID] = item
 	}
-	results := make([]domain.MemoryFactSearchHit, 0, len(vectorHits))
+	queryKeywords := m.TokenizeKeywords(query)
+	result := make([]domain.EpisodeMemorySearchHit, 0, len(vectorHits))
 	for _, hit := range vectorHits {
-		memory, ok := memoryByID[strings.TrimSpace(hit.MemoryID)]
-		if !ok || memory.Status != domain.MemoryStatusActive {
+		item, ok := episodeByID[hit.MemoryID]
+		if !ok || item.State == domain.EpisodeMemoryStateArchived {
 			continue
 		}
-		if memory.ExpiresAt != nil && !memory.ExpiresAt.After(timeNow()) {
+		if excludeStartSeq > 0 && excludeEndSeq > 0 && item.SourceEndSeq >= excludeStartSeq && item.SourceStartSeq <= excludeEndSeq {
 			continue
 		}
-		matched := intersectKeywordSlicesImpl(queryKeywords, factTerms(domain.MemoryFact(memory)))
-		results = append(results, domain.MemoryFactSearchHit{
-			Fact:            domain.MemoryFact(memory),
-			MatchedKeywords: matched,
-			Score:           hit.Score + memory.Confidence*10,
+		score := float64(hit.Score) + similarityFromKeywords(decodeKeywordsJSON(item.KeywordsJSON), queryKeywords)*100
+		result = append(result, domain.EpisodeMemorySearchHit{
+			Episode:         item,
+			MatchedKeywords: matchEpisodeKeywordsLocal(queryKeywords, item),
+			Score:           score,
 		})
-		if len(results) >= limit {
+		if len(result) >= limit {
 			break
 		}
 	}
-	return results, nil
+	return result, nil
 }
 
-func upsertMemoryVector(m *MemoryService, ctx context.Context, memoryID, sessionID, summary, value, memoryType string) error {
-	vector, err := m.embedding.Embed(ctx, strings.TrimSpace(summary+"\n"+value))
+func (m *MemoryService) buildMemoryContext(ctx context.Context, sessionID string, history []domain.Message) string {
+	sticky, err := m.store.ListStickyMemoriesForPrompt(ctx, sessionID, 10, time.Now())
 	if err != nil {
-		return err
-	}
-	payload := map[string]any{
-		"summary":     summary,
-		"value":       value,
-		"memory_type": memoryType,
-	}
-	return m.vectorStore.UpsertSessionMemoryVector(ctx, domain.MemoryVectorUpsertInput{
-		MemoryID:  memoryID,
-		SessionID: sessionID,
-		Vector:    vector,
-		Payload:   payload,
-	})
-}
-
-func (m *MemoryService) retrieveMemoriesByVector(ctx context.Context, query string, excludeSessionID string, limit int) ([]domain.MemoryFactSearchHit, error) {
-	return retrieveMemoriesByVectorImpl(m, ctx, query, excludeSessionID, limit)
-}
-
-func intersectKeywordSlicesImpl(left []string, right []string) []string {
-	if len(left) == 0 || len(right) == 0 {
-		return []string{}
-	}
-	rightSet := make(map[string]struct{}, len(right))
-	for _, item := range right {
-		rightSet[item] = struct{}{}
-	}
-	result := make([]string, 0, len(left))
-	for _, item := range left {
-		if _, ok := rightSet[item]; ok {
-			result = append(result, item)
-		}
-	}
-	return result
-}
-
-func buildSearchQuery(history []domain.Message, maxRunes int) string {
-	if maxRunes <= 0 {
 		return ""
 	}
+	query, startSeq, endSeq := buildEpisodeQueryFromHistory(history)
+	episodes, err := m.RetrieveRelevantEpisodes(ctx, sessionID, query, startSeq, endSeq, constants.MemoryContextTopK)
+	if err != nil {
+		return formatMemoryContext(sticky, nil)
+	}
+	return formatMemoryContext(sticky, episodes)
+}
+
+func buildEpisodeQueryFromHistory(history []domain.Message) (string, int64, int64) {
 	var parts []string
-	runeCount := 0
-	for i := len(history) - 1; i >= 0 && runeCount < maxRunes; i-- {
-		text := strings.TrimSpace(history[i].Content)
-		if text == "" {
-			continue
+	var startSeq int64
+	var endSeq int64
+	for _, item := range history {
+		if startSeq == 0 || (item.Seq > 0 && item.Seq < startSeq) {
+			startSeq = item.Seq
 		}
-		textRunes := []rune(text)
-		if runeCount+len(textRunes) > maxRunes {
-			textRunes = textRunes[:maxRunes-runeCount]
-			text = string(textRunes)
+		if item.Seq > endSeq {
+			endSeq = item.Seq
 		}
-		parts = append([]string{text}, parts...)
-		runeCount += len(textRunes)
-	}
-	return strings.Join(parts, "\n")
-}
-
-func (m *MemoryService) buildSessionMemoryContextForPrompt(ctx context.Context, sessionID string, _ []domain.Message) string {
-	sid := strings.TrimSpace(sessionID)
-	if sid == "" {
-		return ""
-	}
-	facts, err := m.store.ListMemoryFactsForPrompt(ctx, sid, promptFactMaxCount, timeNow())
-	if err != nil || len(facts) == 0 {
-		return ""
-	}
-	return formatFactsForPrompt(facts, constants.MemoryContextMaxRunes)
-}
-
-func formatFactsForPrompt(facts []domain.MemoryFact, maxRunes int) string {
-	if maxRunes <= 0 || len(facts) == 0 {
-		return ""
-	}
-	groups := map[string][]domain.MemoryFact{
-		"constraints":     {},
-		"active_tasks":    {},
-		"preferences":     {},
-		"project_context": {},
-	}
-	for _, fact := range facts {
-		switch fact.MemoryType {
-		case domain.MemoryTypeConstraint:
-			groups["constraints"] = append(groups["constraints"], fact)
-		case domain.MemoryTypeTask:
-			groups["active_tasks"] = append(groups["active_tasks"], fact)
-		case domain.MemoryTypePreference, domain.MemoryTypeProfile:
-			groups["preferences"] = append(groups["preferences"], fact)
-		default:
-			groups["project_context"] = append(groups["project_context"], fact)
+		if item.Role == "user" && strings.TrimSpace(item.Content) != "" {
+			parts = append(parts, strings.TrimSpace(item.Content))
 		}
 	}
-	order := []string{"constraints", "active_tasks", "preferences", "project_context"}
-	var b strings.Builder
-	used := 0
-	for _, group := range order {
-		items := groups[group]
-		if len(items) == 0 {
-			continue
-		}
-		openTag := "<" + group + ">\n"
-		closeTag := "</" + group + ">\n"
-		if used+len([]rune(openTag))+len([]rune(closeTag))+promptGroupOverhead > maxRunes {
-			break
-		}
-		b.WriteString(openTag)
-		used += len([]rune(openTag))
-		for _, fact := range items {
-			entry := fmt.Sprintf("  <memory id=\"%s\" type=\"%s\" subject=\"%s\" predicate=\"%s\" confidence=\"%.2f\">%s</memory>\n",
-				fact.ID, fact.MemoryType, fact.Subject, fact.Predicate, fact.Confidence, strings.TrimSpace(fact.Summary))
-			entryRunes := len([]rune(entry))
-			if used+entryRunes+len([]rune(closeTag)) > maxRunes {
-				break
+	if len(parts) == 0 {
+		for _, item := range history {
+			if strings.TrimSpace(item.Content) != "" {
+				parts = append(parts, strings.TrimSpace(item.Content))
 			}
-			b.WriteString(entry)
-			used += entryRunes
 		}
-		b.WriteString(closeTag)
-		used += len([]rune(closeTag))
+	}
+	if len(parts) > 2 {
+		parts = parts[len(parts)-2:]
+	}
+	return strings.Join(parts, "\n"), startSeq, endSeq
+}
+
+func formatMemoryContext(sticky []domain.StickyMemory, episodes []domain.EpisodeMemorySearchHit) string {
+	var b strings.Builder
+	if len(sticky) > 0 {
+		b.WriteString("<sticky_memories>\n")
+		for _, item := range sticky {
+			b.WriteString(fmt.Sprintf("  <memory kind=\"%s\" key=\"%s\" confidence=\"%.2f\">%s</memory>\n", item.Kind, item.Key, item.Confidence, strings.TrimSpace(item.Summary)))
+		}
+		b.WriteString("</sticky_memories>\n")
+	}
+	if len(episodes) > 0 {
+		b.WriteString("<episode_memories>\n")
+		for _, item := range episodes {
+			keywords := decodeKeywordsJSON(item.Episode.KeywordsJSON)
+			b.WriteString(fmt.Sprintf("  <episode id=\"%s\" topic_key=\"%s\" title=\"%s\" state=\"%s\" range=\"%d-%d\">%s | keywords: %s</episode>\n",
+				item.Episode.ID,
+				item.Episode.TopicKey,
+				item.Episode.Title,
+				item.Episode.State,
+				item.Episode.SourceStartSeq,
+				item.Episode.SourceEndSeq,
+				strings.TrimSpace(item.Episode.Summary),
+				strings.Join(keywords, ", "),
+			))
+		}
+		b.WriteString("</episode_memories>")
 	}
 	return strings.TrimSpace(b.String())
 }
 
-func timeNow() time.Time {
-	return time.Now()
-}
-
-func factTerms(fact domain.MemoryFact) []string {
-	return normalizeFactTerms(strings.Join([]string{
-		fact.MemoryType,
-		fact.Subject,
-		fact.Predicate,
-		fact.Value,
-		fact.Summary,
-	}, " "))
-}
-
-func normalizeFactTerms(text string) []string {
-	parts := strings.Fields(strings.NewReplacer("\n", " ", "\t", " ", ",", " ", "，", " ").Replace(text))
-	seen := make(map[string]struct{}, len(parts))
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(strings.ToLower(part))
-		if part == "" {
-			continue
+func matchEpisodeKeywordsLocal(queries []string, item domain.EpisodeMemory) []string {
+	text := strings.ToLower(strings.Join(append([]string{item.TopicKey, item.Title, item.Summary}, decodeKeywordsJSON(item.KeywordsJSON)...), " "))
+	result := make([]string, 0, len(queries))
+	for _, query := range queries {
+		if strings.Contains(text, strings.ToLower(strings.TrimSpace(query))) {
+			result = append(result, query)
 		}
-		if _, ok := seen[part]; ok {
-			continue
-		}
-		seen[part] = struct{}{}
-		out = append(out, part)
 	}
-	return out
+	return result
 }

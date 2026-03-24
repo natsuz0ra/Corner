@@ -82,12 +82,11 @@ func (r *Repository) DeleteSession(id string) error {
 		if err := tx.Where("session_id = ?", id).Delete(&domain.ToolCallRecord{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("session_id = ?", id).Delete(&domain.SessionMemory{}).Error; err != nil {
+		if err := tx.Where("session_id = ?", id).Delete(&domain.EpisodeMemory{}).Error; err != nil {
 			return err
 		}
-		var ftscount int64
-		if err := tx.Raw(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='session_memories_fts'`).Scan(&ftscount).Error; err == nil && ftscount > 0 {
-			_ = tx.Exec(`DELETE FROM session_memories_fts WHERE session_id = ?`, id).Error
+		if err := tx.Where("session_id = ?", id).Delete(&domain.StickyMemory{}).Error; err != nil {
+			return err
 		}
 		return tx.Where("id = ?", id).Delete(&domain.Session{}).Error
 	})
