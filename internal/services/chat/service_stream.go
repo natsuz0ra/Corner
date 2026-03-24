@@ -193,13 +193,13 @@ func (s *ChatService) HandleChatStream(
 	}
 
 	title := parser.Title()
-	summary := parser.Summary()
-	if parsedTitle, parsedSummary, cleanBody := extractProtocolMetaAndBody(finalAnswer); parsedTitle != "" || parsedSummary != "" || cleanBody != finalAnswer {
+	memoryPayload := parser.Memory()
+	if parsedTitle, parsedMemory, cleanBody := extractProtocolMetaAndBody(finalAnswer); parsedTitle != "" || parsedMemory != "" || cleanBody != finalAnswer {
 		if parsedTitle != "" {
 			title = parsedTitle
 		}
-		if parsedSummary != "" {
-			summary = parsedSummary
+		if parsedMemory != "" {
+			memoryPayload = parsedMemory
 		}
 		finalAnswer = cleanBody
 	}
@@ -229,11 +229,11 @@ func (s *ChatService) HandleChatStream(
 	if err := s.applySessionTitleUpdate(ctx, s.store, session, title, result); err != nil {
 		return nil, err
 	}
-	if s.memory != nil && strings.TrimSpace(summary) != "" {
-		s.memory.UpdateSummaryAsync(sessionID, summary)
-		slog.Info("memory_summary_async_triggered", "session", sessionID)
+	if s.memory != nil && strings.TrimSpace(memoryPayload) != "" {
+		s.memory.EnqueueTurnMemory(sessionID, assistantMessage.ID, memoryPayload)
+		slog.Info("memory_enqueue_triggered", "session", sessionID)
 	} else if s.memory != nil {
-		slog.Info("memory_summary_skipped", "session", sessionID, "reason", "empty_or_unparsed")
+		slog.Info("memory_enqueue_skipped", "session", sessionID, "reason", "empty_or_unparsed")
 	}
 	if accumulator.pushErr != nil {
 		result.PushFailed = true

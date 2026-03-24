@@ -5,43 +5,66 @@ import (
 	"time"
 )
 
-type SessionMemoryUpsertInput struct {
-	SessionID          string
-	Summary            string
-	Keywords           []string
-	SourceMessageCount int
+const (
+	EpisodeMemoryStateOpen     = "open"
+	EpisodeMemoryStateClosed   = "closed"
+	EpisodeMemoryStateArchived = "archived"
+
+	StickyMemoryKindPreference = "preference"
+	StickyMemoryKindConstraint = "constraint"
+	StickyMemoryKindTask       = "task"
+
+	StickyMemoryStatusActive   = "active"
+	StickyMemoryStatusDeleted  = "deleted"
+	StickyMemoryStatusArchived = "archived"
+)
+
+type EpisodeMemoryCreateInput struct {
+	SessionID      string
+	TopicKey       string
+	Title          string
+	Summary        string
+	Keywords       []string
+	State          string
+	SourceStartSeq int64
+	SourceEndSeq   int64
+	TurnCount      int
+	LastActiveAt   time.Time
 }
 
-type SessionMemoryCreateInput struct {
-	SessionID          string
-	Summary            string
-	Keywords           []string
-	SourceMessageCount int
+type EpisodeMemoryUpdateInput struct {
+	ID             string
+	SessionID      string
+	TopicKey       string
+	Title          string
+	Summary        string
+	Keywords       []string
+	State          string
+	SourceStartSeq int64
+	SourceEndSeq   int64
+	TurnCount      int
+	LastActiveAt   time.Time
 }
 
-type SessionMemorySearchHit struct {
-	Memory          SessionMemory
+type EpisodeMemorySearchInput struct {
+	SessionID       string
+	Query           string
+	Limit           int
+	ExcludeStartSeq int64
+	ExcludeEndSeq   int64
+	Now             time.Time
+}
+
+type EpisodeMemorySearchHit struct {
+	Episode         EpisodeMemory
 	MatchedKeywords []string
 	Score           float64
 }
 
-const (
-	MemoryTypePreference = "preference"
-	MemoryTypeConstraint = "constraint"
-	MemoryTypeTask       = "task"
-	MemoryTypeProfile    = "profile"
-	MemoryTypeProject    = "project"
-
-	MemoryStatusActive   = "active"
-	MemoryStatusStale    = "stale"
-	MemoryStatusArchived = "archived"
-)
-
-type MemoryFactCreateInput struct {
+type StickyMemoryUpsertInput struct {
 	SessionID      string
-	MemoryType     string
-	Subject        string
-	Predicate      string
+	Kind           string
+	Key            string
 	Value          string
 	Summary        string
 	Confidence     float64
@@ -51,29 +74,8 @@ type MemoryFactCreateInput struct {
 	ExpiresAt      *time.Time
 }
 
-type MemoryFactUpdateInput struct {
-	ID             string
-	SessionID      string
-	Value          string
-	Summary        string
-	Confidence     float64
-	SourceStartSeq int64
-	SourceEndSeq   int64
-	LastSeenAt     time.Time
-	ExpiresAt      *time.Time
-	Status         string
-}
-
-type MemoryFactSearchInput struct {
-	Query          string
-	MemoryTypes    []string
-	Limit          int
-	ExcludeSession string
-	Now            time.Time
-}
-
-type MemoryFactSearchHit struct {
-	Fact            MemoryFact
+type StickyMemorySearchHit struct {
+	Memory          StickyMemory
 	MatchedKeywords []string
 	Score           float64
 }

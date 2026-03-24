@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"slimebot/internal/domain"
 	"slimebot/internal/observability"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -396,19 +395,6 @@ func parseToolCallArgsAny(arguments string) (map[string]any, error) {
 		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
 	return raw, nil
-}
-
-// parseOptionalInt 解析可选整数参数；失败时回落默认值。
-func parseOptionalInt(raw string, defaultValue int) int {
-	value := strings.TrimSpace(raw)
-	if value == "" {
-		return defaultValue
-	}
-	parsed, err := strconv.Atoi(value)
-	if err != nil {
-		return defaultValue
-	}
-	return parsed
 }
 
 // executeToolCall 执行内建工具命令并统一错误返回格式。

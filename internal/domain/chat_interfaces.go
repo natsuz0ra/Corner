@@ -16,8 +16,6 @@ type ChatStore interface {
 	ListLLMConfigs(ctx context.Context) ([]LLMConfig, error)
 
 	ListRecentSessionMessages(ctx context.Context, sessionID string, limit int) ([]Message, error)
-	GetSessionMemory(ctx context.Context, sessionID string) (*SessionMemory, error)
-	ListActiveSessionMemories(ctx context.Context, sessionID string) ([]SessionMemory, error)
 
 	ListEnabledMCPConfigs(ctx context.Context) ([]MCPConfig, error)
 
