@@ -225,8 +225,8 @@ func buildMemoryQueryOutput(query string, keywords []string, hits []MemorySearch
 		return b.String()
 	}
 	for idx, item := range hits {
-		b.WriteString(fmt.Sprintf("- [%d] kind=%s id=%s status=%s score=%.2f title=%s\n", idx+1, item.Kind, item.ID, item.Status, item.Score, item.Title))
-		b.WriteString("  summary: ")
+		b.WriteString(fmt.Sprintf("- [%d] %s | %s\n", idx+1, item.Kind, item.Title))
+		b.WriteString("  ")
 		b.WriteString(strings.TrimSpace(item.Summary))
 		b.WriteString("\n")
 	}
