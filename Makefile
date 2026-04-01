@@ -8,7 +8,7 @@ deps:
 	npm install --prefix frontend
 
 build:
-	npm run build
+	cd ./frontend && npm run build
 
 clean:
 	$(RM) -f slimebot slimebot.exe

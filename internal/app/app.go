@@ -98,8 +98,9 @@ func New(cfg config.Config) (*App, error) {
 	llmConfigsService := configsvc.NewLLMConfigService(repo)
 	mcpConfigsService := configsvc.NewMCPConfigService(repo)
 	platformsService := configsvc.NewMessagePlatformConfigService(repo)
-	skillPackageService := skillsvc.NewSkillPackageService(repo, cfg.SkillsRoot)
-	skillRuntimeService := skillsvc.NewSkillRuntimeService(repo, cfg.SkillsRoot)
+	skillStore := skillsvc.NewFileSystemSkillStore(cfg.SkillsRoot)
+	skillPackageService := skillsvc.NewSkillPackageService(skillStore, cfg.SkillsRoot)
+	skillRuntimeService := skillsvc.NewSkillRuntimeService(skillStore, cfg.SkillsRoot)
 	memoryService := memsvc.NewMemoryService(repo, openaiClient)
 	embedding, vectorRepo, err := configureMemoryVectorization(cfg, memoryService)
 	if err != nil {
