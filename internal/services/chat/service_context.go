@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"slimebot/internal/domain"
 	"slimebot/internal/observability"
 	oaisvc "slimebot/internal/services/openai"
+	prompts "slimebot/prompts"
 )
 
 // BuildContextMessages 构造发给模型的完整上下文消息。
@@ -102,38 +102,15 @@ func (s *ChatService) buildContextMessages(ctx context.Context, sessionID string
 	return msgs, nil
 }
 
-// loadSystemPrompt 按候选路径读取并缓存 system prompt，减少每轮聊天重复读盘。
+// loadSystemPrompt 读取并缓存内嵌 system prompt。
 func (s *ChatService) loadSystemPrompt() (string, error) {
 	if cached := strings.TrimSpace(s.getSystemPromptCached()); cached != "" {
 		return cached, nil
 	}
-	candidates := make([]string, 0, 4)
-	if p := strings.TrimSpace(s.systemPromptPath); p != "" {
-		candidates = append(candidates, p)
+	prompt := strings.TrimSpace(prompts.SystemPrompt())
+	if prompt == "" {
+		return "", fmt.Errorf("embedded system prompt is empty")
 	}
-	candidates = append(candidates,
-		"./prompts/system_prompt.md",
-		"../prompts/system_prompt.md",
-		"../../prompts/system_prompt.md",
-	)
-
-	var lastErr error
-	for _, p := range candidates {
-		raw, err := os.ReadFile(p)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		prompt := strings.TrimSpace(string(raw))
-		if prompt == "" {
-			continue
-		}
-		s.setSystemPromptCached(prompt)
-		return prompt, nil
-	}
-
-	if lastErr == nil {
-		lastErr = fmt.Errorf("system prompt file not found")
-	}
-	return "", fmt.Errorf("Failed to read system prompt: %w", lastErr)
+	s.setSystemPromptCached(prompt)
+	return prompt, nil
 }

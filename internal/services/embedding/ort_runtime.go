@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 
+	runtimecfg "slimebot/internal/runtime"
+
 	ort "github.com/yalue/onnxruntime_go"
 )
 
@@ -40,7 +42,7 @@ func EnsureORTSharedLibrary(ctx context.Context, cfg ORTRuntimeConfig) (string, 
 	}
 	cacheDir := absIfRel(strings.TrimSpace(cfg.CacheDir))
 	if cacheDir == "" {
-		cacheDir = absIfRel("./onnx/runtime")
+		cacheDir = absIfRel(filepath.Join(runtimecfg.SlimeBotHomeDir(), "onnx", "runtime"))
 	}
 	if err := os.MkdirAll(cacheDir, os.ModePerm); err != nil {
 		return "", err

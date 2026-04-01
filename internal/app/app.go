@@ -107,7 +107,7 @@ func New(cfg config.Config) (*App, error) {
 	}
 	memoryService.WarmupTokenizer()
 	chatUploadService := chatsvc.NewChatUploadService(cfg.ChatUploadRoot)
-	chatService := chatsvc.NewChatService(repo, openaiClient, mcpManager, skillRuntimeService, memoryService, cfg.SystemPromptPath)
+	chatService := chatsvc.NewChatService(repo, openaiClient, mcpManager, skillRuntimeService, memoryService)
 	chatService.SetUploadService(chatUploadService)
 
 	approvalBroker := telegram.NewApprovalBroker()
