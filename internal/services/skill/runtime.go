@@ -173,28 +173,16 @@ func (s *SkillRuntimeService) ActivateSkill(name string, activated map[string]st
 	return b.String(), false, nil
 }
 
-// DeleteSkillByID 删除技能目录并移除数据库记录。
+// DeleteSkillByID 删除技能目录并清空运行时缓存。
 func (s *SkillRuntimeService) DeleteSkillByID(id string) error {
-	item, err := s.store.GetSkillByID(id)
-	if err != nil {
-		return err
-	}
-	if item == nil {
-		return nil
-	}
-
-	skillDir, err := s.resolveSkillDir(*item)
-	if err != nil {
-		return err
-	}
-	if _, statErr := os.Stat(skillDir); statErr == nil {
-		if err := os.RemoveAll(skillDir); err != nil {
-			return fmt.Errorf("failed to delete skill directory: %w", err)
-		}
-	}
 	if err := s.store.DeleteSkill(id); err != nil {
 		return err
 	}
+	s.catalogMu.Lock()
+	s.cachedPrompt = ""
+	s.cachedSkills = nil
+	s.cacheUntil = time.Time{}
+	s.catalogMu.Unlock()
 	return nil
 }
 

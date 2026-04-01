@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"os"
+	"slimebot/internal/runtime"
 
 	"slimebot/internal/app"
 
@@ -12,7 +13,7 @@ import (
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
-	if err := EnsureAndLoadEnv(); err != nil {
+	if err := runtime.EnsureAndLoadEnv(); err != nil {
 		slog.Error("env_bootstrap_failed", "err", err)
 		os.Exit(1)
 	}

@@ -1,19 +1,21 @@
-package main
+package runtime
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"slimebot/internal/runtime"
-
 	"github.com/joho/godotenv"
 )
 
+func getEnvPath() string {
+	return filepath.Join(SlimeBotHomeDir(), ".env")
+}
+
 func EnsureAndLoadEnv() error {
-	envPath := filepath.Join(runtime.SlimeBotHomeDir(), ".env")
-	return ensureAndLoadEnv(envPath, runtime.EnvTemplate())
+	return ensureAndLoadEnv(getEnvPath(), EnvTemplate())
 }
 
 func ensureAndLoadEnv(envPath string, template string) error {
@@ -124,4 +126,66 @@ func parseEnvKey(line string) (string, bool) {
 		return "", false
 	}
 	return key, true
+}
+
+func ReadEnvValue(key string) (string, error) {
+	envPath := getEnvPath()
+
+	raw, err := os.ReadFile(envPath)
+	if err != nil {
+		return "", err
+	}
+	prefix := strings.TrimSpace(key) + "="
+	scanner := bufio.NewScanner(strings.NewReader(string(raw)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimPrefix(line, prefix), nil
+		}
+	}
+	return "", scanner.Err()
+}
+
+func UpsertEnvValue(key string, value string) error {
+	envPath := getEnvPath()
+
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return fmt.Errorf("env key is required")
+	}
+
+	content, err := os.ReadFile(envPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	lines := []string{}
+	if len(content) > 0 {
+		lines = strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n")
+	}
+	targetPrefix := key + "="
+	replaced := false
+	for idx, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, targetPrefix) {
+			lines[idx] = targetPrefix + value
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		if len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) != "" {
+			lines = append(lines, "")
+		}
+		lines = append(lines, targetPrefix+value)
+	}
+
+	output := strings.Join(lines, "\n")
+	if !strings.HasSuffix(output, "\n") {
+		output += "\n"
+	}
+	if err := os.MkdirAll(filepath.Dir(envPath), os.ModePerm); err != nil {
+		return err
+	}
+	return os.WriteFile(envPath, []byte(output), 0o644)
 }
