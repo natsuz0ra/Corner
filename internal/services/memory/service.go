@@ -23,13 +23,14 @@ const (
 )
 
 type MemorySearchHit struct {
-	Kind     string
-	ID       string
-	Title    string
-	Summary  string
-	Score    float64
-	Status   string
-	Keywords []string
+	Kind      string
+	ID        string
+	Title     string
+	Summary   string
+	Score     float64
+	Status    string
+	Keywords  []string
+	CreatedAt time.Time
 }
 
 type MemoryQueryResult struct {
@@ -171,13 +172,14 @@ func mergeQueryHits(episodes []domain.EpisodeMemorySearchHit, sticky []domain.St
 	hits := make([]MemorySearchHit, 0, len(episodes)+len(sticky))
 	for _, item := range episodes {
 		hits = append(hits, MemorySearchHit{
-			Kind:     "episode",
-			ID:       item.Episode.ID,
-			Title:    item.Episode.Title,
-			Summary:  item.Episode.Summary,
-			Score:    item.Score,
-			Status:   item.Episode.State,
-			Keywords: decodeKeywordsJSON(item.Episode.KeywordsJSON),
+			Kind:      "episode",
+			ID:        item.Episode.ID,
+			Title:     item.Episode.Title,
+			Summary:   item.Episode.Summary,
+			Score:     item.Score,
+			Status:    item.Episode.State,
+			Keywords:  decodeKeywordsJSON(item.Episode.KeywordsJSON),
+			CreatedAt: item.Episode.CreatedAt,
 		})
 	}
 	for _, item := range sticky {
@@ -225,7 +227,7 @@ func buildMemoryQueryOutput(query string, keywords []string, hits []MemorySearch
 		return b.String()
 	}
 	for idx, item := range hits {
-		b.WriteString(fmt.Sprintf("- [%d] %s | %s\n", idx+1, item.Kind, item.Title))
+		b.WriteString(fmt.Sprintf("- [%d] %s | %s | %.2f | %s\n", idx+1, item.Kind, item.Title, item.Score, item.CreatedAt.Format(time.RFC3339)))
 		b.WriteString("  ")
 		b.WriteString(strings.TrimSpace(item.Summary))
 		b.WriteString("\n")

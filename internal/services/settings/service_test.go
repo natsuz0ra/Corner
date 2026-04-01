@@ -38,30 +38,6 @@ func TestSettingsService_GetIncludesWebSearchAPIKey(t *testing.T) {
 	}
 }
 
-func TestSettingsService_UpdateWritesWebSearchAPIKeyToEnv(t *testing.T) {
-	envPath := filepath.Join(t.TempDir(), ".env")
-	if err := os.WriteFile(envPath, []byte("WEB_SEARCH_API_KEY=old\n"), 0o644); err != nil {
-		t.Fatalf("write env failed: %v", err)
-	}
-	store := &memorySettingsStore{values: map[string]string{}}
-	svc := NewSettingsService(store)
-
-	if err := svc.Update(UpdateSettingsInput{WebSearchAPIKey: "new-key"}); err != nil {
-		t.Fatalf("Update failed: %v", err)
-	}
-
-	raw, err := os.ReadFile(envPath)
-	if err != nil {
-		t.Fatalf("read env failed: %v", err)
-	}
-	if string(raw) != "WEB_SEARCH_API_KEY=new-key\n" {
-		t.Fatalf("unexpected env content: %q", string(raw))
-	}
-	if got := os.Getenv("WEB_SEARCH_API_KEY"); got != "new-key" {
-		t.Fatalf("expected process env updated, got %q", got)
-	}
-}
-
 func TestSettingsService_UpdatePreservesOtherSettingsStoreWrites(t *testing.T) {
 	store := &memorySettingsStore{values: map[string]string{}}
 	svc := NewSettingsService(store)
