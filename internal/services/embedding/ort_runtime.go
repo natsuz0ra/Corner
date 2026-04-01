@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -56,9 +57,20 @@ func EnsureORTSharedLibrary(ctx context.Context, cfg ORTRuntimeConfig) (string, 
 	if err != nil {
 		return "", err
 	}
+	slog.Info("resource_prepare_start",
+		"resource", "onnxruntime",
+		"asset", assetName,
+		"cache_dir", cacheDir,
+	)
 	extractedRoot := filepath.Join(cacheDir, archiveStem(assetName))
 	libPath, _ := findExtractedORTLibrary(extractedRoot, version)
 	if libPath != "" {
+		slog.Info("resource_prepare_done",
+			"resource", "onnxruntime",
+			"asset", assetName,
+			"cached", true,
+			"lib_path", libPath,
+		)
 		return libPath, nil
 	}
 
@@ -66,16 +78,40 @@ func EnsureORTSharedLibrary(ctx context.Context, cfg ORTRuntimeConfig) (string, 
 	if !isFile(archivePath) {
 		downloadURL := fmt.Sprintf("%s/v%s/%s", strings.TrimRight(baseURL, "/"), version, assetName)
 		if err := downloadFile(ctx, downloadURL, archivePath); err != nil {
+			slog.Warn("resource_prepare_failed",
+				"resource", "onnxruntime",
+				"asset", assetName,
+				"stage", "download",
+				"err", err,
+			)
 			return "", err
 		}
 	}
 	if err := extractORTArchive(archivePath, cacheDir); err != nil {
+		slog.Warn("resource_prepare_failed",
+			"resource", "onnxruntime",
+			"asset", assetName,
+			"stage", "extract",
+			"err", err,
+		)
 		return "", err
 	}
 	libPath, err = findExtractedORTLibrary(extractedRoot, version)
 	if err != nil {
+		slog.Warn("resource_prepare_failed",
+			"resource", "onnxruntime",
+			"asset", assetName,
+			"stage", "find_library",
+			"err", err,
+		)
 		return "", err
 	}
+	slog.Info("resource_prepare_done",
+		"resource", "onnxruntime",
+		"asset", assetName,
+		"cached", false,
+		"lib_path", libPath,
+	)
 	return libPath, nil
 }
 

@@ -3,6 +3,7 @@ package embedding
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,14 +42,45 @@ func EnsureBgeM3ModelFiles(ctx context.Context, cfg BgeM3ModelConfig) error {
 
 	for _, item := range files {
 		if isFile(item.dst) {
+			slog.Info("resource_prepare_done",
+				"resource", "bge_m3",
+				"file", item.filename,
+				"path", item.dst,
+				"cached", true,
+			)
 			continue
 		}
+		slog.Info("resource_prepare_start",
+			"resource", "bge_m3",
+			"file", item.filename,
+			"path", item.dst,
+		)
 		if err := os.MkdirAll(filepath.Dir(item.dst), os.ModePerm); err != nil {
+			slog.Warn("resource_prepare_failed",
+				"resource", "bge_m3",
+				"file", item.filename,
+				"path", item.dst,
+				"stage", "mkdir",
+				"err", err,
+			)
 			return err
 		}
 		if err := downloadFile(ctx, baseURL+"/"+item.filename, item.dst); err != nil {
+			slog.Warn("resource_prepare_failed",
+				"resource", "bge_m3",
+				"file", item.filename,
+				"path", item.dst,
+				"stage", "download",
+				"err", err,
+			)
 			return err
 		}
+		slog.Info("resource_prepare_done",
+			"resource", "bge_m3",
+			"file", item.filename,
+			"path", item.dst,
+			"cached", false,
+		)
 	}
 
 	return nil
