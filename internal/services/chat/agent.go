@@ -19,6 +19,8 @@ import (
 	"slimebot/internal/tools"
 )
 
+const balancedTemperature = 1.2
+
 // ApprovalRequest 发送给前端的工具调用审批请求
 type ApprovalRequest struct {
 	ToolCallID       string            `json:"toolCallId"`
@@ -260,6 +262,8 @@ func (a *AgentService) RunAgentLoop(
 	activatedSkills map[string]struct{},
 	callbacks AgentCallbacks,
 ) (string, error) {
+	modelConfig.Temperature = balancedTemperature
+
 	toolDefs, mcpToolMeta, err := a.buildRuntimeToolDefs(ctx, mcpConfigs)
 	if err != nil {
 		return "", fmt.Errorf("failed to load MCP tools: %w", err)
