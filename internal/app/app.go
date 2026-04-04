@@ -4,10 +4,10 @@ import (
 	"context"
 	"io"
 	"io/fs"
-	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slimebot/internal/logging"
 	"strings"
 	"time"
 
@@ -135,7 +135,7 @@ func New(cfg config.Config) (*App, error) {
 	engine := router.New(cfg, tokenManager, httpController, wsController, subDist)
 
 	addr := ":" + cfg.ServerPort
-	slog.Info("server_listening", "addr", addr)
+	logging.Info("server_listening", "addr", addr)
 
 	return &App{
 		httpServer: &http.Server{
@@ -170,17 +170,17 @@ func (a *App) cleanup(ctx context.Context) {
 	}
 	if a.memoryService != nil {
 		if err := a.memoryService.Shutdown(ctx); err != nil {
-			slog.Warn("memory_shutdown", "err", err)
+			logging.Warn("memory_shutdown", "err", err)
 		}
 	}
 	if a.embedding != nil {
 		if err := a.embedding.Close(); err != nil {
-			slog.Warn("embedding_close", "err", err)
+			logging.Warn("embedding_close", "err", err)
 		}
 	}
 	if a.vectorRepo != nil {
 		if err := a.vectorRepo.Close(); err != nil {
-			slog.Warn("vector_repo_close", "err", err)
+			logging.Warn("vector_repo_close", "err", err)
 		}
 	}
 	if a.mcpManager != nil {

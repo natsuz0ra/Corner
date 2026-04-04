@@ -2,7 +2,7 @@ package app
 
 import (
 	"io"
-	"log/slog"
+	"slimebot/internal/logging"
 	"strings"
 	"time"
 
@@ -15,15 +15,15 @@ import (
 func configureMemoryVectorization(cfg config.Config, memoryService *memsvc.MemoryService) (io.Closer, *repositories.MemoryVectorRepository, error) {
 	provider := strings.ToLower(strings.TrimSpace(cfg.EmbeddingProvider))
 	if provider != "onnx_go" && provider != "onnx" {
-		slog.Info("memory_vectorization_disabled", "reason", "embedding_provider", "provider", cfg.EmbeddingProvider)
+		logging.Info("memory_vectorization_disabled", "reason", "embedding_provider", "provider", cfg.EmbeddingProvider)
 		return nil, nil, nil
 	}
 	if strings.TrimSpace(cfg.EmbeddingModelPath) == "" || strings.TrimSpace(cfg.EmbeddingTokenizerPath) == "" {
-		slog.Info("memory_vectorization_disabled", "reason", "missing_embedding_paths")
+		logging.Info("memory_vectorization_disabled", "reason", "missing_embedding_paths")
 		return nil, nil, nil
 	}
 	if strings.TrimSpace(cfg.ChromaPath) == "" || strings.TrimSpace(cfg.ChromaCollection) == "" {
-		slog.Info("memory_vectorization_disabled", "reason", "missing_chroma_config")
+		logging.Info("memory_vectorization_disabled", "reason", "missing_chroma_config")
 		return nil, nil, nil
 	}
 
@@ -40,12 +40,12 @@ func configureMemoryVectorization(cfg config.Config, memoryService *memsvc.Memor
 
 	vectorStore, err := repositories.NewMemoryVectorRepository(cfg.ChromaPath, cfg.ChromaCollection)
 	if err != nil {
-		slog.Warn("memory_vectorization_disabled", "reason", "chroma_init_failed", "err", err)
+		logging.Warn("memory_vectorization_disabled", "reason", "chroma_init_failed", "err", err)
 		return embedding, nil, nil
 	}
 	memoryService.SetVectorStore(vectorStore)
 	memoryService.SetVectorSearchTopK(cfg.MemoryVectorTopK)
-	slog.Info("memory_vectorization_enabled",
+	logging.Info("memory_vectorization_enabled",
 		"provider", "onnx_go",
 		"chroma_path", cfg.ChromaPath,
 		"collection", cfg.ChromaCollection,
