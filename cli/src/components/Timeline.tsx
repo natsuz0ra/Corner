@@ -10,6 +10,7 @@ import { DOT } from "../utils/terminal.js";
 import type { TimelineEntry, ToolCallStatus } from "../types.js";
 import { formatToolInvocation, truncateText, wrapText, formatCollapsedLines, TOOL_OUTPUT_PREVIEW_LINES } from "../utils/format.js";
 import { GradientFlowText } from "./GradientFlowText.js";
+import { Spinner } from "./Spinner.js";
 
 interface TimelineProps {
   entries: TimelineEntry[];
@@ -203,10 +204,13 @@ export function Timeline({
         <>
           {entries.length > 0 && <Text> </Text>}
           {assistantWaiting ? (
-            <GradientFlowText
-              text={`${DOT} Waiting for response...`}
-              enabled={true}
-            />
+            <Box key="waiting">
+              <Spinner enabled={true} />
+              <GradientFlowText
+                text={` Waiting for response...`}
+                enabled={true}
+              />
+            </Box>
           ) : liveAssistant ? (
             <StreamingMarkdown content={liveAssistant} maxWidth={maxWidth} compact={compact} />
           ) : null}

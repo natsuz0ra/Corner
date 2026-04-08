@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { wrapText, formatCollapsedLines, TOOL_OUTPUT_PREVIEW_LINES } from "./format.ts";
+import { wrapText, formatCollapsedLines, TOOL_OUTPUT_PREVIEW_LINES } from "./format";
 
 test("wrapText wraps plain text with target width", () => {
   const wrapped = wrapText("1234567890", 4);

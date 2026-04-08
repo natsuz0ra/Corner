@@ -1,7 +1,7 @@
 ﻿import assert from "node:assert/strict";
 import test from "node:test";
-import { stripAnsi } from "./terminal.ts";
-import { renderMarkdownLines } from "./markdownRenderer.ts";
+import { stripAnsi } from "./terminal";
+import { renderMarkdownLines } from "./markdownRenderer";
 
 test("renderMarkdownLines renders markdown tables with box borders", () => {
   const input = "| Name | Role |\n| ---- | ---- |\n| Alice | Dev |";
