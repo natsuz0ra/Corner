@@ -44,7 +44,7 @@ function main(): void {
     process.exit(1);
   }
 
-  const version = "1.14.0";
+  const version = "1.15.0";
 
   render(
     <App

@@ -83,7 +83,7 @@ export function formatToken(
     }
     case "list":
       return token.items
-        .map((item, index) => formatToken(
+        .map((item: Token, index: number) => formatToken(
           item,
           listDepth,
           token.ordered ? (token.start || 1) + index : null,

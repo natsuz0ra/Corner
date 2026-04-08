@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { TimelineEntry } from "../types.ts";
-import { formatToolOutputLines } from "./Timeline.tsx";
+import type { TimelineEntry } from "../types";
+import { formatToolOutputLines } from "./Timeline";
 
 test("formatToolOutputLines aligns tool output with fixed spaces", () => {
   const entry: TimelineEntry = {

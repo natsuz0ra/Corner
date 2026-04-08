@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mapHistoryMessages } from "./app.tsx";
-import type { Message, ToolCallHistoryItem } from "./types.ts";
+import { mapHistoryMessages } from "./app";
+import type { Message, ToolCallHistoryItem } from "./types";
 
 test("mapHistoryMessages inserts tool calls after assistant messages in timeline order", () => {
   const messages: Message[] = [

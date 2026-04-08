@@ -49,6 +49,14 @@ function isCtrlKey(input: string, key: Key, letter: string): boolean {
   return input.charCodeAt(0) === expected;
 }
 
+function formatModelLine(model?: Pick<LLMConfig, "name" | "model">, fallback = "(none)"): string {
+  if (!model) return fallback;
+  const name = model.name?.trim() || "";
+  const actualModel = model.model?.trim() || "";
+  if (name && actualModel) return `${name} · ${actualModel}`;
+  return name || actualModel || fallback;
+}
+
 interface AppProps {
   apiURL: string;
   cliToken: string;
@@ -155,7 +163,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       dispatch({
         type: "SET_MODEL",
         modelId: settings.defaultModel,
-        modelName: model?.name || settings.defaultModel,
+        modelName: formatModelLine(model, settings.defaultModel),
       } as AppAction);
     } catch {
       // Ignore when no model is configured.
@@ -292,7 +300,11 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       if (state.menuKind === "model") {
         const model = item.data as LLMConfig;
         await apiRef.current.updateSettings({ defaultModel: model.id });
-        dispatch({ type: "SET_MODEL", modelId: model.id, modelName: model.name } as AppAction);
+        dispatch({
+          type: "SET_MODEL",
+          modelId: model.id,
+          modelName: formatModelLine(model, model.id),
+        } as AppAction);
         dispatch({ type: "CLOSE_MENU" } as AppAction);
         appendSystem(`Model switched to ${model.name}.`);
         return;
