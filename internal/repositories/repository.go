@@ -3,7 +3,20 @@ package repositories
 import (
 	"context"
 
+	"slimebot/internal/domain"
+
 	"gorm.io/gorm"
+)
+
+// 接口合规性检查
+var (
+	_ domain.ChatStore                  = (*Repository)(nil)
+	_ domain.SessionStore               = (*Repository)(nil)
+	_ domain.MemoryStore                = (*Repository)(nil)
+	_ domain.LLMConfigStore             = (*Repository)(nil)
+	_ domain.MCPConfigStore             = (*Repository)(nil)
+	_ domain.MessagePlatformConfigStore = (*Repository)(nil)
+	_ domain.SettingsStore              = (*Repository)(nil)
 )
 
 type Repository struct {
