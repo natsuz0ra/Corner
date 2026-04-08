@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slimebot/internal/constants"
 	"slimebot/internal/logging"
 	"strings"
 	"sync"
@@ -139,8 +140,8 @@ func (w *Controller) Chat(wr http.ResponseWriter, req *http.Request) {
 	sessionCtx, cancelSession := context.WithCancel(req.Context())
 	defer cancelSession()
 
-	writeCh := make(chan any, 128)
-	chatCh := make(chan chatIncoming, 16)
+	writeCh := make(chan any, constants.WSWriteChannelBuf)
+	chatCh := make(chan chatIncoming, constants.WSChatChannelBuf)
 	broker := newApprovalBroker()
 	activeCancel := &activeChatCanceler{}
 
@@ -301,7 +302,7 @@ func (w *Controller) handleChatIncoming(
 	startSentAt := time.Now()
 	var firstChunkSentAt time.Time
 	requestID := uuid.NewString()
-	chatCtx, cancel := context.WithTimeout(sessionCtx, 600*time.Second)
+	chatCtx, cancel := context.WithTimeout(sessionCtx, constants.WSChatTimeout)
 	activeCancel.Set(cancel)
 	defer activeCancel.Clear(cancel)
 	callbacks := w.buildCallbacks(enqueue, broker, session.ID, &firstChunkSentAt)

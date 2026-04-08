@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"slimebot/internal/constants"
+	"slimebot/internal/repositories"
 )
 
 type sessionMessagesResponse struct {
@@ -87,16 +88,12 @@ func (h *HTTPController) ListSessions(c WebContext) {
 		offset = parsed
 	}
 	q := strings.TrimSpace(c.Query("q"))
-	fetchLimit := limit + 1
-	sessions, err := h.sessions.List(fetchLimit, offset, q)
+	sessions, err := h.sessions.List(limit+1, offset, q)
 	if err != nil {
 		jsonInternalError(c, err)
 		return
 	}
-	hasMore := len(sessions) > limit
-	if hasMore {
-		sessions = sessions[:limit]
-	}
+	sessions, hasMore := repositories.FetchWindow(sessions, limit)
 	c.JSON(http.StatusOK, listSessionsResponse{Sessions: sessions, HasMore: hasMore})
 }
 

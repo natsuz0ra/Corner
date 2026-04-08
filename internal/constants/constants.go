@@ -54,4 +54,9 @@ const (
 	WebSearchMaxContentRunes           = 300
 	MCPFuncNameMaxLen                  = 64
 	MCPFuncHashLen                     = 8
+
+	// WebSocket
+	WSChatTimeout     = 600 * time.Second
+	WSWriteChannelBuf = 128
+	WSChatChannelBuf  = 16
 )

@@ -3,6 +3,8 @@ package repositories
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slimebot/internal/apperrors"
 	"slimebot/internal/domain"
 	"strings"
 	"time"
@@ -34,7 +36,7 @@ func (r *Repository) GetSessionByID(ctx context.Context, id string) (*domain.Ses
 	var session domain.Session
 	err := r.dbWithContext(ctx).First(&session, "id = ?", id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
+		return nil, fmt.Errorf("session %s: %w", id, apperrors.ErrNotFound)
 	}
 	return &session, err
 }

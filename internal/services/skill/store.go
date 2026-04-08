@@ -11,6 +11,9 @@ import (
 	"slimebot/internal/domain"
 )
 
+// 接口合规性检查
+var _ domain.SkillStore = (*FileSystemSkillStore)(nil)
+
 type FileSystemSkillStore struct {
 	skillsRoot    string
 	skillsRootAbs string

@@ -3,6 +3,8 @@ package repositories
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slimebot/internal/apperrors"
 	"slimebot/internal/domain"
 
 	"github.com/google/uuid"
@@ -19,7 +21,7 @@ func (r *Repository) GetLLMConfigByID(ctx context.Context, id string) (*domain.L
 	var item domain.LLMConfig
 	err := r.dbWithContext(ctx).First(&item, "id = ?", id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
+		return nil, fmt.Errorf("llm config %s: %w", id, apperrors.ErrNotFound)
 	}
 	return &item, err
 }

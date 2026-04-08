@@ -2,10 +2,12 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"slimebot/internal/apperrors"
 	"slimebot/internal/constants"
 	"slimebot/internal/domain"
 )
@@ -19,7 +21,7 @@ func (s *ChatService) EnsureSession(ctx context.Context, sessionID string) (*dom
 	}
 	if sessionID != "" {
 		existing, err := s.store.GetSessionByID(ctx, sessionID)
-		if err != nil {
+		if err != nil && !errors.Is(err, apperrors.ErrNotFound) {
 			return nil, err
 		}
 		if existing != nil {
@@ -35,7 +37,7 @@ func (s *ChatService) EnsureMessagePlatformSession(ctx context.Context) (*domain
 		ctx = context.Background()
 	}
 	session, err := s.store.GetSessionByID(ctx, constants.MessagePlatformSessionID)
-	if err != nil {
+	if err != nil && !errors.Is(err, apperrors.ErrNotFound) {
 		return nil, err
 	}
 	if session != nil {
@@ -55,7 +57,7 @@ func (s *ChatService) ResolvePlatformModel(ctx context.Context) (string, error) 
 	s.platformModelMu.Unlock()
 	if cacheID != "" && time.Since(cacheAt) < platformModelCacheTTL {
 		item, err := s.store.GetLLMConfigByID(ctx, cacheID)
-		if err != nil {
+		if err != nil && !errors.Is(err, apperrors.ErrNotFound) {
 			return "", err
 		}
 		if item != nil {
@@ -71,10 +73,10 @@ func (s *ChatService) ResolvePlatformModel(ctx context.Context) (string, error) 
 		}
 		item, err := s.store.GetLLMConfigByID(ctx, trimmed)
 		if err != nil {
+			if errors.Is(err, apperrors.ErrNotFound) {
+				return "", false, nil
+			}
 			return "", false, err
-		}
-		if item == nil {
-			return "", false, nil
 		}
 		return item.ID, true, nil
 	}
@@ -136,10 +138,10 @@ func (s *ChatService) ResolveLLMConfig(ctx context.Context, modelID string) (*do
 
 	config, err := s.store.GetLLMConfigByID(ctx, configID)
 	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			return nil, fmt.Errorf("Model config not found: %s.", configID)
+		}
 		return nil, err
-	}
-	if config == nil {
-		return nil, fmt.Errorf("Model config not found: %s.", configID)
 	}
 	if strings.TrimSpace(config.BaseURL) == "" || strings.TrimSpace(config.APIKey) == "" || strings.TrimSpace(config.Model) == "" {
 		return nil, fmt.Errorf("Model config is incomplete: %s.", config.Name)

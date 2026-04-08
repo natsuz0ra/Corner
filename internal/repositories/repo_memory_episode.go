@@ -269,9 +269,7 @@ func (r *Repository) SearchStickyMemories(ctx context.Context, sessionID, query 
 		}
 		return hits[i].Score > hits[j].Score
 	})
-	if len(hits) > limit {
-		hits = hits[:limit]
-	}
+	hits, _ = FetchWindow(hits, limit)
 	return hits, nil
 }
 
