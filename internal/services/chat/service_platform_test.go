@@ -82,7 +82,7 @@ func TestResolvePlatformModel_FallbackAndPersist(t *testing.T) {
 	if err := repo.SetSetting(context.Background(), constants.SettingDefaultModel, ""); err != nil {
 		t.Fatalf("clear global default failed: %v", err)
 	}
-	// 删除 second 后，应回落到首个可用模型（按 name asc，这里是 model-a）。
+	// After deleting "second", fall back to first available model (name asc: model-a).
 	if err := repo.DeleteLLMConfig(second.ID); err != nil {
 		t.Fatalf("delete second model failed: %v", err)
 	}

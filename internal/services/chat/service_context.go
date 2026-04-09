@@ -14,25 +14,25 @@ import (
 	prompts "slimebot/prompts"
 )
 
-// RunContext 持有部署相关的上下文信息，注入到系统提示词的 Runtime Environment 部分。
-// 在启动时构建一次，之后视为不可变。
+// RunContext holds deployment/runtime info for the Runtime Environment section of the system prompt.
+// Built once at startup and treated as immutable.
 type RunContext struct {
-	// ConfigHomeDir 是 ~/.slimebot 的绝对路径。
+	// ConfigHomeDir is the absolute path to ~/.slimebot.
 	ConfigHomeDir string
-	// ConfigDirDescription 是配置目录内容的可读描述，在启动时生成一次。
+	// ConfigDirDescription is a human-readable listing of the config dir (computed at startup).
 	ConfigDirDescription string
-	// WorkingDir 是 CLI 模式下的当前工作目录，Server 模式为空。
+	// WorkingDir is the CLI cwd; empty in server mode.
 	WorkingDir string
-	// IsCLI 为 true 时表示运行在 CLI headless 模式。
+	// IsCLI is true when running the CLI headless backend.
 	IsCLI bool
 }
 
-// BuildContextMessages 构造发给模型的完整上下文消息。
+// BuildContextMessages builds the full message list for the model.
 func (s *ChatService) BuildContextMessages(ctx context.Context, sessionID string, modelConfig llmsvc.ModelRuntimeConfig) ([]llmsvc.ChatMessage, error) {
 	return s.buildContextMessages(ctx, sessionID, modelConfig)
 }
 
-// buildContextMessages 并行加载系统提示词和最近历史，再按 system -> memory -> history 顺序组装上下文。
+// buildContextMessages loads system prompt and history in parallel, then orders system -> memory -> history.
 func (s *ChatService) buildContextMessages(ctx context.Context, sessionID string, modelConfig llmsvc.ModelRuntimeConfig) ([]llmsvc.ChatMessage, error) {
 	_ = modelConfig
 	buildStart := time.Now()
@@ -105,7 +105,7 @@ func (s *ChatService) buildContextMessages(ctx context.Context, sessionID string
 	return msgs, nil
 }
 
-// loadSystemPrompt 读取并缓存内嵌 system prompt。
+// loadSystemPrompt reads and caches the embedded system prompt.
 func (s *ChatService) loadSystemPrompt() (string, error) {
 	if cached := strings.TrimSpace(s.getSystemPromptCached()); cached != "" {
 		return cached, nil
@@ -118,7 +118,7 @@ func (s *ChatService) loadSystemPrompt() (string, error) {
 	return prompt, nil
 }
 
-// loadStableSystemPrompt 构建并缓存稳定前缀 system prompt，仅在技能目录变化时刷新。
+// loadStableSystemPrompt builds and caches stable system prompt; refreshes when skill catalog changes.
 func (s *ChatService) loadStableSystemPrompt() (string, error) {
 	basePrompt, err := s.loadSystemPrompt()
 	if err != nil {

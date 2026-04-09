@@ -6,7 +6,7 @@ import (
 	configsvc "slimebot/internal/services/config"
 )
 
-// ListLLMConfigs 返回当前保存的全部模型配置。
+// ListLLMConfigs returns all saved LLM model configs.
 func (h *HTTPController) ListLLMConfigs(c WebContext) {
 	items, err := h.llmConfigs.List()
 	if err != nil {
@@ -16,7 +16,7 @@ func (h *HTTPController) ListLLMConfigs(c WebContext) {
 	c.JSON(http.StatusOK, items)
 }
 
-// CreateLLMConfig 创建模型配置，并校验最基本的连接字段是否齐全。
+// CreateLLMConfig creates a model config and validates required connection fields.
 func (h *HTTPController) CreateLLMConfig(c WebContext) {
 	var req struct {
 		Name     string `json:"name"`
@@ -47,7 +47,7 @@ func (h *HTTPController) CreateLLMConfig(c WebContext) {
 	c.JSON(http.StatusOK, item)
 }
 
-// DeleteLLMConfig 删除指定模型配置。
+// DeleteLLMConfig removes a model config by id.
 func (h *HTTPController) DeleteLLMConfig(c WebContext) {
 	id := c.Param("id")
 	if err := h.llmConfigs.Delete(id); err != nil {

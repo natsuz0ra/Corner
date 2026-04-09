@@ -8,7 +8,7 @@ type ToastLike = {
   error(message: string): void
 }
 
-type Translate = (key: string) => string
+type Translate = (key: string, params?: Record<string, unknown>) => string
 
 type MCPItem = any
 type MCPTransport = 'stdio' | 'sse' | 'streamable_http'
@@ -111,7 +111,8 @@ export function useSettingsMCP(options: {
     try {
       const cfg = JSON.parse(item.config || '{}')
       const transport = cfg.transport || 'stdio'
-      if (transport === 'stdio') return `${transport} 路 ${cfg.command || '-'}`
+      if (transport === 'stdio')
+        return t('mcpStdioPreview', { transport, command: cfg.command || '-' })
       return `${transport} | ${cfg.url || '-'}`
     } catch {
       return t('mcpJsonInvalid')

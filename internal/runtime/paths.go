@@ -16,8 +16,8 @@ func SlimeBotHomeDir() string {
 	return filepath.Join(home, SlimeBotDirName)
 }
 
-// DescribeConfigHome 生成 SlimeBot 配置目录的内容描述文本。
-// 仅扫描顶层条目，由调用方在启动时调用一次并缓存结果。
+// DescribeConfigHome returns a human-readable listing of the SlimeBot config directory.
+// Only top-level entries are scanned; call once at startup and cache if needed.
 func DescribeConfigHome() string {
 	home := SlimeBotHomeDir()
 	entries, err := os.ReadDir(home)

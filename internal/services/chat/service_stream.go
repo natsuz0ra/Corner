@@ -15,7 +15,7 @@ import (
 	llmsvc "slimebot/internal/services/llm"
 )
 
-// chatTurnState 持有聊天回合准备阶段的中间状态。
+// chatTurnState holds intermediate state while preparing a chat turn.
 type chatTurnState struct {
 	session           *domain.Session
 	modelConfig       llmsvc.ModelRuntimeConfig
@@ -24,7 +24,7 @@ type chatTurnState struct {
 	attachments       []UploadedAttachment
 }
 
-// chatTurnResult 持有 Agent 执行后的中间结果。
+// chatTurnResult holds intermediate results after the agent runs.
 type chatTurnResult struct {
 	answer        string
 	interrupted   bool
@@ -33,7 +33,7 @@ type chatTurnResult struct {
 	pushErr       error
 }
 
-// HandleChatStream 执行一次完整聊天回合：写入用户消息、构建上下文、驱动 Agent、落库 assistant 结果。
+// HandleChatStream runs one full turn: persist user message, build context, run agent, save assistant.
 func (s *ChatService) HandleChatStream(
 	ctx context.Context,
 	sessionID string,
@@ -61,7 +61,7 @@ func (s *ChatService) HandleChatStream(
 	return s.finalizeChatTurn(ctx, sessionID, requestID, state, result)
 }
 
-// prepareChatTurn 验证输入、解析模型配置、写入用户消息、并行构建上下文。
+// prepareChatTurn validates input, resolves model config, saves user message, builds context in parallel.
 func (s *ChatService) prepareChatTurn(
 	ctx context.Context,
 	sessionID string,
@@ -116,7 +116,7 @@ func (s *ChatService) prepareChatTurn(
 		return nil, err
 	}
 
-	// 上下文消息与启用的 MCP 配置彼此独立，并行准备以缩短回合启动耗时。
+	// Build context messages and enabled MCP configs in parallel to reduce turn latency.
 	var (
 		contextMessages   []llmsvc.ChatMessage
 		enabledMCPConfigs []domain.MCPConfig
@@ -159,7 +159,7 @@ func (s *ChatService) prepareChatTurn(
 	}, nil
 }
 
-// executeChatTurn 驱动 Agent 循环并收集流式结果。
+// executeChatTurn runs the agent loop and collects streamed output.
 func (s *ChatService) executeChatTurn(
 	ctx context.Context,
 	sessionID string,
@@ -272,7 +272,7 @@ func (s *ChatService) executeChatTurn(
 	}, nil
 }
 
-// finalizeChatTurn 落库 assistant 消息、更新标题、入队记忆。
+// finalizeChatTurn persists assistant message, updates title, enqueues memory.
 func (s *ChatService) finalizeChatTurn(
 	ctx context.Context,
 	sessionID string,

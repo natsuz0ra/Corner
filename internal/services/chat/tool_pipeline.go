@@ -20,7 +20,7 @@ type resolvedToolInvocation struct {
 	requiresApproval bool
 }
 
-// resolveToolInvocation 将模型返回的函数名解析成统一工具调用描述。
+// resolveToolInvocation normalizes a model function name into a tool invocation.
 func resolveToolInvocation(tc llmsvc.ToolCallInfo, mcpToolMeta map[string]mcp.ToolMeta) (resolvedToolInvocation, error) {
 	if tc.Name == constants.ActivateSkillTool {
 		return resolvedToolInvocation{
@@ -31,7 +31,7 @@ func resolveToolInvocation(tc llmsvc.ToolCallInfo, mcpToolMeta map[string]mcp.To
 		}, nil
 	}
 	if tc.Name == constants.SearchMemoryTool {
-		// memory 查询走内建工具路径，不需要审批。
+		// Memory search uses the built-in tool path; no approval.
 		return resolvedToolInvocation{
 			toolName:         constants.SearchMemoryTool,
 			command:          "query",
@@ -59,7 +59,7 @@ func resolveToolInvocation(tc llmsvc.ToolCallInfo, mcpToolMeta map[string]mcp.To
 	}, nil
 }
 
-// notifyToolResult 统一封装工具结果回调，避免主流程重复容错日志。
+// notifyToolResult wraps the tool-result callback with consistent logging on failure.
 func notifyToolResult(callbacks AgentCallbacks, result ToolCallResult) {
 	if callbacks.OnToolCallResult == nil {
 		return
@@ -69,7 +69,7 @@ func notifyToolResult(callbacks AgentCallbacks, result ToolCallResult) {
 	}
 }
 
-// waitApprovalIfNeeded 在需要审批时阻塞等待前端结果，并返回可回填给模型的拒绝原因。
+// waitApprovalIfNeeded blocks for frontend approval when required; returns rejection text for the model.
 func waitApprovalIfNeeded(
 	ctx context.Context,
 	callbacks AgentCallbacks,
@@ -104,7 +104,7 @@ func waitApprovalIfNeeded(
 	return true, ""
 }
 
-// executeInvocation 根据调用类型分发到 MCP、memory 或内建工具执行路径。
+// executeInvocation dispatches to MCP, memory, or built-in tool execution.
 func (a *AgentService) executeInvocation(
 	ctx context.Context,
 	tc llmsvc.ToolCallInfo,
@@ -128,7 +128,7 @@ func (a *AgentService) executeInvocation(
 
 	if (invocation.toolName == "memory" && invocation.command == "query") ||
 		(invocation.toolName == constants.SearchMemoryTool && invocation.command == "query") {
-		// memory 工具每轮最多调用一次，避免上下文被重复污染。
+		// Allow at most one memory tool call per assistant turn to avoid duplicate context noise.
 		if *memoryToolUsed {
 			return &tools.ExecuteResult{Error: "search_memory can be called at most once per response."}
 		}
@@ -145,7 +145,7 @@ func (a *AgentService) executeInvocation(
 	return executeToolCall(ctx, invocation.toolName, invocation.command, params)
 }
 
-// buildToolResultStatus 将执行结果映射为标准状态字段。
+// buildToolResultStatus maps execution outcome to the standard status string.
 func buildToolResultStatus(execResult *tools.ExecuteResult) string {
 	if execResult != nil && strings.TrimSpace(execResult.Error) != "" {
 		return constants.ToolCallStatusError
@@ -153,7 +153,7 @@ func buildToolResultStatus(execResult *tools.ExecuteResult) string {
 	return constants.ToolCallStatusCompleted
 }
 
-// buildToolResultContent 统一构造写回模型上下文的 tool 消息正文。
+// buildToolResultContent builds the tool message body written back into the model context.
 func buildToolResultContent(execResult *tools.ExecuteResult) string {
 	if execResult == nil {
 		return "Execution result:\n"

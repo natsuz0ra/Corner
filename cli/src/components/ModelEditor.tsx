@@ -1,7 +1,7 @@
 /**
- * ModelEditor — 模型配置编辑器。
- * 5 个字段（name/provider/baseUrl/apiKey/model），Tab 切换字段。
- * 键盘事件由 App 统一分发，此组件仅负责展示和字段编辑。
+ * ModelEditor — LLM configuration editor.
+ * Five fields (name/provider/baseUrl/apiKey/model); Tab cycles fields.
+ * Keyboard events are dispatched by App; this component only renders and edits fields.
  */
 
 import React from "react";
@@ -9,7 +9,7 @@ import { Box, Text, useStdout } from "ink";
 import { TextInput } from "./TextInput.js";
 import type { ModelProvider } from "../types.js";
 
-/** 字段索引映射：0=name, 1=provider, 2=baseUrl, 3=apiKey, 4=model */
+/** Field index map: 0=name, 1=provider, 2=baseUrl, 3=apiKey, 4=model */
 const FIELD_COUNT = 5;
 
 const PROVIDER_OPTIONS: { value: ModelProvider; label: string }[] = [

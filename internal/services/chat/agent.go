@@ -21,7 +21,7 @@ import (
 
 const balancedTemperature = 1.2
 
-// ApprovalRequest 发送给前端的工具调用审批请求
+// ApprovalRequest is sent to the client for tool-call approval.
 type ApprovalRequest struct {
 	ToolCallID       string            `json:"toolCallId"`
 	ToolName         string            `json:"toolName"`
@@ -31,13 +31,13 @@ type ApprovalRequest struct {
 	Preamble         string            `json:"preamble,omitempty"`
 }
 
-// ApprovalResponse 前端返回的审批结果
+// ApprovalResponse is the client's approval decision.
 type ApprovalResponse struct {
 	ToolCallID string `json:"toolCallId"`
 	Approved   bool   `json:"approved"`
 }
 
-// ToolCallResult 工具调用结果，推送给前端展示
+// ToolCallResult is pushed to the client after tool execution.
 type ToolCallResult struct {
 	ToolCallID       string `json:"toolCallId"`
 	ToolName         string `json:"toolName"`
@@ -48,15 +48,15 @@ type ToolCallResult struct {
 	Error            string `json:"error"`
 }
 
-// AgentCallbacks Agent 循环与外部交互的回调集合
+// AgentCallbacks wires the agent loop to the outside world (streaming, approval, results).
 type AgentCallbacks struct {
-	OnChunk          func(chunk string) error                                                // 推送流式文本片段
-	OnToolCallStart  func(req ApprovalRequest) error                                         // 通知前端工具调用等待审批
-	WaitApproval     func(ctx context.Context, toolCallID string) (*ApprovalResponse, error) // 阻塞等待审批结果
-	OnToolCallResult func(result ToolCallResult) error                                       // 通知前端工具执行结果
+	OnChunk          func(chunk string) error                                                // stream text chunks to the client
+	OnToolCallStart  func(req ApprovalRequest) error                                         // notify client that a tool awaits approval
+	WaitApproval     func(ctx context.Context, toolCallID string) (*ApprovalResponse, error) // block until approval
+	OnToolCallResult func(result ToolCallResult) error                                       // notify client of tool outcome
 }
 
-// AgentService Agent 服务：封装与 LLM 的交互循环、工具调用、审批流与 MCP/Skill 工具加载
+// AgentService runs the LLM loop with tools, approvals, and MCP/skill loading.
 type AgentService struct {
 	providerFactory *llmsvc.Factory
 	mcp             *mcp.Manager
@@ -66,14 +66,14 @@ type AgentService struct {
 	toolCache       map[string]cachedToolDefs
 }
 
-// cachedToolDefs 工具定义缓存项
+// cachedToolDefs is a cached tool-definition bundle with MCP metadata.
 type cachedToolDefs struct {
 	defs       []llmsvc.ToolDef
 	metaByFunc map[string]mcp.ToolMeta
 	expireAt   time.Time
 }
 
-// NewAgentService 创建 Agent 服务实例
+// NewAgentService constructs an AgentService.
 func NewAgentService(providerFactory *llmsvc.Factory, mcpManager *mcp.Manager, skillRuntime *skillsvc.SkillRuntimeService, memory *memsvc.MemoryService) *AgentService {
 	return &AgentService{
 		providerFactory: providerFactory,
@@ -84,8 +84,8 @@ func NewAgentService(providerFactory *llmsvc.Factory, mcpManager *mcp.Manager, s
 	}
 }
 
-// BuildToolDefs 从全局工具注册中心生成 function call 的工具定义列表
-// 每个工具的每个命令映射为一个 function，名称格式为 {tool}__{command}
+// BuildToolDefs builds function-calling tool definitions from the global registry.
+// Each command becomes one function named {tool}__{command}.
 func BuildToolDefs() []llmsvc.ToolDef {
 	var defs []llmsvc.ToolDef
 	for _, t := range tools.All() {
@@ -133,7 +133,7 @@ func BuildToolDefs() []llmsvc.ToolDef {
 	return defs
 }
 
-// buildRuntimeToolDefs 汇总运行时可见工具（内建 + skill + MCP）并返回名称映射
+// buildRuntimeToolDefs merges built-in, skill, and MCP tools and returns MCP name mapping.
 func (a *AgentService) buildRuntimeToolDefs(ctx context.Context, configs []domain.MCPConfig) ([]llmsvc.ToolDef, map[string]mcp.ToolMeta, error) {
 	cacheKey := buildToolDefsCacheKey(configs)
 	if defs, metaByFunc, ok := a.getCachedToolDefs(cacheKey); ok {
@@ -259,11 +259,11 @@ func (a *AgentService) setCachedToolDefs(cacheKey string, defs []llmsvc.ToolDef,
 	}
 }
 
-// RunAgentLoop 执行完整的 Agent 循环：
-// 1. 调用 LLM（带 tools）
-// 2. 如果返回纯文本 -> 通过 onChunk 推送，循环结束
-// 3. 如果返回 tool_calls -> 逐个请求审批 -> 执行 -> 结果追加到上下文 -> 回到步骤1
-// 返回最终的纯文本回答。
+// RunAgentLoop runs the full agent loop:
+// 1) Call the LLM with tools.
+// 2) If text only, stream via OnChunk and return.
+// 3) If tool_calls, approve each, execute, append tool results, repeat from step 1.
+// Returns the final assistant text answer.
 func (a *AgentService) RunAgentLoop(
 	ctx context.Context,
 	modelConfig llmsvc.ModelRuntimeConfig,
@@ -304,7 +304,7 @@ func (a *AgentService) RunAgentLoop(
 			return finalAnswer.String(), nil
 		}
 
-		// tool_calls: 将 assistant 消息（含 tool_calls）追加到上下文
+		// tool_calls: append assistant message (with tool_calls) to context.
 		messages = append(messages, result.AssistantMessage)
 		preamble := strings.TrimSpace(result.AssistantMessage.Content)
 
@@ -349,7 +349,7 @@ func (a *AgentService) RunAgentLoop(
 				continue
 			}
 
-			// 执行工具
+			// Execute tool.
 			execResult := a.executeInvocation(ctx, tc, invocation, params, sessionID, mcpConfigs, &memoryToolUsed)
 			resultStatus := buildToolResultStatus(execResult)
 			notifyToolResult(callbacks, ToolCallResult{
@@ -369,7 +369,7 @@ func (a *AgentService) RunAgentLoop(
 	return finalAnswer.String(), fmt.Errorf("agent loop reached max iterations (%d)", constants.AgentMaxIterations)
 }
 
-// parseToolCallName 解析 "{tool}__{command}" 格式的函数名
+// parseToolCallName parses "{tool}__{command}" function names.
 func parseToolCallName(funcName string) (toolName, command string, err error) {
 	parts := strings.SplitN(funcName, "__", 2)
 	if len(parts) != 2 {
@@ -378,7 +378,7 @@ func parseToolCallName(funcName string) (toolName, command string, err error) {
 	return parts[0], parts[1], nil
 }
 
-// parseToolCallArgs 将工具参数统一转换为 string map，供内建工具执行层使用。
+// parseToolCallArgs normalizes tool arguments to string maps for built-in tools.
 func parseToolCallArgs(arguments string) (map[string]string, error) {
 	if strings.TrimSpace(arguments) == "" {
 		return map[string]string{}, nil
@@ -400,7 +400,7 @@ func parseToolCallArgs(arguments string) (map[string]string, error) {
 	return result, nil
 }
 
-// parseToolCallArgsAny 保留参数原始类型，用于 MCP 工具调用。
+// parseToolCallArgsAny preserves raw JSON types for MCP tool calls.
 func parseToolCallArgsAny(arguments string) (map[string]any, error) {
 	if strings.TrimSpace(arguments) == "" {
 		return map[string]any{}, nil
@@ -412,7 +412,7 @@ func parseToolCallArgsAny(arguments string) (map[string]any, error) {
 	return raw, nil
 }
 
-// executeToolCall 执行内建工具命令并统一错误返回格式。
+// executeToolCall runs a built-in tool command with uniform error handling.
 func executeToolCall(ctx context.Context, toolName, command string, params map[string]string) *tools.ExecuteResult {
 	t, ok := tools.Get(toolName)
 	if !ok {
@@ -425,7 +425,7 @@ func executeToolCall(ctx context.Context, toolName, command string, params map[s
 	return result
 }
 
-// requiresToolApproval 定义工具审批策略（当前仅 exec 需要审批）。
+// requiresToolApproval defines which tools need user approval (currently exec only).
 func requiresToolApproval(toolName string, isMCP bool) bool {
 	if isMCP {
 		return false

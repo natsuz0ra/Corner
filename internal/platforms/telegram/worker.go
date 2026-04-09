@@ -48,7 +48,7 @@ func NewWorker(repo *repositories.Repository, dispatcher *platforms.Dispatcher, 
 	return w
 }
 
-// Start 启动后台轮询循环；出现错误时会按固定退避间隔重试。
+// Start runs the background polling loop; retries after errors with fixed backoff.
 func (w *Worker) Start(ctx context.Context) {
 	if w == nil {
 		return
@@ -56,10 +56,10 @@ func (w *Worker) Start(ctx context.Context) {
 	go w.run(ctx)
 }
 
-// run 持续执行 Telegram 长轮询：
-// - 拉取平台配置并检查启用状态；
-// - 基于 updateOffset 增量消费更新，避免重复处理；
-// - 将文本消息转给 dispatcher，将按钮回调转给审批处理。
+// run runs Telegram long polling:
+// - load platform config and check enabled;
+// - consume updates from updateOffset onward to avoid duplicates;
+// - route text to dispatcher and button callbacks to approval handling.
 func (w *Worker) run(ctx context.Context) {
 	var updateOffset int64
 	var adapter *Adapter
@@ -104,7 +104,7 @@ func (w *Worker) run(ctx context.Context) {
 	}
 }
 
-// processUpdates 逐条处理 Telegram 更新并推进 offset。
+// processUpdates handles each Telegram update and advances the offset.
 func (w *Worker) processUpdates(ctx context.Context, adapter *Adapter, updates []update, updateOffset int64) int64 {
 	nextOffset := updateOffset
 	for _, item := range updates {
@@ -154,7 +154,7 @@ func (w *Worker) processUpdates(ctx context.Context, adapter *Adapter, updates [
 	return nextOffset
 }
 
-// dispatchInboundAsync 异步执行文本消息分发，避免审批等待阻塞轮询主循环。
+// dispatchInboundAsync dispatches inbound text without blocking the poll loop on approvals.
 func (w *Worker) dispatchInboundAsync(ctx context.Context, inbound platforms.InboundMessage, sender platforms.OutboundSender) {
 	if w == nil || sender == nil {
 		return
@@ -312,7 +312,7 @@ func selectAttachmentName(preferred string, fallback string, source string, mime
 	}
 }
 
-// handleApprovalCallback 处理审批按钮点击，并即时回执给 Telegram 客户端。
+// handleApprovalCallback handles approval button taps and answers the callback query.
 func (w *Worker) handleApprovalCallback(query *callbackQuery, adapter *Adapter) {
 	if w == nil || query == nil || adapter == nil {
 		return

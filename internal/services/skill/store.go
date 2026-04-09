@@ -11,7 +11,7 @@ import (
 	"slimebot/internal/domain"
 )
 
-// 接口合规性检查
+// Interface compliance check
 var _ domain.SkillStore = (*FileSystemSkillStore)(nil)
 
 type FileSystemSkillStore struct {

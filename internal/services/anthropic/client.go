@@ -16,19 +16,19 @@ import (
 
 const defaultMaxTokens = 4096
 
-// AnthropicClient 封装 Anthropic API 的 HTTP 客户端，实现 llmsvc.Provider 接口。
+// AnthropicClient wraps the Anthropic HTTP API and implements llmsvc.Provider.
 type AnthropicClient struct {
 	Client *http.Client
 }
 
-// NewAnthropicClient 创建 Anthropic 客户端实例。
+// NewAnthropicClient constructs a client with default HTTP timeouts.
 func NewAnthropicClient() *AnthropicClient {
 	return &AnthropicClient{
 		Client: &http.Client{Timeout: 90 * time.Second},
 	}
 }
 
-// StreamChatWithTools 发起支持 tool use 的流式聊天请求，实现 llmsvc.Provider 接口。
+// StreamChatWithTools starts a streaming chat request with tool use; implements llmsvc.Provider.
 func (c *AnthropicClient) StreamChatWithTools(
 	ctx context.Context,
 	modelConfig llmsvc.ModelRuntimeConfig,
@@ -50,10 +50,10 @@ func (c *AnthropicClient) StreamChatWithTools(
 	}
 	client := anthropic.NewClient(opts...)
 
-	// 提取 system 消息并构建 Anthropic 消息列表。
+	// Extract system messages and build the Anthropic message list.
 	systemBlocks, apiMessages := buildAnthropicMessages(messages)
 
-	// Anthropic Temperature 范围 [0.0, 1.0]，需要钳位。
+	// Anthropic temperature is in [0.0, 1.0]; clamp to range.
 	temperature := modelConfig.Temperature
 	if temperature > 1.0 {
 		temperature = 1.0
@@ -74,7 +74,7 @@ func (c *AnthropicClient) StreamChatWithTools(
 
 	stream := client.Messages.NewStreaming(ctx, params)
 
-	// 流式累积状态
+	// Streaming accumulation state
 	var (
 		textBuilder       strings.Builder
 		toolUseBlocks     []pendingToolUse
@@ -115,7 +115,7 @@ func (c *AnthropicClient) StreamChatWithTools(
 		return nil, fmt.Errorf("Model request failed: %w", err)
 	}
 
-	// 如果有 tool_use 块，返回工具调用结果
+	// If there are tool_use blocks, return tool call results
 	if len(toolUseBlocks) > 0 {
 		var calls []llmsvc.ToolCallInfo
 		contentBlocks := make([]anthropic.ContentBlockParamUnion, 0, len(toolUseBlocks)+1)
@@ -138,7 +138,7 @@ func (c *AnthropicClient) StreamChatWithTools(
 				},
 			})
 		}
-		// 构造 assistant 消息供上下文追加
+		// Build assistant message for downstream context
 		assistantMsg := llmsvc.ChatMessage{
 			Role:      "assistant",
 			Content:   text,
@@ -154,14 +154,14 @@ func (c *AnthropicClient) StreamChatWithTools(
 	return &llmsvc.StreamResult{Type: llmsvc.StreamResultText}, nil
 }
 
-// pendingToolUse 累积流式 tool_use 事件中的参数。
+// pendingToolUse accumulates parameters from streaming tool_use events.
 type pendingToolUse struct {
 	ID        string
 	Name      string
 	InputJSON string
 }
 
-// normalizeInputJSON 确保累积的 JSON 片段是合法 JSON。
+// normalizeInputJSON ensures accumulated JSON fragments form valid JSON.
 func normalizeInputJSON(raw string) string {
 	s := strings.TrimSpace(raw)
 	if s == "" {

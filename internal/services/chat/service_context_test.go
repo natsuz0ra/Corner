@@ -74,7 +74,7 @@ func TestBuildContextMessages_IncludesConfigDirInCLI(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// 找到 runtime environment 消息
+	// Locate the runtime environment message
 	found := false
 	for _, m := range msgs {
 		if m.Role == "system" && strings.Contains(m.Content, "Config directory") {
@@ -121,7 +121,7 @@ func TestBuildContextMessages_ServerMode_NoWorkingDir(t *testing.T) {
 func TestBuildContextMessages_NoRunContext_OmitsConfigDir(t *testing.T) {
 	repo := newTestRepo(t)
 	svc := NewChatService(repo, nil, nil, nil, nil)
-	// 不设置 RunContext（零值）
+	// Do not set RunContext (zero value)
 	ctx := context.Background()
 
 	msgs, err := svc.BuildContextMessages(ctx, "session-norc", llmsvc.ModelRuntimeConfig{})

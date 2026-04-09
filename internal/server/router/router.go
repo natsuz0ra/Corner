@@ -20,15 +20,15 @@ import (
 	"github.com/go-chi/httprate"
 )
 
-// RouterConfig 路由级可选配置。
+// RouterConfig holds optional router-level settings.
 type RouterConfig struct {
-	// CLIToken 如果非空，启用 CLI 本地 token 旁路认证。
+	// CLIToken, if set, enables localhost CLI token bypass auth.
 	CLIToken string
-	// Headless 如果为 true，跳过 SPA 静态文件路由。
+	// Headless, if true, skips SPA static file routes.
 	Headless bool
 }
 
-// New 构建 HTTP 路由树并注册 REST 与 WebSocket 入口。
+// New builds the HTTP router with REST and WebSocket routes.
 func New(cfg config.Config, tokenManager *auth.TokenManager, httpController *controller.HTTPController, wsController *ws.Controller, staticFS fs.FS, routerCfg ...RouterConfig) http.Handler {
 	var rc RouterConfig
 	if len(routerCfg) > 0 {
@@ -95,7 +95,7 @@ func New(cfg config.Config, tokenManager *auth.TokenManager, httpController *con
 		wsController.Chat(w, req)
 	})
 
-	// SPA 静态文件（headless 模式跳过）
+	// SPA static files (skipped in headless mode)
 	if !rc.Headless {
 		r.Get("/*", serveSPA(staticFS))
 	}
@@ -103,7 +103,7 @@ func New(cfg config.Config, tokenManager *auth.TokenManager, httpController *con
 	return r
 }
 
-// adapt 将控制器的 WebContext 风格处理器适配为 net/http Handler。
+// adapt bridges WebContext-style handlers to net/http.
 func serveSPA(staticFS fs.FS) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {

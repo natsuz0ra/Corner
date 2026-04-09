@@ -1,36 +1,36 @@
 package llm
 
-// Provider 常量：标识 LLM 提供商类型。
+// Provider name constants.
 const (
 	ProviderOpenAI    = "openai"
 	ProviderAnthropic = "anthropic"
 )
 
-// ModelRuntimeConfig 描述一次 LLM 请求的运行时配置。
+// ModelRuntimeConfig is per-request LLM configuration.
 type ModelRuntimeConfig struct {
-	// Provider 标识使用哪个 LLM 提供商。
+	// Provider selects which backend implementation to use.
 	Provider string
-	// 兼容 OpenAI 协议的服务地址（Anthropic 也可自定义 base URL）。
+	// Base URL for OpenAI-compatible APIs (Anthropic may also use a custom base URL).
 	BaseURL string
-	// 鉴权密钥。
+	// API key for authentication.
 	APIKey string
-	// 目标模型名称。
+	// Model identifier.
 	Model string
-	// 采样温度。
+	// Sampling temperature.
 	Temperature float64
 }
 
-// ChatMessage 统一的消息结构，跨提供商通用。
+// ChatMessage is the provider-agnostic message shape.
 type ChatMessage struct {
 	Role         string                   `json:"role"`
 	Content      string                   `json:"content"`
 	ContentParts []ChatMessageContentPart `json:"contentParts,omitempty"`
 	ToolCallID   string                   `json:"toolCallId,omitempty"`
-	// ToolCalls 仅在 role=assistant 且模型返回了工具调用时使用。
+	// ToolCalls is set when role=assistant and the model requested tools.
 	ToolCalls []ToolCallInfo `json:"toolCalls,omitempty"`
 }
 
-// ChatMessageContentPartType 内容块类型枚举。
+// ChatMessageContentPartType enumerates multimodal part kinds.
 type ChatMessageContentPartType string
 
 const (
@@ -40,7 +40,7 @@ const (
 	ChatMessageContentPartTypeFile  ChatMessageContentPartType = "file"
 )
 
-// ChatMessageContentPart 描述消息中的多模态内容块。
+// ChatMessageContentPart is one multimodal segment in a message.
 type ChatMessageContentPart struct {
 	Type             ChatMessageContentPartType `json:"type"`
 	Text             string                     `json:"text,omitempty"`
@@ -52,36 +52,36 @@ type ChatMessageContentPart struct {
 	Filename         string                     `json:"filename,omitempty"`
 }
 
-// ToolCallInfo 描述一次工具调用请求。
+// ToolCallInfo describes one tool invocation from the model.
 type ToolCallInfo struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
 }
 
-// ToolDef 用于传入 LLM API 的工具定义。
+// ToolDef is passed to the LLM tools API.
 type ToolDef struct {
 	Name        string
 	Description string
 	Parameters  map[string]any
 }
 
-// StreamResultType 区分流式结果类型。
+// StreamResultType classifies streaming outcomes.
 type StreamResultType int
 
 const (
-	// StreamResultText 表示模型返回了纯文本回答。
+	// StreamResultText means the model returned plain text.
 	StreamResultText StreamResultType = 0
-	// StreamResultToolCalls 表示模型返回了工具调用请求。
+	// StreamResultToolCalls means the model requested tool calls.
 	StreamResultToolCalls StreamResultType = 1
 )
 
-// StreamResult 包含一次流式调用的结果。
+// StreamResult is one streaming completion outcome.
 type StreamResult struct {
-	// 本次流式结果类型：文本或工具调用。
+	// Result kind: text or tool calls.
 	Type StreamResultType
-	// 模型返回的工具调用列表（仅 Type=StreamResultToolCalls 时有值）。
+	// Tool calls from the model (only when Type is StreamResultToolCalls).
 	ToolCalls []ToolCallInfo
-	// AssistantMessage 用于将 assistant 消息（含 tool_calls）追加回上下文。
+	// AssistantMessage carries assistant role content including tool_calls for context replay.
 	AssistantMessage ChatMessage
 }

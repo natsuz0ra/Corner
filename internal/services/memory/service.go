@@ -12,13 +12,13 @@ import (
 	"slimebot/internal/domain"
 )
 
-// MemoryService 记忆服务，封装 FileMemoryStore 对外提供统一接口。
-// 保持与 chat/agent 服务的兼容性。
+// MemoryService wraps FileMemoryStore and exposes a single interface for callers.
+// Kept compatible with chat/agent services.
 type MemoryService struct {
 	store *FileMemoryStore
 }
 
-// MemorySearchHit 记忆搜索结果条目。
+// MemorySearchHit is one hit in a memory search result.
 type MemorySearchHit struct {
 	Kind      string
 	ID        string
@@ -28,14 +28,14 @@ type MemorySearchHit struct {
 	CreatedAt time.Time
 }
 
-// MemoryQueryResult 记忆搜索结果。
+// MemoryQueryResult is the full memory search result.
 type MemoryQueryResult struct {
 	Query  string
 	Hits   []MemorySearchHit
 	Output string
 }
 
-// NewMemoryService 创建记忆服务。baseDir 通常为 ~/.slimebot/memory/。
+// NewMemoryService creates the memory service. baseDir is usually ~/.slimebot/memory/.
 func NewMemoryService(baseDir string) (*MemoryService, error) {
 	store, err := NewFileMemoryStore(baseDir)
 	if err != nil {
@@ -44,7 +44,7 @@ func NewMemoryService(baseDir string) (*MemoryService, error) {
 	return &MemoryService{store: store}, nil
 }
 
-// Shutdown 关闭服务。
+// Shutdown closes the service.
 func (m *MemoryService) Shutdown(ctx context.Context) error {
 	if m == nil || m.store == nil {
 		return nil
@@ -52,7 +52,7 @@ func (m *MemoryService) Shutdown(ctx context.Context) error {
 	return m.store.Close()
 }
 
-// BuildMemoryContext 构建记忆上下文，注入到聊天提示中。
+// BuildMemoryContext builds memory context to inject into the chat prompt.
 func (m *MemoryService) BuildMemoryContext(ctx context.Context, sessionID string, history []domain.Message) string {
 	if m == nil || m.store == nil {
 		return ""
@@ -60,18 +60,18 @@ func (m *MemoryService) BuildMemoryContext(ctx context.Context, sessionID string
 	return m.buildMemoryContext(ctx, sessionID, history)
 }
 
-// BuildSessionMemoryContextForPrompt 别名，兼容旧接口。
+// BuildSessionMemoryContextForPrompt is an alias for the legacy API.
 func (m *MemoryService) BuildSessionMemoryContextForPrompt(ctx context.Context, sessionID string, history []domain.Message) string {
 	return m.BuildMemoryContext(ctx, sessionID, history)
 }
 
-// BuildRecentHistory 获取最近历史消息。
+// BuildRecentHistory returns recent history messages (legacy API).
 func (m *MemoryService) BuildRecentHistory(sessionID string, limit int) ([]domain.Message, error) {
-	// 新方案不再维护历史，返回空
+	// Current design does not persist history here; return empty.
 	return nil, nil
 }
 
-// QueryForAgent 为 Agent 工具调用搜索记忆。
+// QueryForAgent searches memories for Agent tool calls.
 func (m *MemoryService) QueryForAgent(ctx context.Context, sessionID string, query string, topK int) (MemoryQueryResult, error) {
 	result := MemoryQueryResult{Query: strings.TrimSpace(query)}
 	if result.Query == "" {
@@ -92,7 +92,7 @@ func (m *MemoryService) QueryForAgent(ctx context.Context, sessionID string, que
 			ID:        entry.Slug(),
 			Title:     entry.Name,
 			Summary:   truncateContent(entry.Content, 200),
-			Score:     1.0, // bleve 内部排序已处理
+			Score:     1.0, // bleve already ranks results
 			CreatedAt: entry.Created,
 		})
 	}
@@ -101,8 +101,8 @@ func (m *MemoryService) QueryForAgent(ctx context.Context, sessionID string, que
 	return result, nil
 }
 
-// EnqueueTurnMemory 处理模型输出的记忆 payload。
-// 新方案：解析 JSON payload，检查去重后写入文件记忆。
+// EnqueueTurnMemory processes the model's memory payload.
+// Parses JSON, deduplicates, then writes file-backed memories.
 func (m *MemoryService) EnqueueTurnMemory(sessionID, assistantMessageID, rawMemoryPayload string) {
 	if m == nil || m.store == nil {
 		return
@@ -113,24 +113,24 @@ func (m *MemoryService) EnqueueTurnMemory(sessionID, assistantMessageID, rawMemo
 	}
 	logging.Info("memory_process_start", "session", sessionID, "payload_len", len(payload))
 
-	// 尝试解析为 MemoryEntry JSON
+	// Try to parse as MemoryEntry JSON.
 	entry, err := parseMemoryPayload(payload)
 	if err != nil {
 		logging.Warn("memory_payload_parse_failed", "error", err)
 		return
 	}
 
-	// 设置会话 ID
+	// Set session ID.
 	entry.SessionID = sessionID
 
-	// 去重检查：搜索是否有高度相似的记忆
+	// Dedup: search for highly similar existing memories.
 	duplicates, _ := m.store.Search(entry.Name+" "+entry.Description, 3)
 	for _, dup := range duplicates {
 		if dup.Slug() == entry.Slug() {
-			// 同名记忆，走更新逻辑（Save 内部处理合并）
+			// Same slug: update path (Save merges internally).
 			break
 		}
-		// 完全重复的 name 或 description，跳过
+		// Exact duplicate name or description; skip.
 		if dup.Name == entry.Name || dup.Description == entry.Description {
 			logging.Info("memory_duplicate_skipped", "name", entry.Name, "existing", dup.Name)
 			return
@@ -142,7 +142,7 @@ func (m *MemoryService) EnqueueTurnMemory(sessionID, assistantMessageID, rawMemo
 	}
 }
 
-// ReadEntrypoint 读取 MEMORY.md 内容。
+// ReadEntrypoint reads MEMORY.md content.
 func (m *MemoryService) ReadEntrypoint() string {
 	if m == nil || m.store == nil {
 		return ""
@@ -150,12 +150,12 @@ func (m *MemoryService) ReadEntrypoint() string {
 	return m.store.ReadEntrypoint()
 }
 
-// Store 返回底层 FileMemoryStore（供测试或高级操作）。
+// Store returns the underlying FileMemoryStore (tests or advanced use).
 func (m *MemoryService) Store() *FileMemoryStore {
 	return m.store
 }
 
-// Consolidate 执行一次记忆整合，合并碎片记忆并清理冗余。
+// Consolidate runs one consolidation pass: merge fragments and remove redundancy.
 func (m *MemoryService) Consolidate() (merged int, deleted int, err error) {
 	if m == nil || m.store == nil {
 		return 0, 0, nil
@@ -163,23 +163,23 @@ func (m *MemoryService) Consolidate() (merged int, deleted int, err error) {
 	return NewConsolidator(m.store).Run()
 }
 
-// buildMemoryContext 从 MEMORY.md 索引 + 相关记忆构建上下文。
-// 使用对话历史作为检索 query，通过 bleve 搜索最相关的记忆注入，
-// 而非全量注入最近记忆。参考 Claude Code 的 findRelevantMemories。
+// buildMemoryContext builds context from MEMORY.md index plus related memories.
+// Uses conversation history as the search query and injects bleve-ranked hits
+// instead of dumping all recent memories. Similar to Claude Code findRelevantMemories.
 func (m *MemoryService) buildMemoryContext(ctx context.Context, sessionID string, history []domain.Message) string {
-	// 读取 MEMORY.md 索引
+	// Read MEMORY.md index.
 	entrypoint := m.store.ReadEntrypoint()
 	if strings.TrimSpace(entrypoint) == "" {
 		return ""
 	}
 
-	// 第一层：始终注入 manifest（MEMORY.md 索引）
+	// Layer 1: always inject the manifest (MEMORY.md index).
 	var b strings.Builder
 	b.WriteString("<memory_index>\n")
 	b.WriteString(entrypoint)
 	b.WriteString("\n</memory_index>\n")
 
-	// 第二层：用对话历史检索当前会话相关记忆的完整内容
+	// Layer 2: retrieve full content of session-scoped memories via history query.
 	query := extractSearchQuery(history, 3)
 	if query == "" {
 		return b.String()
@@ -187,7 +187,7 @@ func (m *MemoryService) buildMemoryContext(ctx context.Context, sessionID string
 
 	entries, err := m.store.SearchBySession(sessionID, query, constants.MemoryContextTopK)
 	if err != nil || len(entries) == 0 {
-		// 会话记忆检索失败或无结果，不回退到全局记忆（保持会话隔离）
+		// Session-scoped search failed or empty; do not fall back to global (session isolation).
 		return b.String()
 	}
 
@@ -203,7 +203,7 @@ func (m *MemoryService) buildMemoryContext(ctx context.Context, sessionID string
 		} else {
 			b.WriteString(fmt.Sprintf("## %s (%s)\n", entry.Name, entry.Type))
 		}
-		// 注入完整内容而非仅 description
+		// Inject full content, not description only.
 		if strings.TrimSpace(entry.Content) != "" {
 			b.WriteString(entry.Content)
 		} else {
@@ -216,8 +216,8 @@ func (m *MemoryService) buildMemoryContext(ctx context.Context, sessionID string
 	return b.String()
 }
 
-// extractSearchQuery 从最近几轮对话中提取搜索文本。
-// 取最近 lastN 轮中用户消息的文本拼接作为检索 query。
+// extractSearchQuery builds search text from the last few turns.
+// Concatenates user message text from the last lastN relevant turns.
 func extractSearchQuery(history []domain.Message, lastN int) string {
 	start := len(history) - lastN*2
 	if start < 0 {
@@ -239,26 +239,26 @@ func extractSearchQuery(history []domain.Message, lastN int) string {
 	return query
 }
 
-// parseMemoryPayload 解析模型输出的 JSON payload 为 MemoryEntry。
+// parseMemoryPayload parses model JSON payload into a MemoryEntry.
 func parseMemoryPayload(raw string) (*MemoryEntry, error) {
-	// 去掉可能的 markdown 代码块包装
+	// Strip optional markdown code fence wrapper.
 	cleaned := strings.TrimSpace(raw)
 	if strings.HasPrefix(cleaned, "```") {
-		// 去掉 ```json 或 ``` 等标记
+		// Strip opening ```json or ``` marker.
 		firstNewline := strings.Index(cleaned, "\n")
 		if firstNewline > 0 {
 			cleaned = cleaned[firstNewline+1:]
 		} else {
 			cleaned = cleaned[3:]
 		}
-		// 去掉结尾的 ```
+		// Strip closing ```.
 		if idx := strings.LastIndex(cleaned, "```"); idx >= 0 {
 			cleaned = cleaned[:idx]
 		}
 		cleaned = strings.TrimSpace(cleaned)
 	}
 
-	// 尝试解析为标准 JSON
+	// Parse as standard JSON.
 	type payload struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
@@ -277,7 +277,7 @@ func parseMemoryPayload(raw string) (*MemoryEntry, error) {
 
 	memType, err := ParseMemoryType(p.Type)
 	if err != nil {
-		memType = MemoryTypeProject // 默认类型
+		memType = MemoryTypeProject // default type
 	}
 
 	return &MemoryEntry{
@@ -288,22 +288,22 @@ func parseMemoryPayload(raw string) (*MemoryEntry, error) {
 	}, nil
 }
 
-// freshnessLabel 根据记忆更新时间返回新鲜度标注，参考 Claude Code 的 memoryAgeDays。
+// freshnessLabel returns a freshness tag from update time (see Claude Code memoryAgeDays).
 func freshnessLabel(updated time.Time) string {
 	days := int(time.Since(updated).Hours() / 24)
 	switch {
 	case days <= 1:
 		return ""
 	case days <= 7:
-		return fmt.Sprintf("[%d天前]", days)
+		return fmt.Sprintf("[%d days ago]", days)
 	case days <= 30:
-		return fmt.Sprintf("[%d天前，可能过时]", days)
+		return fmt.Sprintf("[%d days ago, may be stale]", days)
 	default:
-		return fmt.Sprintf("[%d天前，需要验证]", days)
+		return fmt.Sprintf("[%d days ago, verify before use]", days)
 	}
 }
 
-// truncateContent 截断内容到指定字符数。
+// truncateContent truncates content to maxRunes runes.
 func truncateContent(s string, maxRunes int) string {
 	if len([]rune(s)) <= maxRunes {
 		return s
@@ -312,7 +312,7 @@ func truncateContent(s string, maxRunes int) string {
 	return string(runes[:maxRunes]) + "..."
 }
 
-// buildMemoryQueryOutput 格式化搜索结果为 XML 输出。
+// buildMemoryQueryOutput formats search hits as XML for the tool output.
 func buildMemoryQueryOutput(query string, keywords []string, hits []MemorySearchHit) string {
 	var b strings.Builder
 	b.WriteString("<memory_query_result>\n")

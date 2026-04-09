@@ -1,6 +1,6 @@
 /**
- * 终端 Markdown 渲染（自定义实现）
- * 使用 marked 词法解析后递归格式化 token。
+ * Terminal Markdown rendering (custom implementation).
+ * Uses marked lexer tokens and recursively formats them.
  */
 
 import chalk from "chalk";
@@ -164,7 +164,7 @@ export function formatToken(
   }
 }
 
-/** 将 Markdown 文本渲染为终端友好的 ANSI 文本 */
+/** Renders Markdown text as terminal-friendly ANSI output */
 export function renderMarkdown(text: string, _width = 80, compact = false): string {
   configureMarked();
   try {

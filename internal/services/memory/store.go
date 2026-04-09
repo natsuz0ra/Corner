@@ -19,16 +19,16 @@ const (
 	maxEntrypointLines = 200
 )
 
-// FileMemoryStore 基于文件系统的记忆存储。
-// 记忆以 Markdown + YAML frontmatter 存储在 baseDir 下，
-// 同时维护 bleve 全文索引和 MEMORY.md 索引文件。
+// FileMemoryStore is file-backed memory storage.
+// Each memory is Markdown + YAML frontmatter under baseDir,
+// with a bleve full-text index and a MEMORY.md manifest.
 type FileMemoryStore struct {
 	baseDir  string
 	bleveIdx bleve.Index
 	mu       sync.RWMutex
 }
 
-// NewFileMemoryStore 创建文件记忆存储。baseDir 通常为 ~/.slimebot/memory/。
+// NewFileMemoryStore creates the store. baseDir is usually ~/.slimebot/memory/.
 func NewFileMemoryStore(baseDir string) (*FileMemoryStore, error) {
 	absDir, err := filepath.Abs(baseDir)
 	if err != nil {
@@ -51,28 +51,28 @@ func NewFileMemoryStore(baseDir string) (*FileMemoryStore, error) {
 	return store, nil
 }
 
-// BaseDir 返回存储根目录。
+// BaseDir returns the storage root directory.
 func (s *FileMemoryStore) BaseDir() string {
 	return s.baseDir
 }
 
-// Save 保存一条记忆：写入 .md 文件 + 更新 bleve 索引 + 更新 MEMORY.md。
-// 如果同名 slug 已存在，保留原始创建时间并合并内容。
+// Save writes a memory: .md file + bleve index + MEMORY.md manifest.
+// If the slug already exists, keeps original Created time and merges content.
 func (s *FileMemoryStore) Save(entry *MemoryEntry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	now := time.Now()
 
-	// 检查是否已存在同名记忆，存在则合并
+	// If a memory with the same slug exists, merge with it.
 	slug := entry.Slug()
 	existingPath := filepath.Join(s.baseDir, slug+".md")
 	if _, err := os.Stat(existingPath); err == nil {
 		existing, parseErr := parseMemoryFile(existingPath)
 		if parseErr == nil {
-			entry.Created = existing.Created // 保留原始创建时间
+			entry.Created = existing.Created // preserve original creation time
 			if entry.SessionID == "" {
-				entry.SessionID = existing.SessionID // 保留原始会话 ID
+				entry.SessionID = existing.SessionID // preserve original session ID
 			}
 			if strings.TrimSpace(entry.Content) == "" {
 				entry.Content = existing.Content
@@ -91,18 +91,18 @@ func (s *FileMemoryStore) Save(entry *MemoryEntry) error {
 	fileName := entry.FileName()
 	entry.FilePath = filepath.Join(s.baseDir, fileName)
 
-	// 写入 markdown 文件
+	// Write markdown file.
 	content := formatMemoryFile(entry)
 	if err := os.WriteFile(entry.FilePath, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write memory file %s: %w", fileName, err)
 	}
 
-	// 更新 bleve 索引
+	// Update bleve index.
 	if err := indexBleveDocument(s.bleveIdx, entry); err != nil {
 		logging.Warn("bleve_index_failed", "file", fileName, "error", err)
 	}
 
-	// 更新 MEMORY.md 索引
+	// Refresh MEMORY.md manifest.
 	if err := rebuildEntrypoint(s.baseDir, maxEntrypointLines); err != nil {
 		logging.Warn("rebuild_memory_index_failed", "error", err)
 	}
@@ -111,14 +111,14 @@ func (s *FileMemoryStore) Save(entry *MemoryEntry) error {
 	return nil
 }
 
-// Load 按名称加载一条记忆。
+// Load loads one memory by display name.
 func (s *FileMemoryStore) Load(name string) (*MemoryEntry, error) {
 	slug := Slugify(name)
 	filePath := filepath.Join(s.baseDir, slug+".md")
 	return parseMemoryFile(filePath)
 }
 
-// Delete 删除一条记忆。
+// Delete removes one memory.
 func (s *FileMemoryStore) Delete(name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -130,12 +130,12 @@ func (s *FileMemoryStore) Delete(name string) error {
 		return fmt.Errorf("delete memory file %s: %w", slug, err)
 	}
 
-	// 从 bleve 索引删除
+	// Remove from bleve index.
 	if err := s.bleveIdx.Delete(slug); err != nil {
 		logging.Warn("bleve_delete_failed", "slug", slug, "error", err)
 	}
 
-	// 重建 MEMORY.md
+	// Rebuild MEMORY.md
 	if err := rebuildEntrypoint(s.baseDir, maxEntrypointLines); err != nil {
 		logging.Warn("rebuild_memory_index_failed", "error", err)
 	}
@@ -144,7 +144,7 @@ func (s *FileMemoryStore) Delete(name string) error {
 	return nil
 }
 
-// List 列出所有记忆条目的元信息（不含正文）。
+// List returns metadata for all memories (no body text).
 func (s *FileMemoryStore) List() ([]*MemoryEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -152,7 +152,7 @@ func (s *FileMemoryStore) List() ([]*MemoryEntry, error) {
 	return scanMemoryDir(s.baseDir)
 }
 
-// Scan 扫描所有记忆条目（含正文）。
+// Scan returns all memories including body content.
 func (s *FileMemoryStore) Scan() ([]*MemoryEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -160,7 +160,7 @@ func (s *FileMemoryStore) Scan() ([]*MemoryEntry, error) {
 	return scanMemoryDirFull(s.baseDir)
 }
 
-// Search 使用 bleve 全文索引搜索记忆。
+// Search runs a bleve full-text search over memories.
 func (s *FileMemoryStore) Search(query string, topK int) ([]*MemoryEntry, error) {
 	if topK <= 0 {
 		topK = 10
@@ -187,7 +187,7 @@ func (s *FileMemoryStore) Search(query string, topK int) ([]*MemoryEntry, error)
 	return results, nil
 }
 
-// SearchBySession 使用 bleve 全文索引搜索指定会话的记忆。
+// SearchBySession searches memories scoped to one session via bleve.
 func (s *FileMemoryStore) SearchBySession(sessionID, query string, topK int) ([]*MemoryEntry, error) {
 	if topK <= 0 {
 		topK = 10
@@ -214,18 +214,18 @@ func (s *FileMemoryStore) SearchBySession(sessionID, query string, topK int) ([]
 	return results, nil
 }
 
-// RebuildIndex 重建 MEMORY.md 索引和 bleve 索引。
+// RebuildIndex rebuilds MEMORY.md and the bleve index.
 func (s *FileMemoryStore) RebuildIndex() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// 扫描所有文件
+	// Scan all files.
 	entries, err := scanMemoryDirFull(s.baseDir)
 	if err != nil {
 		return fmt.Errorf("scan memory dir: %w", err)
 	}
 
-	// 重建 bleve 索引
+	// Rebuild bleve index directory.
 	indexPath := filepath.Join(s.baseDir, bleveIndexDirName)
 	if err := os.RemoveAll(indexPath); err != nil {
 		return fmt.Errorf("remove old bleve index: %w", err)
@@ -248,7 +248,7 @@ func (s *FileMemoryStore) RebuildIndex() error {
 		return fmt.Errorf("bleve batch: %w", err)
 	}
 
-	// 重建 MEMORY.md
+	// Rebuild MEMORY.md
 	if err := rebuildEntrypoint(s.baseDir, maxEntrypointLines); err != nil {
 		return fmt.Errorf("rebuild entrypoint: %w", err)
 	}
@@ -257,7 +257,7 @@ func (s *FileMemoryStore) RebuildIndex() error {
 	return nil
 }
 
-// Close 关闭 bleve 索引。
+// Close closes the bleve index.
 func (s *FileMemoryStore) Close() error {
 	if s.bleveIdx != nil {
 		return s.bleveIdx.Close()
@@ -265,7 +265,7 @@ func (s *FileMemoryStore) Close() error {
 	return nil
 }
 
-// ReadEntrypoint 读取 MEMORY.md 内容。
+// ReadEntrypoint reads MEMORY.md content.
 func (s *FileMemoryStore) ReadEntrypoint() string {
 	data, err := os.ReadFile(filepath.Join(s.baseDir, entrypointFileName))
 	if err != nil {
@@ -274,7 +274,7 @@ func (s *FileMemoryStore) ReadEntrypoint() string {
 	return string(data)
 }
 
-// formatMemoryFile 格式化为 markdown + frontmatter。
+// formatMemoryFile renders markdown with YAML frontmatter.
 func formatMemoryFile(entry *MemoryEntry) string {
 	var b strings.Builder
 	b.WriteString("---\n")

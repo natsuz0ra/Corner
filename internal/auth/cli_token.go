@@ -8,14 +8,14 @@ import (
 	"strings"
 )
 
-// GenerateCLIToken 生成一个随机 hex token 用于 CLI headless 模式的本地认证。
+// GenerateCLIToken returns a random hex token for local CLI headless auth.
 func GenerateCLIToken() string {
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }
 
-// IsLocalhost 检查请求是否来自本机（127.0.0.1 或 ::1）。
+// IsLocalhost reports whether the request comes from loopback (127.0.0.1 or ::1).
 func IsLocalhost(r *http.Request) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

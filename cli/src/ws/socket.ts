@@ -1,6 +1,6 @@
 /**
- * WebSocket 客户端：与 Go 后端 /ws/chat 通信，支持流式聊天 + 工具审批。
- * 从 frontend/src/api/chatSocket.ts 移植，使用 ws 包替代浏览器 WebSocket。
+ * WebSocket client for Go backend /ws/chat: streaming chat + tool approval.
+ * Ported from frontend/src/api/chatSocket.ts; uses the ws package instead of browser WebSocket.
  */
 
 import WebSocket from "ws";
@@ -46,11 +46,11 @@ export class CLISocket {
   connect(apiURL: string, cliToken: string, handlers: WSHandlers): void {
     this.handlers = handlers;
 
-    // 构建 WS URL：http → ws, https → wss
+    // Build WS URL: http → ws, https → wss
     const wsBase = apiURL.replace(/^http/, "ws");
     const url = `${wsBase}/ws/chat`;
 
-    // 通过 X-CLI-Token header 传递认证信息（与服务端中间件匹配）
+    // Pass auth via X-CLI-Token header (matches server middleware)
     this.ws = new WebSocket(url, {
       headers: {
         "X-CLI-Token": cliToken,

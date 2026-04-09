@@ -9,21 +9,21 @@ import (
 	"github.com/blevesearch/bleve/v2/mapping"
 )
 
-// openOrCreateBleveIndex 打开或创建 bleve 索引。
+// openOrCreateBleveIndex opens or creates a bleve index.
 func openOrCreateBleveIndex(indexPath string) (bleve.Index, error) {
-	// 确保索引目录的父目录存在
+	// Ensure parent directory of the index path exists.
 	parentDir := filepath.Dir(indexPath)
 	if err := os.MkdirAll(parentDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create index parent dir: %w", err)
 	}
 
-	// 尝试打开已有索引
+	// Try to open an existing index.
 	idx, err := bleve.Open(indexPath)
 	if err == nil {
 		return idx, nil
 	}
 
-	// 索引不存在，创建新的
+	// No index yet; create a new one.
 	mapping := buildBleveMapping()
 	idx, err = bleve.New(indexPath, mapping)
 	if err != nil {
@@ -32,22 +32,22 @@ func openOrCreateBleveIndex(indexPath string) (bleve.Index, error) {
 	return idx, nil
 }
 
-// buildBleveMapping 构建 bleve 索引映射。
+// buildBleveMapping builds the bleve index mapping.
 func buildBleveMapping() *mapping.IndexMappingImpl {
 	return bleve.NewIndexMapping()
 }
 
-// indexBleveDocument 将单条记忆文档加入索引。
+// indexBleveDocument indexes one memory document.
 func indexBleveDocument(idx bleve.Index, entry *MemoryEntry) error {
 	doc := entry.ToBleveDocument()
 	return idx.Index(entry.Slug(), doc)
 }
 
-// searchBleveIndex 在 bleve 索引中搜索，返回匹配的 slug 列表。
-// 使用 DisjunctionQuery + MatchQuery 对多个字段进行匹配，
-// 避免 QueryStringQuery 对中文处理不佳的问题。
+// searchBleveIndex searches the bleve index and returns matching slugs.
+// Uses DisjunctionQuery + MatchQuery across fields instead of QueryStringQuery,
+// which handles CJK text poorly.
 func searchBleveIndex(idx bleve.Index, queryString string, topK int) ([]string, error) {
-	// 对 name、description、content 三个字段分别做 MatchQuery
+	// MatchQuery on name, description, and content separately.
 	nameMatch := bleve.NewMatchQuery(queryString)
 	nameMatch.SetField("name")
 
@@ -76,10 +76,10 @@ func searchBleveIndex(idx bleve.Index, queryString string, topK int) ([]string, 
 	return slugs, nil
 }
 
-// searchBleveIndexBySession 在 bleve 索引中搜索指定会话的记忆，返回匹配的 slug 列表。
-// 使用 ConjunctionQuery 连接全文搜索条件和 session_id 过滤条件。
+// searchBleveIndexBySession searches session-scoped memories; returns matching slugs.
+// ConjunctionQuery combines full-text OR with an exact session_id filter.
 func searchBleveIndexBySession(idx bleve.Index, sessionID, queryString string, topK int) ([]string, error) {
-	// 对 name、description、content 三个字段分别做 MatchQuery
+	// MatchQuery on name, description, and content separately.
 	nameMatch := bleve.NewMatchQuery(queryString)
 	nameMatch.SetField("name")
 
@@ -89,11 +89,11 @@ func searchBleveIndexBySession(idx bleve.Index, sessionID, queryString string, t
 	contentMatch := bleve.NewMatchQuery(queryString)
 	contentMatch.SetField("content")
 
-	// session_id 精确匹配
+	// Exact session_id match.
 	sessionTerm := bleve.NewTermQuery(sessionID)
 	sessionTerm.SetField("session_id")
 
-	// AND 连接：全文搜索 OR + session_id 过滤
+	// AND: (text OR across fields) AND session filter.
 	textOrQuery := bleve.NewDisjunctionQuery(nameMatch, descMatch, contentMatch)
 	andQuery := bleve.NewConjunctionQuery(textOrQuery, sessionTerm)
 

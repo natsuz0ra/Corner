@@ -7,7 +7,7 @@ import (
 	configsvc "slimebot/internal/services/config"
 )
 
-// ListMessagePlatformConfigs 返回全部消息平台接入配置。
+// ListMessagePlatformConfigs returns all message platform configs.
 func (h *HTTPController) ListMessagePlatformConfigs(c WebContext) {
 	items, err := h.platforms.List()
 	if err != nil {
@@ -17,7 +17,7 @@ func (h *HTTPController) ListMessagePlatformConfigs(c WebContext) {
 	c.JSON(http.StatusOK, items)
 }
 
-// CreateMessagePlatformConfig 创建消息平台配置，并校验平台鉴权 JSON。
+// CreateMessagePlatformConfig creates a platform config and validates auth JSON.
 func (h *HTTPController) CreateMessagePlatformConfig(c WebContext) {
 	var req struct {
 		Platform       string `json:"platform"`
@@ -51,7 +51,7 @@ func (h *HTTPController) CreateMessagePlatformConfig(c WebContext) {
 	c.JSON(http.StatusOK, item)
 }
 
-// UpdateMessagePlatformConfig 更新消息平台配置，并复用鉴权配置校验。
+// UpdateMessagePlatformConfig updates a platform config with the same auth validation.
 func (h *HTTPController) UpdateMessagePlatformConfig(c WebContext) {
 	id := c.Param("id")
 	var req struct {
@@ -85,7 +85,7 @@ func (h *HTTPController) UpdateMessagePlatformConfig(c WebContext) {
 	c.Status(http.StatusNoContent)
 }
 
-// DeleteMessagePlatformConfig 删除指定消息平台配置。
+// DeleteMessagePlatformConfig removes a message platform config by id.
 func (h *HTTPController) DeleteMessagePlatformConfig(c WebContext) {
 	id := c.Param("id")
 	if err := h.platforms.Delete(id); err != nil {

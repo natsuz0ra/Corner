@@ -2,10 +2,10 @@ package apperrors
 
 import "errors"
 
-// 领域级哨兵错误，供仓储层返回、服务层/控制器层判断。
+// Domain sentinel errors for repositories; services/controllers match on these.
 var (
-	// ErrNotFound 表示请求的资源不存在。
+	// ErrNotFound means the requested resource does not exist.
 	ErrNotFound = errors.New("not found")
-	// ErrInvalidInput 表示输入参数不合法。
+	// ErrInvalidInput means the input parameters are invalid.
 	ErrInvalidInput = errors.New("invalid input")
 )

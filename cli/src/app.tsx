@@ -1,6 +1,6 @@
 /**
- * App — Ink CLI 根组件。
- * 统一管理状态、WebSocket 事件、菜单行为和键盘输入分发。
+ * App — Ink CLI root component.
+ * Centralizes state, WebSocket events, menu behavior, and keyboard input dispatch.
  */
 
 import React, { useCallback, useEffect, useReducer, useRef } from "react";

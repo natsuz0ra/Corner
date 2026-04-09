@@ -10,8 +10,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 )
 
-// buildAnthropicMessages 将内部 ChatMessage 列表转为 Anthropic SDK 参数。
-// 返回 system blocks（顶层参数）和 messages 数组。
+// buildAnthropicMessages converts ChatMessage slices to Anthropic system blocks and messages.
 func buildAnthropicMessages(messages []llmsvc.ChatMessage) ([]anthropic.TextBlockParam, []anthropic.MessageParam) {
 	var systemBlocks []anthropic.TextBlockParam
 	var apiMessages []anthropic.MessageParam
@@ -65,7 +64,7 @@ func buildAnthropicMessages(messages []llmsvc.ChatMessage) ([]anthropic.TextBloc
 	return systemBlocks, apiMessages
 }
 
-// buildAssistantBlocks 构建 assistant 消息的内容块（文本 + tool_use）。
+// buildAssistantBlocks builds assistant message content blocks (text + tool_use).
 func buildAssistantBlocks(msg llmsvc.ChatMessage) []anthropic.ContentBlockParamUnion {
 	var blocks []anthropic.ContentBlockParamUnion
 
@@ -93,7 +92,7 @@ func buildAssistantBlocks(msg llmsvc.ChatMessage) []anthropic.ContentBlockParamU
 	return blocks
 }
 
-// buildContentParts 将多模态 ContentParts 转为 Anthropic 内容块。
+// buildContentParts converts multimodal ContentParts to Anthropic content blocks.
 func buildContentParts(parts []llmsvc.ChatMessageContentPart) []anthropic.ContentBlockParamUnion {
 	var result []anthropic.ContentBlockParamUnion
 	for _, part := range parts {
@@ -152,7 +151,7 @@ func buildContentParts(parts []llmsvc.ChatMessageContentPart) []anthropic.Conten
 	return result
 }
 
-// buildFallbackTextForPart 为不支持的 content type 生成文本回退。
+// buildFallbackTextForPart produces a text fallback for unsupported content types.
 func buildFallbackTextForPart(part llmsvc.ChatMessageContentPart) string {
 	switch part.Type {
 	case llmsvc.ChatMessageContentPartTypeAudio:
@@ -168,7 +167,7 @@ func buildFallbackTextForPart(part llmsvc.ChatMessageContentPart) string {
 	}
 }
 
-// buildAnthropicTools 将内部 ToolDef 转为 Anthropic ToolUnionParam。
+// buildAnthropicTools converts internal ToolDefs to Anthropic ToolUnionParam values.
 func buildAnthropicTools(defs []llmsvc.ToolDef) []anthropic.ToolUnionParam {
 	var tools []anthropic.ToolUnionParam
 	for _, def := range defs {

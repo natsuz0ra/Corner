@@ -1,6 +1,6 @@
 /**
- * App reducer — 全局状态管理。
- * 使用不可变模式，始终返回新状态。
+ * App reducer — global state.
+ * Immutable updates: always returns a new state object.
  */
 
 import type {

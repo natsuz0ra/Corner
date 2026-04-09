@@ -275,7 +275,7 @@ export const useChatStore = defineStore('chat', () => {
       resetSessionRuntimeState()
       rebuildReplyBatchesFromHistory(id, history)
     } catch {
-      // 固定消息平台会话在首条平台消息前可能尚未落库，前端先展示只读空态。
+      // Message-platform session may have no DB row before the first platform message; show read-only empty state first.
       if (id === MESSAGE_PLATFORM_SESSION_ID) {
         currentSessionId.value = id
         messages.value = []

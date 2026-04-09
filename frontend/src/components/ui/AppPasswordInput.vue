@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, useAttrs } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { mdiEyeOffOutline, mdiEyeOutline } from '@mdi/js'
 import MdiIcon from '@/components/ui/MdiIcon.vue'
+
+const { t } = useI18n()
 
 defineOptions({
   inheritAttrs: false,
@@ -22,8 +25,8 @@ const props = withDefaults(defineProps<{
   disabled: false,
   name: undefined,
   id: undefined,
-  showLabel: '显示密码',
-  hideLabel: '隐藏密码',
+  showLabel: undefined,
+  hideLabel: undefined,
 })
 
 const emit = defineEmits<{
@@ -33,8 +36,11 @@ const emit = defineEmits<{
 const attrs = useAttrs()
 const showPassword = ref(false)
 
+const showLabelResolved = computed(() => props.showLabel ?? t('showPassword'))
+const hideLabelResolved = computed(() => props.hideLabel ?? t('hidePassword'))
+
 const inputType = computed(() => (showPassword.value ? 'text' : 'password'))
-const toggleLabel = computed(() => (showPassword.value ? props.hideLabel : props.showLabel))
+const toggleLabel = computed(() => (showPassword.value ? hideLabelResolved.value : showLabelResolved.value))
 const toggleIcon = computed(() => (showPassword.value ? mdiEyeOffOutline : mdiEyeOutline))
 const inputAttrs = computed(() => {
   const { class: _class, ...rest } = attrs

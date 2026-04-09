@@ -68,7 +68,7 @@ func (r *Repository) ListSessionMessagesPage(sessionID string, limit int, before
 			Find(&messages).Error; err != nil {
 			return nil, false, err
 		}
-		// 倒序查询后翻转为时间正序
+		// Query newest-first; reverse to chronological order.
 		for left, right := 0, len(messages)-1; left < right; left, right = left+1, right-1 {
 			messages[left], messages[right] = messages[right], messages[left]
 		}

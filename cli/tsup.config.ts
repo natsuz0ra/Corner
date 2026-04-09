@@ -7,6 +7,6 @@ export default defineConfig({
   bundle: true,
   outDir: "dist",
   clean: true,
-  // ESM 不支持 shebang，我们需要在 entry 中处理
+  // ESM bundles cannot carry shebang; handle entry/bootstrap in app code.
   banner: {},
 });

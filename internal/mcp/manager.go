@@ -14,14 +14,14 @@ import (
 	"slimebot/internal/constants"
 )
 
-// ToolMeta 记录函数调用定义与 MCP 真实工具之间的映射关系
+// ToolMeta maps function-call metadata to an MCP server's real tool name.
 type ToolMeta struct {
 	FuncName    string
 	ServerAlias string
 	ToolName    string
 }
 
-// Manager MCP 管理器：负责管理 MCP 客户端实例，提供工具加载与执行能力
+// Manager owns MCP client connections and exposes tool loading and execution.
 type Manager struct {
 	mu      sync.Mutex
 	clients map[string]*managedClient
@@ -35,14 +35,14 @@ type managedClient struct {
 	clientMu sync.Mutex
 }
 
-// NewManager 创建一个新的 MCP 管理器实例
+// NewManager constructs an MCP manager.
 func NewManager() *Manager {
 	return &Manager{
 		clients: make(map[string]*managedClient),
 	}
 }
 
-// CloseAll 关闭并清空所有已托管的 MCP 客户端连接
+// CloseAll closes and clears every managed MCP client.
 func (m *Manager) CloseAll() {
 	if m == nil {
 		return
@@ -61,7 +61,7 @@ func (m *Manager) CloseAll() {
 	}
 }
 
-// LoadTools 加载当前启用服务的工具定义，返回函数元数据与 OpenAI 工具描述
+// LoadTools loads tools from enabled servers; returns func metadata and OpenAI tool defs.
 func (m *Manager) LoadTools(ctx context.Context, configs []domain.MCPConfig) ([]ToolMeta, []map[string]any, error) {
 	alive := make(map[string]bool, len(configs))
 	var metas []ToolMeta
@@ -92,7 +92,7 @@ func (m *Manager) LoadTools(ctx context.Context, configs []domain.MCPConfig) ([]
 		if alive[id] {
 			continue
 		}
-		// 配置被禁用或删除后主动回收连接，避免保留失活客户端。
+		// Drop connections when a server is disabled or removed to avoid stale clients.
 		toClose = append(toClose, entry)
 		delete(m.clients, id)
 	}
@@ -165,11 +165,11 @@ func (m *Manager) LoadTools(ctx context.Context, configs []domain.MCPConfig) ([]
 	return metas, defs, nil
 }
 
-// ensureClientLocked 确保给定配置对应的客户端可用，必要时按最新配置重建连接
+// ensureClientLocked returns a live client for the config, reconnecting if config changed.
 func (m *Manager) ensureClientLocked(item domain.MCPConfig) (*managedClient, error) {
 	existing, ok := m.clients[item.ID]
 	if ok && existing.raw == item.Config {
-		// 配置未变化时复用已有连接，减少重复握手与进程创建开销。
+		// Reuse the existing connection when config is unchanged.
 		return existing, nil
 	}
 	if ok {
@@ -207,7 +207,7 @@ func (m *Manager) ensureClientLocked(item domain.MCPConfig) (*managedClient, err
 	return entry, nil
 }
 
-// Execute 根据 serverAlias 与 toolName 定位目标 MCP 服务并执行工具调用。
+// Execute resolves the MCP server by alias and runs the named tool.
 func (m *Manager) Execute(ctx context.Context, configs []domain.MCPConfig, serverAlias, toolName string, arguments map[string]any) (*CallResult, error) {
 	var target domain.MCPConfig
 	found := false
@@ -240,7 +240,7 @@ func (m *Manager) Execute(ctx context.Context, configs []domain.MCPConfig, serve
 	return res, callErr
 }
 
-// sanitizeToken 将任意标识规范化为安全 token，用于函数名与别名拼接。
+// sanitizeToken normalizes identifiers for safe use in function names and aliases.
 func sanitizeToken(input string) string {
 	if strings.TrimSpace(input) == "" {
 		return "x"
@@ -267,7 +267,7 @@ func sanitizeToken(input string) string {
 	return out
 }
 
-// buildMCPFuncName 生成 server__tool 函数名；超长时截断两段并追加 SHA1 前缀以满足长度上限且降低冲突。
+// buildMCPFuncName builds a server__tool name; truncates long parts and appends a SHA1 suffix for length/conflict control.
 func buildMCPFuncName(serverAlias, toolName string) string {
 	serverToken := sanitizeToken(serverAlias)
 	toolToken := sanitizeToken(toolName)
@@ -276,14 +276,14 @@ func buildMCPFuncName(serverAlias, toolName string) string {
 		return full
 	}
 
-	// 保留可读前缀，并追加稳定哈希，兼顾长度限制与冲突概率。
+	// Keep readable prefixes plus a stable hash within length limits.
 	sum := sha1.Sum([]byte(serverToken + "::" + toolToken))
 	hash := hex.EncodeToString(sum[:])
 	if len(hash) > constants.MCPFuncHashLen {
 		hash = hash[:constants.MCPFuncHashLen]
 	}
 
-	// 预留 "__" 与 "_<hash>"。
+	// Reserve room for "__" and "_<hash>".
 	available := constants.MCPFuncNameMaxLen - len("__") - 1 - len(hash)
 	if available < 2 {
 		available = 2

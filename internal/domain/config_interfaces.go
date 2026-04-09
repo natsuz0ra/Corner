@@ -2,14 +2,14 @@ package domain
 
 import "context"
 
-// LLMConfigStore LLM 配置存储接口。
+// LLMConfigStore persists LLM model configs.
 type LLMConfigStore interface {
 	ListLLMConfigs(ctx context.Context) ([]LLMConfig, error)
 	CreateLLMConfig(item LLMConfig) (*LLMConfig, error)
 	DeleteLLMConfig(id string) error
 }
 
-// MCPConfigStore MCP 服务配置存储接口。
+// MCPConfigStore persists MCP server configs.
 type MCPConfigStore interface {
 	ListMCPConfigs() ([]MCPConfig, error)
 	CreateMCPConfig(item MCPConfig) (*MCPConfig, error)
@@ -17,7 +17,7 @@ type MCPConfigStore interface {
 	DeleteMCPConfig(id string) error
 }
 
-// MessagePlatformConfigStore 消息平台配置存储接口。
+// MessagePlatformConfigStore persists message platform configs.
 type MessagePlatformConfigStore interface {
 	ListMessagePlatformConfigs() ([]MessagePlatformConfig, error)
 	CreateMessagePlatformConfig(item MessagePlatformConfig) (*MessagePlatformConfig, error)

@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// ListSkills 返回已安装技能包列表。
+// ListSkills returns installed skill packages.
 func (h *HTTPController) ListSkills(c WebContext) {
 	if h.skillRuntime == nil {
 		jsonError(c, http.StatusInternalServerError, "Skills runtime service is not initialized.")
@@ -20,7 +20,7 @@ func (h *HTTPController) ListSkills(c WebContext) {
 	c.JSON(http.StatusOK, items)
 }
 
-// UploadSkills 批量上传并安装技能 zip，返回成功与失败明细。
+// UploadSkills installs multiple skill zips and reports per-file success/failure.
 func (h *HTTPController) UploadSkills(c WebContext) {
 	if h.skillPackage == nil {
 		jsonError(c, http.StatusInternalServerError, "Skills upload service is not initialized.")
@@ -55,7 +55,7 @@ func (h *HTTPController) UploadSkills(c WebContext) {
 		Success: make([]any, 0, len(files)),
 		Failed:  make([]failedItem, 0),
 	}
-	// 按文件逐个安装，确保单个失败不会影响整批处理。
+	// Install one file at a time so one failure does not abort the batch.
 	for _, fh := range files {
 		f, openErr := fh.Open()
 		if openErr != nil {
@@ -89,7 +89,7 @@ func (h *HTTPController) UploadSkills(c WebContext) {
 		return
 	}
 
-	// 部分成功使用 207，便于前端提示“有失败项”。
+	// 207 Multi-Status when some uploads failed so the UI can surface partial errors.
 	status := http.StatusOK
 	if len(resp.Failed) > 0 {
 		status = http.StatusMultiStatus
@@ -97,7 +97,7 @@ func (h *HTTPController) UploadSkills(c WebContext) {
 	c.JSON(status, resp)
 }
 
-// DeleteSkill 删除指定技能；优先走 runtime 以保持运行态一致。
+// DeleteSkill removes a skill; prefers runtime delete to keep in-memory state in sync.
 func (h *HTTPController) DeleteSkill(c WebContext) {
 	id := strings.TrimSpace(c.Param("id"))
 	if id == "" {

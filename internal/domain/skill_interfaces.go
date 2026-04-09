@@ -1,6 +1,6 @@
 package domain
 
-// SkillStore 负责从 skills 配置目录读取和删除技能目录元数据。
+// SkillStore reads and deletes skill metadata from the configured skills directory.
 type SkillStore interface {
 	ListSkills() ([]Skill, error)
 	GetSkillByName(name string) (*Skill, error)
