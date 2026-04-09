@@ -26,6 +26,25 @@ function isRawControlChar(input: string): boolean {
   return code >= 1 && code <= 26;
 }
 
+function isRawNewlineInput(input: string): boolean {
+  return input === "\n";
+}
+
+export function shouldInsertNewlineOnEnter(
+  multiline: boolean,
+  hasSubmitHandler: boolean,
+  key: Key,
+  input: string,
+): boolean {
+  if (!multiline) {
+    return false;
+  }
+  if (!hasSubmitHandler) {
+    return true;
+  }
+  return key.meta || key.shift || key.ctrl || isRawNewlineInput(input);
+}
+
 function mapInput(inputMap: Array<[string, InputHandler]>): InputMapper {
   const map = new Map(inputMap);
   return (input: string): MaybeCursor => {
@@ -152,8 +171,8 @@ export function useTextInput({
     return cursor;
   }
 
-  function handleEnter(key: Key): MaybeCursor {
-    if (multiline && (key.meta || key.shift || key.ctrl)) {
+  function handleEnter(key: Key, input: string): MaybeCursor {
+    if (shouldInsertNewlineOnEnter(multiline, Boolean(onSubmit), key, input)) {
       return cursor.insert("\n");
     }
     onSubmit?.(value);
@@ -200,8 +219,6 @@ export function useTextInput({
         return key.meta || key.ctrl
           ? killWordBefore
           : () => cursor.deleteTokenBefore() ?? cursor.backspace();
-      case key.ctrl:
-        return enableCtrlShortcuts ? handleCtrl : () => cursor;
       case key.home:
         return () => cursor.startOfLine();
       case key.end:
@@ -211,7 +228,9 @@ export function useTextInput({
       case key.pageUp:
         return () => cursor.startOfLine();
       case key.return:
-        return () => handleEnter(key);
+        return () => handleEnter(key, input);
+      case key.ctrl:
+        return enableCtrlShortcuts ? handleCtrl : () => cursor;
       case key.meta:
         return handleMeta;
       case key.tab:
@@ -233,6 +252,9 @@ export function useTextInput({
       case isRawControlChar(input):
         // Raw control character (e.g. ctrl+O on Windows where key.ctrl is unset).
         // Don't insert as text — let the App-level handler process it.
+        if (isRawNewlineInput(input)) {
+          return () => handleEnter(key, input);
+        }
         return () => cursor;
       default:
         return (input: string): MaybeCursor => {
