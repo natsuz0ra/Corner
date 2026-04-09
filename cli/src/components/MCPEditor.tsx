@@ -73,7 +73,7 @@ export function MCPEditor({
             onChange={onConfigChange}
             focus={!focusName}
             columns={columns}
-            multiline={false}
+            multiline={true}
             enableCtrlShortcuts={false}
           />
         ) : (
