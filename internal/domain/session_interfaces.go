@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// SessionStore 会话存储接口：CRUD、消息分页和工具调用记录查询。
+// SessionStore persists sessions: CRUD, message pagination, and tool-call records.
 type SessionStore interface {
 	ListSessions(limit int, offset int, query string) ([]Session, error)
 	CreateSession(ctx context.Context, name string) (*Session, error)

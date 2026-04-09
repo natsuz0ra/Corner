@@ -2,7 +2,7 @@ package domain
 
 import "context"
 
-// ChatStore 聊天主流程数据访问接口。
+// ChatStore is the data access surface for the main chat flow.
 type ChatStore interface {
 	GetSessionByID(ctx context.Context, id string) (*Session, error)
 	CreateSession(ctx context.Context, name string) (*Session, error)

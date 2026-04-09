@@ -1,6 +1,6 @@
 /**
- * MCPTemplatePicker — MCP 传输模板选择组件。
- * 展示三种模板供用户选择，键盘事件由 App 统一分发。
+ * MCPTemplatePicker — MCP transport template picker.
+ * Shows three templates; keyboard events are dispatched by App.
  */
 
 import React from "react";

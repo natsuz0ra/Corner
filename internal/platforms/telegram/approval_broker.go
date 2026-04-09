@@ -40,8 +40,8 @@ func NewApprovalBroker() *approvalBroker {
 	}
 }
 
-// Register 为一次待审批工具调用创建上下文，并返回批准/拒绝 callback_data。
-// 内部维护 toolCallID 与 token 双索引，分别服务等待方与回调解析方。
+// Register sets up approval state for a pending tool call and returns approve/reject callback_data.
+// Indexes by toolCallID and by token for waiters vs callback parsing.
 func (b *approvalBroker) Register(toolCallID string, chatID string, ttl time.Duration) (string, string, error) {
 	if b == nil {
 		return "", "", fmt.Errorf("approval broker is nil")
@@ -76,7 +76,7 @@ func (b *approvalBroker) Register(toolCallID string, chatID string, ttl time.Dur
 	return approvalApprovePrefix + ":" + token, approvalRejectPrefix + ":" + token, nil
 }
 
-// Wait 阻塞等待某个 toolCallID 的审批结果，直到收到回调或 ctx 取消/超时。
+// Wait blocks until approval arrives for toolCallID, or ctx is cancelled/timed out.
 func (b *approvalBroker) Wait(ctx context.Context, toolCallID string) (*chatsvc.ApprovalResponse, error) {
 	if b == nil {
 		return nil, fmt.Errorf("approval broker is nil")
@@ -100,8 +100,8 @@ func (b *approvalBroker) Wait(ctx context.Context, toolCallID string) (*chatsvc.
 	}
 }
 
-// ResolveByCallback 解析按钮回调并投递审批结果；
-// 仅允许原 chatID 消费该 token，防止跨会话误操作。
+// ResolveByCallback parses callback_data and delivers the approval result;
+// only the original chatID may consume the token to prevent cross-chat misuse.
 func (b *approvalBroker) ResolveByCallback(chatID string, callbackData string) (bool, error) {
 	if b == nil {
 		return false, fmt.Errorf("approval broker is nil")
@@ -150,8 +150,8 @@ func (b *approvalBroker) Remove(toolCallID string) {
 	delete(b.byToken, entry.token)
 }
 
-// parseApprovalCallbackData 解析 callback_data 协议：<action>:<token>，
-// 其中 action 只能是 ap(批准) 或 rj(拒绝)。
+// parseApprovalCallbackData parses callback_data as <action>:<token>
+// where action is ap (approve) or rj (reject).
 func parseApprovalCallbackData(raw string) (string, string, error) {
 	parts := strings.SplitN(strings.TrimSpace(raw), ":", 2)
 	if len(parts) != 2 {

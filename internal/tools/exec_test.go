@@ -82,10 +82,10 @@ func TestDecodeCommandOutputUTF8(t *testing.T) {
 func TestDecodeCommandOutputUTF16LEBOM(t *testing.T) {
 	raw := []byte{
 		0xFF, 0xFE,
-		0x2D, 0x4E, // 中
-		0x87, 0x65, // 文
-		0x93, 0x8F, // 输
-		0xFA, 0x51, // 出
+		0x2D, 0x4E, // UTF-16LE LE word for U+4E2D
+		0x87, 0x65, // UTF-16LE LE word for U+6587
+		0x93, 0x8F, // UTF-16LE LE word for U+8F93
+		0xFA, 0x51, // UTF-16LE LE word for U+51FA
 	}
 	decoded := decodeCommandOutput("windows", raw)
 	if decoded != "中文输出" {

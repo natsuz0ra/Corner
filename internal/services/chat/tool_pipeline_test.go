@@ -71,7 +71,7 @@ func newTestMemoryService(t *testing.T) *memsvc.MemoryService {
 func TestExecuteInvocation_SearchMemory_OncePerResponse(t *testing.T) {
 	memorySvc := newTestMemoryService(t)
 
-	// 预存一条记忆
+	// Pre-seed one memory row
 	memorySvc.EnqueueTurnMemory("test-session", "", `{"name":"Golang Memory","description":"用户在聊 golang","type":"project","content":"用户喜欢 Go 语言"}`)
 
 	agent := &AgentService{memory: memorySvc}
@@ -116,6 +116,6 @@ func TestBuildToolDefs_SortedByName(t *testing.T) {
 	}
 }
 
-// 确保 _ 下划线清理
+// Ensure underscore sanitization in names
 var _ = filepath.Join
 var _ = os.ReadFile

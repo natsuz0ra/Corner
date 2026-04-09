@@ -267,12 +267,12 @@ func TestSystemPrompt_UsesStructuredMemoryProtocol(t *testing.T) {
 		t.Fatal(`system prompt must not instruct the model to emit {"facts":[...]}`)
 	}
 	required := []string{
-		`"turn_summary":"..."`,
-		`"topic_hint":"..."`,
-		`"keywords":[...]`,
-		`"sticky":[...]`,
-		`"kind":"preference|constraint|task"`,
-		`"action":"upsert|delete"`,
+		`{"name":"...","description":"...","type":"...","content":"..."}`,
+		`<memory>`,
+		`<title>`,
+		"`type` must be one of:",
+		"`user`",
+		"`project`",
 	}
 	for _, token := range required {
 		if !strings.Contains(content, token) {

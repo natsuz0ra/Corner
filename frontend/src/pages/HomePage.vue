@@ -122,12 +122,12 @@ provideChatContext({
     class="page-shell h-screen flex items-center justify-center p-2 sm:p-3 transition-colors duration-300"
     :class="{ 'home-login-entering': playHomeLoginEnter }"
   >
-    <!-- 外层卡片容器 -->
+    <!-- Outer card shell -->
     <div
       class="page-card relative w-full h-full rounded-2xl flex overflow-hidden"
     >
 
-      <!-- ───── 侧边栏 ───── -->
+      <!-- ───── Sidebar ───── -->
       <Transition name="sidebar">
         <HomeSidebar
           v-if="drawerOpen"
@@ -143,7 +143,7 @@ provideChatContext({
         />
       </Transition>
 
-      <!-- 侧边栏遮罩 -->
+      <!-- Sidebar overlay -->
       <Transition name="mask-fade">
         <div
           v-if="drawerOpen"
@@ -152,7 +152,7 @@ provideChatContext({
         />
       </Transition>
 
-      <!-- ───── 主内容区 ───── -->
+      <!-- ───── Main content ───── -->
       <main class="relative z-0 flex-1 flex flex-col min-w-0">
 
         <HomeHeaderBar
@@ -176,10 +176,10 @@ provideChatContext({
               : 'chat-content-shell--from-right',
           ]"
         >
-          <!-- ───── 空会话：居中欢迎 + 输入框 ───── -->
+          <!-- ───── Empty session: welcome + composer ───── -->
           <template v-if="isEmptySession">
           <div class="flex-1 flex flex-col items-center justify-center px-4 pb-8">
-            <!-- 加载中 -->
+            <!-- Loading -->
             <div v-if="loading" class="sb-text-muted flex items-center gap-2 text-sm mb-8">
               <svg class="loading-spinner-accent animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
@@ -189,10 +189,10 @@ provideChatContext({
             </div>
 
             <template v-else>
-              <!-- AI 渐变图标 -->
+              <!-- AI gradient logo -->
               <AppLogo :size="80" animated class="new-chat-logo mb-1.0 drop-shadow-lg" />
 
-              <!-- 欢迎标题 -->
+              <!-- Welcome title -->
               <h2 v-if="!isMessagePlatformSession" class="text-2xl font-bold mb-2 text-center welcome-title">
                 {{ displayedWelcomeTitle }}
                 <span
@@ -208,7 +208,7 @@ provideChatContext({
                 {{ isMessagePlatformSession ? t('messagePlatformEmptySubtitle') : t('welcomeSubtitle') }}
               </p>
 
-              <!-- 居中输入框 -->
+              <!-- Centered composer -->
               <div v-if="!isMessagePlatformSession" class="w-full max-w-[640px]">
                 <ChatComposer
                   v-model="inputValue"
@@ -231,7 +231,7 @@ provideChatContext({
           </div>
           </template>
 
-          <!-- ───── 有消息：消息列表 + 底部输入框 ───── -->
+          <!-- ───── With messages: list + footer composer ───── -->
           <template v-else>
           <div class="chat-content-scroll flex min-h-0 flex-1 flex-col overflow-hidden">
           <ChatMessageList
@@ -243,7 +243,7 @@ provideChatContext({
           />
           </div>
 
-          <!-- 底部输入区 -->
+          <!-- Footer composer -->
           <footer
             v-if="!isMessagePlatformSession"
             class="composer-footer flex-shrink-0 px-4 py-3"
@@ -272,7 +272,7 @@ provideChatContext({
       </main>
     </div>
 
-    <!-- ───── 浮动会话菜单 ───── -->
+    <!-- ───── Floating session menu ───── -->
     <Transition name="session-menu-pop">
       <div
         v-if="activeSessionMenu && canManageCurrentSession"

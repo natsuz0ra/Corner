@@ -34,7 +34,7 @@ func (a *Adapter) getFileURL(filePath string) string {
 	return "https://api.telegram.org/file/bot" + a.token + "/" + strings.TrimLeft(strings.TrimSpace(filePath), "/")
 }
 
-// postJSON 向 Telegram API 发送 JSON POST 请求，校验状态码。
+// postJSON sends a JSON POST to the Telegram API and checks the status code.
 func (a *Adapter) postJSON(method string, payload any) error {
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -56,7 +56,7 @@ func (a *Adapter) postJSON(method string, payload any) error {
 	return nil
 }
 
-// GetUpdates 调用 Telegram getUpdates 长轮询接口拉取增量更新。
+// GetUpdates calls Telegram getUpdates long-polling for incremental updates.
 func (a *Adapter) GetUpdates(ctx context.Context, offset int64, timeoutSeconds int) ([]update, error) {
 	if a == nil || strings.TrimSpace(a.token) == "" {
 		return nil, fmt.Errorf("telegram token is empty")
@@ -223,7 +223,7 @@ func collectMediaCandidates(msg *message) []mediaCandidate {
 	return items
 }
 
-// SendText 发送纯文本消息。
+// SendText sends a plain text message.
 func (a *Adapter) SendText(chatID string, text string) error {
 	if a == nil || strings.TrimSpace(a.token) == "" {
 		return fmt.Errorf("telegram token is empty")
@@ -234,7 +234,7 @@ func (a *Adapter) SendText(chatID string, text string) error {
 	})
 }
 
-// SendApprovalKeyboard 发送带 Inline Keyboard 的审批消息。
+// SendApprovalKeyboard sends an approval prompt with an inline keyboard.
 func (a *Adapter) SendApprovalKeyboard(chatID string, text string, approveData string, rejectData string) error {
 	if a == nil || strings.TrimSpace(a.token) == "" {
 		return fmt.Errorf("telegram token is empty")
@@ -253,7 +253,7 @@ func (a *Adapter) SendApprovalKeyboard(chatID string, text string, approveData s
 	})
 }
 
-// AnswerCallbackQuery 应答按钮点击，避免 Telegram 客户端持续转圈。
+// AnswerCallbackQuery acknowledges a button press so Telegram stops the loading spinner.
 func (a *Adapter) AnswerCallbackQuery(callbackQueryID string, text string) error {
 	if a == nil || strings.TrimSpace(a.token) == "" {
 		return fmt.Errorf("telegram token is empty")

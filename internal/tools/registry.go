@@ -6,19 +6,19 @@ import (
 	"sync"
 )
 
-// globalRegistry 全局工具注册中心实例
+// globalRegistry is the process-wide tool registry.
 var (
 	globalRegistry = &registry{tools: make(map[string]Tool)}
 )
 
-// registry 工具注册中心
+// registry holds registered tools by name.
 type registry struct {
 	mu    sync.RWMutex
 	tools map[string]Tool
 }
 
-// Register 将工具注册到全局注册中心。通常在各工具文件的 init() 中调用
-// 如果工具名称重复会 panic，确保每个工具名称唯一
+// Register adds a tool to the global registry; call from each tool's init().
+// Panics on duplicate names so every tool name stays unique.
 func Register(tool Tool) {
 	globalRegistry.mu.Lock()
 	defer globalRegistry.mu.Unlock()
@@ -31,7 +31,7 @@ func Register(tool Tool) {
 	logging.Info("tool_registered", "name", name, "commands", len(tool.Commands()))
 }
 
-// Get 根据名称获取已注册的工具
+// Get returns a registered tool by name.
 func Get(name string) (Tool, bool) {
 	globalRegistry.mu.RLock()
 	defer globalRegistry.mu.RUnlock()
@@ -39,7 +39,7 @@ func Get(name string) (Tool, bool) {
 	return t, ok
 }
 
-// All 返回所有已注册工具的列表
+// All returns every registered tool.
 func All() []Tool {
 	globalRegistry.mu.RLock()
 	defer globalRegistry.mu.RUnlock()

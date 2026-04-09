@@ -25,7 +25,7 @@ import (
 	skillsvc "slimebot/internal/services/skill"
 )
 
-// Core 聚合 server/cli 共用的基础依赖与服务。
+// Core holds shared dependencies for server and CLI entrypoints.
 type Core struct {
 	Config config.Config
 	Repo   *repositories.Repository
@@ -49,7 +49,7 @@ type Core struct {
 	warmupStarted atomic.Bool
 }
 
-// NewCore 初始化可复用核心依赖，不包含 server/telegram/鉴权路由等入口级组件。
+// NewCore wires reusable services; it does not include HTTP routes, Telegram, or auth wiring.
 func NewCore(cfg config.Config) (*Core, error) {
 	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), os.ModePerm); err != nil {
 		return nil, err
@@ -114,7 +114,7 @@ func NewCore(cfg config.Config) (*Core, error) {
 	}, nil
 }
 
-// WarmupInBackground 启动后台 goroutine 预热记忆索引。
+// WarmupInBackground starts a goroutine to warm up the memory index.
 func (c *Core) WarmupInBackground(ctx context.Context) {
 	if c == nil {
 		return
@@ -127,7 +127,7 @@ func (c *Core) WarmupInBackground(ctx context.Context) {
 		go func() {
 			defer close(c.warmupDone)
 
-			// 重建记忆索引（如果需要）
+			// Rebuild memory index on startup.
 			if c.MemoryService != nil && c.MemoryService.Store() != nil {
 				if err := c.MemoryService.Store().RebuildIndex(); err != nil {
 					logging.Warn("memory_index_warmup_failed", "err", err)
@@ -139,7 +139,7 @@ func (c *Core) WarmupInBackground(ctx context.Context) {
 	})
 }
 
-// Close 关闭核心依赖持有的后台资源。
+// Close releases background resources held by Core.
 func (c *Core) Close(ctx context.Context) {
 	if c == nil {
 		return
@@ -168,7 +168,7 @@ func (c *Core) Close(ctx context.Context) {
 	}
 }
 
-// buildRunContext 构建 ChatService 所需的运行上下文。
+// buildRunContext builds ChatService RunContext for CLI vs server.
 func buildRunContext(isCLI bool) chatsvc.RunContext {
 	cwd := ""
 	if isCLI {

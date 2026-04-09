@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { mdiClose } from '@mdi/js'
 import MdiIcon from '@/components/ui/MdiIcon.vue'
 import LoadingSpinner from '@/components/ui/LoadingSpinner.vue'
+
+const { t } = useI18n()
 
 const props = withDefaults(
   defineProps<{
@@ -22,8 +25,8 @@ const props = withDefaults(
     largeTitle?: boolean
   }>(),
   {
-    confirmText: '确认',
-    cancelText: '取消',
+    confirmText: undefined,
+    cancelText: undefined,
     confirmLoading: false,
     confirmDanger: false,
     width: '480px',
@@ -36,6 +39,9 @@ const props = withDefaults(
     largeTitle: false,
   },
 )
+
+const resolvedConfirmText = computed(() => props.confirmText ?? t('confirm'))
+const resolvedCancelText = computed(() => props.cancelText ?? t('cancel'))
 
 const emit = defineEmits<{
   'update:visible': [value: boolean]
@@ -113,7 +119,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
               class="px-4 py-2 text-sm rounded-xl transition-all duration-150 cursor-pointer dialog-cancel-btn"
               @click="close"
             >
-              {{ cancelText }}
+              {{ resolvedCancelText }}
             </button>
             <button
               type="button"
@@ -123,7 +129,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
               @click="onConfirm"
             >
               <LoadingSpinner v-if="confirmLoading" size-class="w-3.5 h-3.5" />
-              {{ confirmText }}
+              {{ resolvedConfirmText }}
             </button>
           </div>
         </div>

@@ -78,15 +78,15 @@ func (r *Repository) UpdateSessionTitle(ctx context.Context, id, name string) (b
 
 func (r *Repository) DeleteSession(id string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		// 删除消息
+		// Delete messages.
 		if err := tx.Table("messages").Where("session_id = ?", id).Delete(nil).Error; err != nil {
 			return err
 		}
-		// 删除工具调用记录
+		// Delete tool call records.
 		if err := tx.Table("tool_call_records").Where("session_id = ?", id).Delete(nil).Error; err != nil {
 			return err
 		}
-		// 删除会话本身
+		// Delete the session row.
 		return tx.Table("sessions").Where("id = ?", id).Delete(nil).Error
 	})
 }

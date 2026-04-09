@@ -223,17 +223,17 @@ func TestMemoryEntry_Slug(t *testing.T) {
 		expected string
 	}{
 		{"simple", "Test Memory", "test_memory"},
-		{"spaces", "  multiple   spaces  ", "multiple___spaces"}, // 当前实现不折叠多个下划线
+		{"spaces", "  multiple   spaces  ", "multiple___spaces"}, // implementation does not collapse repeated underscores
 		{"special", "Test@#$%Memory", "testmemory"},
 		{"mixed", "Test123-ABC", "test123-abc"},
-		{"chinese", "测试记忆", "memory_"}, // 中文被移除后生成带时间戳的默认名，前缀是 memory_
+		{"chinese", "测试记忆", "memory_"}, // CJK stripped; default name uses timestamp with memory_ prefix
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := &MemoryEntry{Name: tt.input}
 			got := e.Slug()
-			// 对于中文，检查前缀而非完整值（因为包含时间戳）
+			// For CJK input, assert prefix only (value includes timestamp).
 			if tt.name == "chinese" {
 				if !startsWith(got, tt.expected) {
 					t.Errorf("Slug() = %q, want prefix %q", got, tt.expected)

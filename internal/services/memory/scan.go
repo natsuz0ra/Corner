@@ -17,7 +17,7 @@ const (
 	maxMemoryFiles       = 200
 )
 
-// memoryFrontmatter YAML frontmatter 结构。
+// memoryFrontmatter is the YAML frontmatter shape.
 type memoryFrontmatter struct {
 	Name        string     `yaml:"name"`
 	Description string     `yaml:"description"`
@@ -27,7 +27,7 @@ type memoryFrontmatter struct {
 	Updated     time.Time  `yaml:"updated"`
 }
 
-// parseMemoryFile 解析单个记忆文件。
+// parseMemoryFile parses a single memory file.
 func parseMemoryFile(filePath string) (*MemoryEntry, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -49,12 +49,12 @@ func parseMemoryFile(filePath string) (*MemoryEntry, error) {
 		Content:     strings.TrimSpace(content),
 		FilePath:    filePath,
 	}
-	// 从文件名恢复 slug 缓存，避免 Slug() 重新计算产生不同值
+	// Restore slug from filename so Slug() stays stable vs recomputing from name.
 	entry.SetSlug(strings.TrimSuffix(filepath.Base(filePath), ".md"))
 	return entry, nil
 }
 
-// parseFrontmatter 从 markdown 内容中提取 YAML frontmatter 和正文。
+// parseFrontmatter extracts YAML frontmatter and body from markdown.
 func parseFrontmatter(raw string) (*memoryFrontmatter, string, error) {
 	raw = strings.TrimSpace(raw)
 
@@ -62,7 +62,7 @@ func parseFrontmatter(raw string) (*memoryFrontmatter, string, error) {
 		return nil, "", fmt.Errorf("missing opening frontmatter delimiter")
 	}
 
-	// 找到闭合的 ---
+	// Find closing --- delimiter.
 	afterFirst := raw[len(frontmatterDelimiter):]
 	closeIdx := strings.Index(afterFirst, "\n"+frontmatterDelimiter)
 	if closeIdx < 0 {
@@ -81,7 +81,7 @@ func parseFrontmatter(raw string) (*memoryFrontmatter, string, error) {
 		return nil, "", fmt.Errorf("unmarshal yaml: %w", err)
 	}
 
-	// 验证类型
+	// Validate memory type.
 	if _, err := ParseMemoryType(string(fm.Type)); err != nil {
 		return nil, "", err
 	}
@@ -89,7 +89,7 @@ func parseFrontmatter(raw string) (*memoryFrontmatter, string, error) {
 	return &fm, body, nil
 }
 
-// parseFrontmatterOnly 只解析 frontmatter，不读正文（用于快速扫描）。
+// parseFrontmatterOnly parses frontmatter only (fast scan, no body).
 func parseFrontmatterOnly(raw string) (*memoryFrontmatter, error) {
 	raw = strings.TrimSpace(raw)
 	if !strings.HasPrefix(raw, frontmatterDelimiter) {
@@ -112,12 +112,12 @@ func parseFrontmatterOnly(raw string) (*memoryFrontmatter, error) {
 	return &fm, nil
 }
 
-// scanMemoryDir 扫描目录，只解析 frontmatter（不含正文）。
+// scanMemoryDir scans the directory with frontmatter only (no body).
 func scanMemoryDir(baseDir string) ([]*MemoryEntry, error) {
 	return scanDir(baseDir, false)
 }
 
-// scanMemoryDirFull 扫描目录，解析完整内容。
+// scanMemoryDirFull scans the directory with full content.
 func scanMemoryDirFull(baseDir string) ([]*MemoryEntry, error) {
 	return scanDir(baseDir, true)
 }
@@ -131,7 +131,7 @@ func scanDir(baseDir string, fullContent bool) ([]*MemoryEntry, error) {
 		return nil, fmt.Errorf("read dir %s: %w", baseDir, err)
 	}
 
-	// 收集 .md 文件（排除 MEMORY.md）
+	// Collect .md files (exclude MEMORY.md).
 	var mdFiles []os.DirEntry
 	for _, e := range entries {
 		if e.IsDir() {
@@ -147,14 +147,14 @@ func scanDir(baseDir string, fullContent bool) ([]*MemoryEntry, error) {
 		mdFiles = append(mdFiles, e)
 	}
 
-	// 按修改时间排序（最新在前）
+	// Sort by mtime, newest first.
 	sort.Slice(mdFiles, func(i, j int) bool {
 		fi, _ := mdFiles[i].Info()
 		fj, _ := mdFiles[j].Info()
 		return fi.ModTime().After(fj.ModTime())
 	})
 
-	// 限制数量
+	// Cap file count.
 	if len(mdFiles) > maxMemoryFiles {
 		mdFiles = mdFiles[:maxMemoryFiles]
 	}
@@ -175,7 +175,7 @@ func scanDir(baseDir string, fullContent bool) ([]*MemoryEntry, error) {
 			}
 			results = append(results, entry)
 		} else {
-			// 只读前几行获取 frontmatter
+			// Read full file but only frontmatter is used in this branch.
 			content := string(data)
 			fm, parseErr := parseFrontmatterOnly(content)
 			if parseErr != nil {

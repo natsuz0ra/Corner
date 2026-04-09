@@ -6,19 +6,19 @@ import (
 	"strings"
 )
 
-// Consolidator 记忆整合器，定期合并碎片记忆并清理冗余。
-// 参考 Claude Code 的 autoDream 服务。
+// Consolidator merges fragmented memories and removes redundancy periodically.
+// Similar in spirit to Claude Code's autoDream service.
 type Consolidator struct {
 	store *FileMemoryStore
 }
 
-// NewConsolidator 创建整合器。
+// NewConsolidator creates a consolidator.
 func NewConsolidator(store *FileMemoryStore) *Consolidator {
 	return &Consolidator{store: store}
 }
 
-// Run 执行一次整合：扫描所有记忆，合并同类型同主题的碎片。
-// 返回 (合并数, 删除数, error)。
+// Run performs one consolidation pass: scan all memories and merge same-type fragments.
+// Returns (merge count, delete count, error).
 func (c *Consolidator) Run() (merged int, deleted int, err error) {
 	entries, err := c.store.Scan()
 	if err != nil {
@@ -29,7 +29,7 @@ func (c *Consolidator) Run() (merged int, deleted int, err error) {
 		return 0, 0, nil
 	}
 
-	// 按类型分组
+	// Group by memory type.
 	grouped := make(map[MemoryType][]*MemoryEntry)
 	for _, e := range entries {
 		grouped[e.Type] = append(grouped[e.Type], e)
@@ -60,14 +60,14 @@ func (c *Consolidator) Run() (merged int, deleted int, err error) {
 		}
 	}
 
-	// 先删除旧条目
+	// Delete old entries first.
 	for _, slug := range toDelete {
 		if delErr := c.store.Delete(slug); delErr != nil {
 			logging.Warn("consolidator_delete_failed", "slug", slug, "error", delErr)
 		}
 	}
 
-	// 再创建合并后的新条目
+	// Then save merged entries.
 	for _, entry := range toCreate {
 		if saveErr := c.store.Save(entry); saveErr != nil {
 			logging.Warn("consolidator_save_failed", "name", entry.Name, "error", saveErr)
@@ -80,8 +80,8 @@ func (c *Consolidator) Run() (merged int, deleted int, err error) {
 	return merged, deleted, nil
 }
 
-// shouldMerge 判断两条记忆是否应该合并。
-// 条件：同类型 + name 相同或 description 高度重叠。
+// shouldMerge reports whether two memories should merge.
+// Same type and (same name or highly overlapping descriptions).
 func shouldMerge(a, b *MemoryEntry) bool {
 	if a.Type != b.Type {
 		return false
@@ -92,8 +92,8 @@ func shouldMerge(a, b *MemoryEntry) bool {
 	return isSimilarDescription(a.Description, b.Description)
 }
 
-// isSimilarDescription 判断两个 description 是否高度相似。
-// 简单实现：一方包含另一方且重叠比例超过 80%。
+// isSimilarDescription is a simple similarity check for descriptions.
+// One string contains the other and the shorter/longer length ratio exceeds 80%.
 func isSimilarDescription(a, b string) bool {
 	a = strings.TrimSpace(a)
 	b = strings.TrimSpace(b)
@@ -113,7 +113,7 @@ func isSimilarDescription(a, b string) bool {
 	return false
 }
 
-// mergeEntries 合并两条记忆为一条新记忆。
+// mergeEntries merges two memories into one new entry.
 func mergeEntries(a, b *MemoryEntry) *MemoryEntry {
 	var content strings.Builder
 	content.WriteString(a.Content)
@@ -136,7 +136,7 @@ func mergeEntries(a, b *MemoryEntry) *MemoryEntry {
 	}
 }
 
-// pickBetterName 选择更有意义的名称。
+// pickBetterName prefers the longer name as a simple heuristic.
 func pickBetterName(a, b string) string {
 	if len(a) >= len(b) {
 		return a
@@ -144,7 +144,7 @@ func pickBetterName(a, b string) string {
 	return b
 }
 
-// pickLonger 返回较长的字符串。
+// pickLonger returns the longer of two strings.
 func pickLonger(a, b string) string {
 	if len(a) >= len(b) {
 		return a

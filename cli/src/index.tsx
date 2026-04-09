@@ -1,13 +1,13 @@
 /**
- * SlimeBot CLI — Ink-based terminal UI 入口。
+ * SlimeBot CLI — Ink-based terminal UI entry point.
  *
- * 使用方式:
- *   slimebot cli          (由 Go 后端自动启动)
+ * Usage:
+ *   slimebot cli          (started automatically by the Go backend)
  *   node cli/dist/index.js --api-url http://... --cli-token xxx
  *
- * 环境变量:
- *   SLIMEBOT_API_URL   — Go headless server 地址
- *   SLIMEBOT_CLI_TOKEN — CLI 认证 token
+ * Environment variables:
+ *   SLIMEBOT_API_URL   — Go headless server URL
+ *   SLIMEBOT_CLI_TOKEN — CLI auth token
  */
 
 import React from "react";

@@ -1,12 +1,12 @@
 /**
- * 命令定义、匹配和 tab 补全。
+ * Command definitions, matching, and tab completion.
  */
 
 import { SUPPORTED_COMMANDS, type CommandMeta } from "../types.js";
 
 const MAX_HINTS = 5;
 
-/** 按前缀匹配返回命令提示列表 */
+/** Return command hints matching the prefix */
 export function matchCommandHints(input: string): CommandMeta[] {
   const trimmed = input.trim();
   if (!trimmed.startsWith("/")) return [];
@@ -20,14 +20,14 @@ export function matchCommandHints(input: string): CommandMeta[] {
   return matched;
 }
 
-/** Tab 补全：返回第一个匹配的完整命令 */
+/** Tab completion: first matching full command */
 export function completeCommand(input: string): string | null {
   const matched = matchCommandHints(input);
   if (matched.length === 0) return null;
   return matched[0].command;
 }
 
-/** 判断输入是否是命令（以 / 开头） */
+/** Whether input is a command (starts with /) */
 export function isCommand(input: string): boolean {
   return input.trim().startsWith("/");
 }

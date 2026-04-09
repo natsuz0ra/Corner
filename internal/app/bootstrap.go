@@ -21,12 +21,12 @@ const (
 	RunModeCLI    RunMode = "cli"
 )
 
-// RunFromEnv 从环境变量加载配置、完成校验并启动应用主循环。
+// RunFromEnv loads config from the environment, validates, and runs the app main loop.
 func RunFromEnv() error {
 	return RunFromEnvWithMode(RunModeServer, nil)
 }
 
-// RunFromEnvWithMode 从环境变量加载配置，并按运行模式启动对应入口。
+// RunFromEnvWithMode loads config from the environment and starts the entry for the given mode.
 func RunFromEnvWithMode(mode RunMode, runCLI func(context.Context, *Core) error) error {
 	cfg := config.Load()
 
@@ -65,12 +65,12 @@ func RunFromEnvWithMode(mode RunMode, runCLI func(context.Context, *Core) error)
 	return app.Run(appCtx)
 }
 
-// RunCLIHeadless 启动 headless HTTP 服务器，返回应用实例（调用方负责关闭）。
-// CLI 模式不需要 JWT_SECRET，会自动生成；返回的应用已开始监听。
+// RunCLIHeadless starts the headless HTTP server and returns the App (caller must close).
+// CLI mode does not require JWT_SECRET; one is auto-generated. The returned App is already listening.
 func RunCLIHeadless() (*App, error) {
 	cfg := config.Load()
 
-	// CLI 模式不需要 JWT_SECRET，自动生成一个
+	// CLI mode does not require JWT_SECRET; generate one if missing.
 	if strings.TrimSpace(cfg.JWTSecret) == "" {
 		cfg.JWTSecret = fmt.Sprintf("cli-auto-%d", time.Now().UnixNano())
 	}
@@ -93,12 +93,12 @@ func RunCLIHeadless() (*App, error) {
 	return app, nil
 }
 
-// ValidateConfig 校验启动所需的关键配置，避免服务带着明显错误启动。
+// ValidateConfig checks required settings so the server does not start misconfigured.
 func ValidateConfig(cfg config.Config) error {
 	return ValidateConfigForMode(cfg, RunModeServer)
 }
 
-// ValidateConfigForMode 根据运行模式校验关键配置。
+// ValidateConfigForMode validates config for the given run mode.
 func ValidateConfigForMode(cfg config.Config, mode RunMode) error {
 	if mode == RunModeCLI {
 		return nil
@@ -112,7 +112,7 @@ func ValidateConfigForMode(cfg config.Config, mode RunMode) error {
 	return nil
 }
 
-// runServerWithGracefulShutdown 在监听错误与外部退出信号之间协调服务关闭流程。
+// runServerWithGracefulShutdown coordinates shutdown between listen errors and context cancel.
 func runServerWithGracefulShutdown(ctx context.Context, server *http.Server) error {
 	errCh := make(chan error, 1)
 	go func() {

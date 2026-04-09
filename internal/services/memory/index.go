@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// rebuildEntrypoint 重建 MEMORY.md 索引文件。
-// 扫描目录下所有 .md 记忆文件，生成按更新时间排序的索引列表。
+// rebuildEntrypoint rebuilds the MEMORY.md index file.
+// Scans all .md memories and writes a list ordered by update time.
 func rebuildEntrypoint(baseDir string, maxLines int) error {
 	entries, err := scanMemoryDir(baseDir)
 	if err != nil {
@@ -25,7 +25,7 @@ func rebuildEntrypoint(baseDir string, maxLines int) error {
 
 	content := b.String()
 
-	// 截断到最大行数
+	// Truncate to max line count.
 	lines := strings.Split(content, "\n")
 	if len(lines) > maxLines {
 		lines = lines[:maxLines]

@@ -1,7 +1,7 @@
 /**
- * BlinkDot — 闪烁圆点组件。
- * blinkOn=true 时渲染彩色 ●，blinkOn=false 时渲染等宽空格。
- * 两者视觉宽度一致（都是 1 个字符），因此不会导致文本抖动。
+ * BlinkDot — blinking dot indicator.
+ * When blinkOn=true renders a colored ●; when false, a fixed-width space.
+ * Same visual width (one cell) so layout does not jitter.
  */
 
 import React from "react";
@@ -13,7 +13,7 @@ interface BlinkDotProps {
   blinkOn: boolean;
 }
 
-/** 圆点颜色映射 */
+/** Dot color map */
 const DOT_COLORS: Record<string, string> = {
   white: "white",
   yellow: "yellow",
@@ -31,12 +31,12 @@ export function BlinkDot({ color, blinkOn }: BlinkDotProps): React.ReactElement 
   );
 }
 
-/** 获取 AI 等待时的圆点状态 */
+/** Dot state while the assistant is waiting */
 export function assistantDotState(waiting: boolean): { color: string; blinkOn: boolean } {
   return { color: "white", blinkOn: waiting };
 }
 
-/** 获取工具调用的圆点状态 */
+/** Dot state for tool calls */
 export function toolDotState(status: string): { color: string; blinkOn: boolean } {
   switch (status.trim()) {
     case "pending":

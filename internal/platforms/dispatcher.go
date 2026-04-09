@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Dispatcher 消息平台入站统一入口：解析会话与模型，组装 AgentCallbacks 并调用 HandleChatStream。
+// Dispatcher is the inbound entry for message platforms: resolves session/model and calls HandleChatStream.
 type Dispatcher struct {
 	chat      platformChatService
 	approvals ApprovalBroker
@@ -40,10 +40,10 @@ func NewDispatcher(chat platformChatService, approvals ApprovalBroker) *Dispatch
 	}
 }
 
-// HandleInbound 是消息平台的主入口：
-// 1) 校验入站消息并解析 chat/session/model；
-// 2) 组装 AgentCallbacks，串联工具开始、审批等待、工具结果回传；
-// 3) 将最终模型回复发送回平台。
+// HandleInbound is the main platform entry:
+// 1) validate inbound payload and resolve chat/session/model;
+// 2) wire AgentCallbacks for tool start, approval wait, and tool results;
+// 3) send the final model reply back to the platform.
 func (d *Dispatcher) HandleInbound(ctx context.Context, message InboundMessage, sender OutboundSender) error {
 	if d == nil || d.chat == nil {
 		return fmt.Errorf("dispatcher is not initialized")
@@ -124,7 +124,7 @@ func (d *Dispatcher) HandleInbound(ctx context.Context, message InboundMessage, 
 	return sender.SendText(chatID, answer)
 }
 
-// HandleTelegramApprovalCallback 只负责把 Telegram 回调转给审批 broker 解析并落地结果。
+// HandleTelegramApprovalCallback forwards Telegram callback_data to the approval broker.
 func (d *Dispatcher) HandleTelegramApprovalCallback(chatID string, callbackData string) (bool, error) {
 	if d == nil || d.approvals == nil {
 		return false, fmt.Errorf("dispatcher approvals is not initialized")

@@ -65,7 +65,7 @@ type chatUploadService interface {
 	SaveFiles(sessionID string, files []*multipart.FileHeader) ([]chatsvc.UploadedAttachment, error)
 }
 
-// HTTPController 聚合 REST 接口依赖，负责参数/响应层处理。
+// HTTPController wires REST handlers and request/response shaping.
 type HTTPController struct {
 	skillPackage skillPackageService
 	skillRuntime skillRuntimeService
@@ -79,7 +79,7 @@ type HTTPController struct {
 	tokenManager *auth.TokenManager
 }
 
-// NewHTTPController 组装 HTTP 控制器并注入所需服务。
+// NewHTTPController constructs the HTTP controller with injected services.
 func NewHTTPController(
 	authService authService,
 	sessionsService sessionService,

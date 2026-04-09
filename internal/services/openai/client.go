@@ -14,7 +14,7 @@ import (
 	"github.com/openai/openai-go/v3/option"
 )
 
-// OpenAIClient 封装 OpenAI 兼容 API 的 HTTP 客户端，实现 llmsvc.Provider 接口。
+// OpenAIClient wraps an OpenAI-compatible HTTP API client and implements llmsvc.Provider.
 type OpenAIClient struct {
 	Client *http.Client
 }
@@ -25,7 +25,7 @@ func NewOpenAIClient() *OpenAIClient {
 	}
 }
 
-// StreamChat 发起流式聊天请求（不带工具），保持原有调用兼容。
+// StreamChat starts a streaming chat request without tools (legacy compatibility).
 func (c *OpenAIClient) StreamChat(ctx context.Context, modelConfig llmsvc.ModelRuntimeConfig, messages []llmsvc.ChatMessage, onChunk func(string) error) error {
 	result, err := c.StreamChatWithTools(ctx, modelConfig, messages, nil, onChunk)
 	if err != nil {
@@ -37,7 +37,7 @@ func (c *OpenAIClient) StreamChat(ctx context.Context, modelConfig llmsvc.ModelR
 	return nil
 }
 
-// StreamChatWithTools 发起支持 function call 的流式聊天请求，实现 llmsvc.Provider 接口。
+// StreamChatWithTools starts a streaming chat with function calling; implements llmsvc.Provider.
 func (c *OpenAIClient) StreamChatWithTools(
 	ctx context.Context,
 	modelConfig llmsvc.ModelRuntimeConfig,
@@ -122,7 +122,7 @@ func (c *OpenAIClient) StreamChatWithTools(
 	return &llmsvc.StreamResult{Type: llmsvc.StreamResultText}, nil
 }
 
-// supportsDeveloperRole 部分兼容端（如阿里云）不支持 developer role，需降级为 system。
+// supportsDeveloperRole: some compatible endpoints (e.g. Alibaba Cloud) omit developer role; fall back to system.
 func supportsDeveloperRole(baseURL string) bool {
 	parsed, err := url.Parse(strings.TrimSpace(baseURL))
 	if err != nil {
@@ -140,7 +140,7 @@ func supportsDeveloperRole(baseURL string) bool {
 	return true
 }
 
-// buildRequestMessages 将内部 ChatMessage 转为 SDK 消息。
+// buildRequestMessages converts internal ChatMessages to SDK message params.
 func buildRequestMessages(messages []llmsvc.ChatMessage, supportDeveloperRole bool) []openai.ChatCompletionMessageParamUnion {
 	var result []openai.ChatCompletionMessageParamUnion
 	for _, msg := range messages {
@@ -211,7 +211,7 @@ func buildRequestMessages(messages []llmsvc.ChatMessage, supportDeveloperRole bo
 	return result
 }
 
-// buildRequestUserContentParts 将多模态 ContentParts 转为 OpenAI 图文/音频/文件等内容块列表。
+// buildRequestUserContentParts converts multimodal ContentParts to OpenAI user content parts (image/audio/file blocks).
 func buildRequestUserContentParts(parts []llmsvc.ChatMessageContentPart) []openai.ChatCompletionContentPartUnionParam {
 	result := make([]openai.ChatCompletionContentPartUnionParam, 0, len(parts))
 	for _, part := range parts {

@@ -18,21 +18,21 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Controller WebSocket 控制器：处理 WebSocket 连接升级、读写分离、串行处理聊天与工具审批
+// Controller is the WebSocket handler: upgrades connections, splits read/write, serializes chat and tool approval.
 type Controller struct {
 	chatService *chatsvc.ChatService
 	upgrader    websocket.Upgrader
 }
 
-// chatIncoming 客户端发送的 WebSocket 消息结构
+// chatIncoming is the client WebSocket message shape.
 type chatIncoming struct {
-	Type          string   `json:"type"`          // 消息类型：chat/ping/tool_approve 等
-	SessionID     string   `json:"sessionId"`     // 会话ID
-	Content       string   `json:"content"`       // 用户输入内容
-	ModelID       string   `json:"modelId"`       // 模型配置ID
-	AttachmentIDs []string `json:"attachmentIds"` // 附件ID列表
-	ToolCallID    string   `json:"toolCallId"`    // 工具调用ID（用于审批）
-	Approved      *bool    `json:"approved"`      // 审批结果
+	Type          string   `json:"type"`          // Message type: chat, ping, tool_approve, etc.
+	SessionID     string   `json:"sessionId"`     // Session ID
+	Content       string   `json:"content"`       // User input text
+	ModelID       string   `json:"modelId"`       // LLM config ID
+	AttachmentIDs []string `json:"attachmentIds"` // Attachment IDs
+	ToolCallID    string   `json:"toolCallId"`    // Tool call ID (for approval flow)
+	Approved      *bool    `json:"approved"`      // Approval outcome
 }
 
 type wsOutChunk struct {
@@ -48,14 +48,14 @@ type activeChatCanceler struct {
 	cancel context.CancelFunc
 }
 
-// Set 设置当前活跃的聊天取消函数
+// Set stores the cancel func for the active chat.
 func (a *activeChatCanceler) Set(cancel context.CancelFunc) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.cancel = cancel
 }
 
-// Clear 清除当前活跃的取消函数
+// Clear clears the active cancel func if it matches.
 func (a *activeChatCanceler) Clear(cancel context.CancelFunc) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -63,7 +63,7 @@ func (a *activeChatCanceler) Clear(cancel context.CancelFunc) {
 	a.cancel = nil
 }
 
-// Cancel 取消当前活跃的聊天任务，若无活跃任务返回 false
+// Cancel cancels the active chat; returns false if none is active.
 func (a *activeChatCanceler) Cancel() bool {
 	a.mu.Lock()
 	cancel := a.cancel
@@ -88,11 +88,11 @@ func NewController(chatService *chatsvc.ChatService) *Controller {
 	}
 }
 
-// approvalBroker 管理工具调用审批的通道
+// approvalBroker holds channels for tool-call approval.
 type approvalBroker struct {
-	// 保护 channels，避免并发读写 map。
+	// Guards channels map during concurrent access.
 	mu sync.Mutex
-	// toolCallID -> 审批回传通道。
+	// toolCallID -> channel for approval response.
 	channels map[string]chan chatsvc.ApprovalResponse
 }
 
@@ -100,7 +100,7 @@ func newApprovalBroker() *approvalBroker {
 	return &approvalBroker{channels: make(map[string]chan chatsvc.ApprovalResponse)}
 }
 
-// Register 注册工具调用审批通道，返回用于接收审批结果的通道
+// Register registers an approval channel for a tool call; returns the receive channel.
 func (b *approvalBroker) Register(toolCallID string) chan chatsvc.ApprovalResponse {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -109,7 +109,7 @@ func (b *approvalBroker) Register(toolCallID string) chan chatsvc.ApprovalRespon
 	return ch
 }
 
-// Resolve 处理工具调用审批结果，将结果发送到对应通道
+// Resolve delivers an approval result to the registered channel.
 func (b *approvalBroker) Resolve(toolCallID string, resp chatsvc.ApprovalResponse) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -122,14 +122,14 @@ func (b *approvalBroker) Resolve(toolCallID string, resp chatsvc.ApprovalRespons
 	}
 }
 
-// Remove 移除指定工具调用的审批通道（超时或取消时调用）
+// Remove drops the approval channel for a tool call (timeout or cancel).
 func (b *approvalBroker) Remove(toolCallID string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.channels, toolCallID)
 }
 
-// Chat 处理 WebSocket 连接：升级 HTTP 连接，启动读写循环和聊天处理循环
+// Chat handles a WebSocket: upgrades HTTP, starts read/write loops and chat loop.
 func (w *Controller) Chat(wr http.ResponseWriter, req *http.Request) {
 	conn, err := w.upgrader.Upgrade(wr, req, nil)
 	if err != nil {
@@ -159,7 +159,7 @@ func (w *Controller) Chat(wr http.ResponseWriter, req *http.Request) {
 	w.runChatLoop(sessionCtx, enqueue, chatCh, broker, activeCancel)
 }
 
-// startWriteLoop 启动单独写协程，确保 websocket 发送顺序一致。
+// startWriteLoop runs a dedicated writer goroutine for ordered WebSocket sends.
 func (w *Controller) startWriteLoop(
 	sessionCtx context.Context,
 	cancelSession context.CancelFunc,
@@ -181,7 +181,7 @@ func (w *Controller) startWriteLoop(
 	}()
 }
 
-// startReadLoop 解析客户端协议消息，并分流到聊天队列或审批通道。
+// startReadLoop parses client messages and routes to chat queue or approval broker.
 func (w *Controller) startReadLoop(
 	sessionCtx context.Context,
 	cancelSession context.CancelFunc,
@@ -191,7 +191,7 @@ func (w *Controller) startReadLoop(
 	broker *approvalBroker,
 	activeCancel *activeChatCanceler,
 ) {
-	// 读协程负责协议解包与分流；实际聊天处理在主循环串行执行。
+	// Read goroutine parses and routes; chat runs serially in the main loop.
 	go func() {
 		for {
 			_, payload, err := conn.ReadMessage()
@@ -223,7 +223,7 @@ func (w *Controller) startReadLoop(
 					})
 				}
 			case "stop":
-				// 用户主动中断本次流式输出：仅取消当前 chatCtx，不关闭 websocket 会话。
+				// User stopped this stream: cancel chatCtx only, keep WebSocket open.
 				if activeCancel.Cancel() {
 					_ = enqueue(map[string]any{"type": "stopping", "sessionId": incoming.SessionID})
 				}
@@ -246,7 +246,7 @@ func (w *Controller) startReadLoop(
 	}()
 }
 
-// runChatLoop 串行消费 chat 消息，避免同连接内并发处理导致状态错乱。
+// runChatLoop consumes chat messages serially to avoid per-connection races.
 func (w *Controller) runChatLoop(
 	sessionCtx context.Context,
 	enqueue func(any) bool,
@@ -266,7 +266,7 @@ func (w *Controller) runChatLoop(
 	}
 }
 
-// handleChatIncoming 处理单条 chat 请求并完成流式输出与收尾事件下发。
+// handleChatIncoming handles one chat request and streams output plus completion events.
 func (w *Controller) handleChatIncoming(
 	sessionCtx context.Context,
 	enqueue func(any) bool,
@@ -345,7 +345,7 @@ func (w *Controller) handleChatIncoming(
 	donePayload := map[string]any{"type": "done", "sessionId": session.ID}
 	if streamResult != nil {
 		donePayload["answer"] = streamResult.Answer
-		// 由前端根据标记决定文案与渲染（例如“已停止输出”多语言展示）。
+		// Client uses flags for copy and rendering (e.g. i18n for "output stopped").
 		donePayload["isInterrupted"] = streamResult.IsInterrupted
 		donePayload["isStopPlaceholder"] = streamResult.IsStopPlaceholder
 	}
@@ -370,7 +370,7 @@ func (w *Controller) handleChatIncoming(
 	return true
 }
 
-// buildCallbacks 构建 chatService 所需回调，桥接为 websocket 协议事件。
+// buildCallbacks builds ChatService callbacks and maps them to WebSocket events.
 func (w *Controller) buildCallbacks(
 	enqueue func(any) bool,
 	broker *approvalBroker,

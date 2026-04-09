@@ -13,7 +13,7 @@ func TestConsolidator_MergesDuplicateNames(t *testing.T) {
 	}
 	defer store.Close()
 
-	// 保存两条同类型同名的记忆
+	// Save two memories of the same type with the same name.
 	entry1 := &MemoryEntry{
 		Name:        "Go Tips",
 		Description: "Go programming tips",
@@ -30,19 +30,19 @@ func TestConsolidator_MergesDuplicateNames(t *testing.T) {
 	if err := store.Save(entry1); err != nil {
 		t.Fatalf("Save entry1: %v", err)
 	}
-	// 第二条同名但 slug 相同，Save 内部会合并
+	// Second save has the same name and slug; Save merges internally.
 	if err := store.Save(entry2); err != nil {
 		t.Fatalf("Save entry2: %v", err)
 	}
 
-	// 运行整合器
+	// Run the consolidator.
 	c := NewConsolidator(store)
 	merged, deleted, err := c.Run()
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
-	// 应该已经合并过了（Save 内部去重），consolidator 不需要额外操作
+	// Save already deduplicated; consolidator may have nothing extra to do.
 	t.Logf("merged=%d, deleted=%d", merged, deleted)
 }
 
@@ -54,7 +54,7 @@ func TestConsolidator_MergesSimilarDescriptions(t *testing.T) {
 	}
 	defer store.Close()
 
-	// 两条同类型、description 高度相似的记忆
+	// Two memories of the same type with highly similar descriptions.
 	entry1 := &MemoryEntry{
 		Name:        "User Pref Dark",
 		Description: "User prefers dark mode in editor",
@@ -71,7 +71,7 @@ func TestConsolidator_MergesSimilarDescriptions(t *testing.T) {
 	if err := store.Save(entry1); err != nil {
 		t.Fatalf("Save entry1: %v", err)
 	}
-	// 修改 slug 避免同名覆盖
+	// Change name to avoid same-slug overwrite.
 	entry2.Name = "Dark Mode Pref"
 	if err := store.Save(entry2); err != nil {
 		t.Fatalf("Save entry2: %v", err)
@@ -85,7 +85,7 @@ func TestConsolidator_MergesSimilarDescriptions(t *testing.T) {
 
 	t.Logf("merged=%d, deleted=%d", merged, deleted)
 
-	// 验证整合后记忆数量
+	// Verify remaining memory count after consolidation.
 	remaining, _ := store.List()
 	t.Logf("remaining entries: %d", len(remaining))
 }
@@ -98,7 +98,7 @@ func TestConsolidator_NoMergeNeeded(t *testing.T) {
 	}
 	defer store.Close()
 
-	// 两条不同类型的记忆
+	// Two memories of different types.
 	entry1 := &MemoryEntry{
 		Name:        "Alpha",
 		Description: "First entry",
@@ -195,10 +195,10 @@ func TestFreshnessLabel(t *testing.T) {
 	}{
 		{"fresh", 0, ""},
 		{"1 day", 1, ""},
-		{"3 days", 3, "[3天前]"},
-		{"7 days", 7, "[7天前]"},
-		{"14 days", 14, "[14天前，可能过时]"},
-		{"31 days", 31, "[31天前，需要验证]"},
+		{"3 days", 3, "[3 days ago]"},
+		{"7 days", 7, "[7 days ago]"},
+		{"14 days", 14, "[14 days ago, may be stale]"},
+		{"31 days", 31, "[31 days ago, verify before use]"},
 	}
 
 	for _, tt := range tests {
@@ -220,7 +220,7 @@ func TestSave_DeduplicatesSameSlug(t *testing.T) {
 	}
 	defer store.Close()
 
-	// 第一次保存
+	// First save.
 	entry1 := &MemoryEntry{
 		Name:        "Test Entry",
 		Description: "Original description",
@@ -231,7 +231,7 @@ func TestSave_DeduplicatesSameSlug(t *testing.T) {
 		t.Fatalf("Save first: %v", err)
 	}
 
-	// 第二次保存同名记忆（应更新而非创建新文件）
+	// Second save with same name (should update, not create a new file).
 	entry2 := &MemoryEntry{
 		Name:        "Test Entry",
 		Description: "Updated description",
@@ -242,7 +242,7 @@ func TestSave_DeduplicatesSameSlug(t *testing.T) {
 		t.Fatalf("Save second: %v", err)
 	}
 
-	// 验证只有一个文件，且内容是更新后的
+	// Verify a single file with updated content.
 	loaded, err := store.Load(entry1.Slug())
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -254,12 +254,12 @@ func TestSave_DeduplicatesSameSlug(t *testing.T) {
 		t.Errorf("Content = %q, want 'Updated content'", loaded.Content)
 	}
 
-	// 验证创建时间保留
+	// Verify original creation time is preserved.
 	if loaded.Created.After(loaded.Updated) {
 		t.Error("Created should not be after Updated")
 	}
 
-	// 验证只有一个 .md 文件
+	// Verify only one logical entry for that name.
 	list, _ := store.List()
 	names := make(map[string]bool)
 	for _, e := range list {

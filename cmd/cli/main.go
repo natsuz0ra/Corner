@@ -24,7 +24,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 启动 headless HTTP 服务器
+	// Start headless HTTP server.
 	slimeApp, err := app.RunCLIHeadless()
 	if err != nil {
 		logging.Error("cli_headless_start_failed", "err", err)
@@ -42,14 +42,14 @@ func main() {
 
 	logging.Info("cli_headless_ready", "api_url", apiURL)
 
-	// 查找 CLI JS 入口
+	// Locate CLI JS entry.
 	cliEntry := findCLIEntry()
 	if cliEntry == "" {
 		logging.Error("cli_entry_not_found", "message", "cli/cli.cjs not found. Run 'npm run build:cli' first.")
 		os.Exit(1)
 	}
 
-	// 启动 Node.js CLI 子进程
+	// Start Node.js CLI child process.
 	nodeCmd := findNode()
 	args := []string{cliEntry,
 		"--api-url", apiURL,
@@ -74,9 +74,9 @@ func main() {
 	}
 }
 
-// findCLIEntry 查找 CLI JS 打包产物。
+// findCLIEntry locates the bundled CLI JS output.
 func findCLIEntry() string {
-	// 相对于可执行文件所在目录查找
+	// Search relative to the executable directory.
 	exe, err := os.Executable()
 	if err != nil {
 		return ""
@@ -88,7 +88,7 @@ func findCLIEntry() string {
 		filepath.Join(base, "..", "cli", "cli.cjs"),
 	}
 
-	// 开发模式：相对于工作目录
+	// Dev mode: relative to working directory.
 	wd, _ := os.Getwd()
 	candidates = append(candidates,
 		filepath.Join(wd, "cli", "cli.cjs"),
@@ -102,14 +102,14 @@ func findCLIEntry() string {
 	return ""
 }
 
-// findNode 查找 Node.js 可执行文件。
+// findNode locates the Node.js executable.
 func findNode() string {
-	// 优先使用 NODE_PATH 环境变量
+	// Prefer NODE_PATH when set.
 	if nodePath := os.Getenv("NODE_PATH"); nodePath != "" {
 		return nodePath
 	}
 
-	// 查找系统 Node.js
+	// Look up system Node.js.
 	name := "node"
 	if runtime.GOOS == "windows" {
 		name = "node.exe"
@@ -119,7 +119,7 @@ func findNode() string {
 		return p
 	}
 
-	// 常见安装路径
+	// Common install paths.
 	if runtime.GOOS == "windows" {
 		paths := []string{
 			`C:\Program Files\nodejs\node.exe`,

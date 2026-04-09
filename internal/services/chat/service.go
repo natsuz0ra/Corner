@@ -12,7 +12,7 @@ import (
 	skillsvc "slimebot/internal/services/skill"
 )
 
-// ChatService 负责聊天主流程编排，串联上下文构建、Agent 调用、附件和技能状态缓存。
+// ChatService orchestrates the chat flow: context, agent, uploads, and per-session skills.
 type ChatService struct {
 	store          domain.ChatStore
 	agent          *AgentService
@@ -34,13 +34,13 @@ type ChatService struct {
 	platformModelAt time.Time
 }
 
-// chatStreamAccumulator 聚合流式文本，并记住首次推送失败后的错误状态。
+// chatStreamAccumulator collects streamed text and the first push error, if any.
 type chatStreamAccumulator struct {
 	answerBuilder strings.Builder
 	pushErr       error
 }
 
-// ChatStreamResult 描述一次聊天流结束后的最终结果与附加状态。
+// ChatStreamResult is the outcome of one chat stream after persistence.
 type ChatStreamResult struct {
 	Answer            string
 	IsInterrupted     bool
@@ -52,7 +52,7 @@ type ChatStreamResult struct {
 	PushError         string
 }
 
-// NewChatService 创建聊天服务，并初始化会话级技能缓存。
+// NewChatService constructs ChatService with per-session skill activation maps.
 func NewChatService(store domain.ChatStore, providerFactory *llmsvc.Factory, mcpManager *mcp.Manager, skillRuntime *skillsvc.SkillRuntimeService, memory *memsvc.MemoryService) *ChatService {
 	return &ChatService{
 		store:          store,
@@ -64,17 +64,17 @@ func NewChatService(store domain.ChatStore, providerFactory *llmsvc.Factory, mcp
 	}
 }
 
-// SetUploadService 注入附件暂存服务，供单轮消费与回收使用。
+// SetUploadService injects the upload staging service for one-turn consume/cleanup.
 func (s *ChatService) SetUploadService(uploads *ChatUploadService) {
 	s.uploads = uploads
 }
 
-// SetRunContext 注入部署相关的运行上下文，用于构建系统提示词中的环境信息。
+// SetRunContext injects deployment/runtime info for the system prompt environment section.
 func (s *ChatService) SetRunContext(ctx RunContext) {
 	s.runContext = ctx
 }
 
-// getSessionActivatedSkills 返回会话已激活技能的副本，避免调用方改写内部缓存。
+// getSessionActivatedSkills returns a copy of activated skills for the session.
 func (s *ChatService) getSessionActivatedSkills(sessionID string) map[string]struct{} {
 	if strings.TrimSpace(sessionID) == "" {
 		return map[string]struct{}{}
@@ -96,7 +96,7 @@ func (s *ChatService) getSessionActivatedSkills(sessionID string) map[string]str
 	return copyMap
 }
 
-// mergeSessionActivatedSkills 合并本轮新增技能，并在缓存过大时按最久未访问策略淘汰。
+// mergeSessionActivatedSkills merges newly activated skills and evicts LRU sessions if needed.
 func (s *ChatService) mergeSessionActivatedSkills(sessionID string, activated map[string]struct{}) {
 	if strings.TrimSpace(sessionID) == "" || len(activated) == 0 {
 		return
@@ -123,7 +123,7 @@ func (s *ChatService) mergeSessionActivatedSkills(sessionID string, activated ma
 	}
 }
 
-// evictOldSkillsSessionsLocked 淘汰最久未访问的技能会话缓存，调用方需已持有 skillsMu。
+// evictOldSkillsSessionsLocked evicts least-recently-used skill sessions; caller holds skillsMu.
 func (s *ChatService) evictOldSkillsSessionsLocked(maxEvict int) {
 	for i := 0; i < maxEvict && len(s.skillTouchedAt) > 0; i++ {
 		var oldestSession string
@@ -142,28 +142,28 @@ func (s *ChatService) evictOldSkillsSessionsLocked(maxEvict int) {
 	}
 }
 
-// getSystemPromptCached 读取已缓存的 system prompt。
+// getSystemPromptCached returns the in-memory system prompt cache.
 func (s *ChatService) getSystemPromptCached() string {
 	s.promptMu.RLock()
 	defer s.promptMu.RUnlock()
 	return s.systemPrompt
 }
 
-// setSystemPromptCached 更新内存中的 system prompt 缓存。
+// setSystemPromptCached updates the in-memory system prompt cache.
 func (s *ChatService) setSystemPromptCached(prompt string) {
 	s.promptMu.Lock()
 	defer s.promptMu.Unlock()
 	s.systemPrompt = prompt
 }
 
-// getStableSystemPromptCached 读取稳定 system prompt 与对应 catalog 快照。
+// getStableSystemPromptCached returns the stable system prompt and skill catalog snapshot.
 func (s *ChatService) getStableSystemPromptCached() (prompt string, catalog string) {
 	s.promptMu.RLock()
 	defer s.promptMu.RUnlock()
 	return s.stablePrompt, s.stableCatalog
 }
 
-// setStableSystemPromptCached 更新稳定 system prompt 与 catalog 快照。
+// setStableSystemPromptCached updates stable system prompt and catalog snapshot.
 func (s *ChatService) setStableSystemPromptCached(prompt string, catalog string) {
 	s.promptMu.Lock()
 	defer s.promptMu.Unlock()

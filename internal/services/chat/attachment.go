@@ -19,8 +19,8 @@ const (
 	maxInlineAttachmentBytes   = 256 * 1024
 )
 
-// classifyAttachmentCategory 将任意上传文件收敛到三类：
-// image / audio / document。未知类型统一回收到 document，避免上传被拒绝。
+// classifyAttachmentCategory maps uploads to image / audio / document.
+// Unknown types become document so uploads are not rejected.
 func classifyAttachmentCategory(mimeType, ext string) string {
 	mimeLower := strings.ToLower(strings.TrimSpace(mimeType))
 	extLower := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(ext), "."))
@@ -34,8 +34,8 @@ func classifyAttachmentCategory(mimeType, ext string) string {
 	}
 }
 
-// detectStoredFileMime 采用“文件头 sniff > 请求头 > 扩展名 > 默认值”优先级。
-// 这样可以在前端传错 Content-Type 时做补偿，提升分类稳定性。
+// detectStoredFileMime prefers magic-byte sniff, then header mime, extension, then octet-stream.
+// Helps when the client sends a wrong Content-Type.
 func detectStoredFileMime(path, headerMime, ext string) string {
 	sniffed := ""
 	if file, err := os.Open(path); err == nil {
@@ -60,9 +60,8 @@ func detectStoredFileMime(path, headerMime, ext string) string {
 	return "application/octet-stream"
 }
 
-// buildUserMessageContentParts 为当前用户回合构建多模态 content parts。
-// 返回 fallbackMeta 用于补偿场景：当某个附件构建失败时，调用方可降级到文本提示，
-// 保证“至少有附件元信息进入模型”。
+// buildUserMessageContentParts builds multimodal parts for the current user turn.
+// fallbackMeta lists attachments that failed to inline so callers can fall back to text metadata.
 func buildUserMessageContentParts(userText string, attachments []UploadedAttachment) ([]llmsvc.ChatMessageContentPart, []string) {
 	parts := make([]llmsvc.ChatMessageContentPart, 0, len(attachments)+1)
 	if strings.TrimSpace(userText) != "" {
@@ -83,11 +82,8 @@ func buildUserMessageContentParts(userText string, attachments []UploadedAttachm
 	return parts, fallbackMeta
 }
 
-// buildAttachmentContentPart 将单个附件转换为模型可消费的 part。
-// 规则：
-// 1) image -> ImageContentPart(data URL)
-// 2) audio(wav/mp3) -> InputAudioContentPart
-// 3) 其它全部 -> FileContentPart（文档兜底）
+// buildAttachmentContentPart converts one upload to a model part.
+// Rules: image -> data URL; wav/mp3 -> input_audio; everything else -> file part.
 func buildAttachmentContentPart(file UploadedAttachment) (llmsvc.ChatMessageContentPart, error) {
 	if strings.TrimSpace(file.Path) == "" {
 		return llmsvc.ChatMessageContentPart{}, fmt.Errorf("empty file path")
@@ -120,7 +116,7 @@ func buildAttachmentContentPart(file UploadedAttachment) (llmsvc.ChatMessageCont
 				InputAudioFormat: format,
 			}, nil
 		}
-		// 补偿逻辑：SDK 的 input_audio 目前仅支持 wav/mp3，其它音频自动降级为 document。
+		// SDK input_audio supports wav/mp3 only; other audio becomes a generic file part.
 		fallthrough
 	default:
 		filename := strings.TrimSpace(file.Name)
@@ -135,8 +131,7 @@ func buildAttachmentContentPart(file UploadedAttachment) (llmsvc.ChatMessageCont
 	}
 }
 
-// normalizeMimeTypeForDataURL 生成图片 data URL 所需 mime 类型。
-// 当上传元信息不可靠时，用扩展名做次级补偿。
+// normalizeMimeTypeForDataURL picks a mime for image data URLs; falls back to extension.
 func normalizeMimeTypeForDataURL(mimeType, ext string) string {
 	mimeLower := strings.ToLower(strings.TrimSpace(mimeType))
 	if mimeLower != "" && mimeLower != "application/octet-stream" {
@@ -149,8 +144,8 @@ func normalizeMimeTypeForDataURL(mimeType, ext string) string {
 	return "application/octet-stream"
 }
 
-// resolveInputAudioFormat 将音频 mime/ext 映射为 SDK 支持的输入格式。
-// 未命中返回 false，交由上层补偿为 FileContentPart。
+// resolveInputAudioFormat maps mime/extension to SDK input_audio format.
+// Returns false to let the caller fall back to FileContentPart.
 func resolveInputAudioFormat(mimeType, ext string) (string, bool) {
 	m := strings.ToLower(strings.TrimSpace(mimeType))
 	e := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(ext), "."))

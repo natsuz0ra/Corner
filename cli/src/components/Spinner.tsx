@@ -1,13 +1,13 @@
 /**
- * Spinner — Braille 字符旋转动画组件。
- * 使用 Braille 点阵图案序列创建旋转弧线效果。
+ * Spinner — Braille character rotation animation.
+ * Uses a Braille dot-pattern sequence for a rotating arc effect.
  */
 
 import React, { useEffect, useRef, useState } from "react";
 import { Text } from "ink";
 
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const FRAME_INTERVAL = 80; // 与 GradientFlowText 保持一致的刷新率
+const FRAME_INTERVAL = 80; // Same refresh rate as GradientFlowText
 
 interface SpinnerProps {
   enabled: boolean;
