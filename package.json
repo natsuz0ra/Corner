@@ -1,6 +1,7 @@
 {
   "name": "slimebot-workspace",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "dev": "concurrently -n backend,frontend -c green,cyan \"go run ./cmd/server/main.go\" \"npm --prefix frontend run dev\"",
     "build:frontend": "npm --prefix frontend run build",
