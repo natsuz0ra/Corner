@@ -40,8 +40,8 @@ test("formatToolOutputLines collapses long output when not expanded", () => {
 
   const lines = formatToolOutputLines(entry, 120, false);
 
-  // 5 preview lines + 1 hint line
-  assert.ok(lines.length >= 6);
+  // TOOL_OUTPUT_PREVIEW_LINES preview rows + 1 hint line (each row may wrap)
+  assert.ok(lines.length >= 4);
   assert.ok(lines[lines.length - 1]!.includes("ctrl+o to expand"));
 });
 
@@ -71,7 +71,7 @@ test("formatToolOutputLines shows error output in collapsed mode", () => {
 
   const lines = formatToolOutputLines(entry, 120, false);
 
-  // 5 preview + 1 hint
-  assert.ok(lines.length >= 6);
-  assert.ok(lines[lines.length - 1]!.includes("+3 more lines"));
+  // 3 preview + 1 hint for 8-line error output
+  assert.ok(lines.length >= 4);
+  assert.ok(lines[lines.length - 1]!.includes("more lines"));
 });

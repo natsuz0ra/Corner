@@ -10,6 +10,9 @@ type Handlers = {
   onError: (error: string, sessionId?: string) => void
   onToolCallStart?: (data: ToolCallStartData, sessionId?: string) => void
   onToolCallResult?: (data: ToolCallResultData, sessionId?: string) => void
+  onSubagentStart?: (data: SubagentStartData, sessionId?: string) => void
+  onSubagentChunk?: (data: SubagentChunkData, sessionId?: string) => void
+  onSubagentDone?: (data: SubagentDoneData, sessionId?: string) => void
   onOpen?: () => void
   onClose?: () => void
   onSocketError?: (error: string) => void
@@ -25,6 +28,8 @@ export interface ToolCallStartData {
   params: Record<string, string>
   requiresApproval: boolean
   preamble?: string
+  parentToolCallId?: string
+  subagentRunId?: string
 }
 
 export interface ToolCallResultData {
@@ -35,6 +40,26 @@ export interface ToolCallResultData {
   status: ToolCallStatus
   output: string
   error: string
+  parentToolCallId?: string
+  subagentRunId?: string
+}
+
+export interface SubagentStartData {
+  parentToolCallId: string
+  subagentRunId: string
+  task: string
+}
+
+export interface SubagentChunkData {
+  parentToolCallId: string
+  subagentRunId: string
+  content: string
+}
+
+export interface SubagentDoneData {
+  parentToolCallId: string
+  subagentRunId: string
+  error?: string
 }
 
 type WSIncoming = {
@@ -54,6 +79,9 @@ type WSIncoming = {
   output?: string
   isInterrupted?: boolean
   isStopPlaceholder?: boolean
+  parentToolCallId?: string
+  subagentRunId?: string
+  task?: string
 }
 
 export class ChatSocket {
@@ -175,6 +203,8 @@ export class ChatSocket {
           params: data.params || {},
           requiresApproval: !!data.requiresApproval,
           preamble: data.preamble || '',
+          parentToolCallId: data.parentToolCallId,
+          subagentRunId: data.subagentRunId,
         }, data.sessionId)
       }
 
@@ -187,6 +217,32 @@ export class ChatSocket {
           status: data.status || 'completed',
           output: data.output || '',
           error: data.error || '',
+          parentToolCallId: data.parentToolCallId,
+          subagentRunId: data.subagentRunId,
+        }, data.sessionId)
+      }
+
+      if (data.type === 'subagent_start') {
+        this.handlers?.onSubagentStart?.({
+          parentToolCallId: data.parentToolCallId || '',
+          subagentRunId: data.subagentRunId || '',
+          task: data.task || '',
+        }, data.sessionId)
+      }
+
+      if (data.type === 'subagent_chunk') {
+        this.handlers?.onSubagentChunk?.({
+          parentToolCallId: data.parentToolCallId || '',
+          subagentRunId: data.subagentRunId || '',
+          content: data.content || '',
+        }, data.sessionId)
+      }
+
+      if (data.type === 'subagent_done') {
+        this.handlers?.onSubagentDone?.({
+          parentToolCallId: data.parentToolCallId || '',
+          subagentRunId: data.subagentRunId || '',
+          error: data.error,
         }, data.sessionId)
       }
     }

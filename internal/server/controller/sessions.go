@@ -28,6 +28,8 @@ type sessionToolCallHistory struct {
 	Params           map[string]string `json:"params"`
 	Status           string            `json:"status"`
 	RequiresApproval bool              `json:"requiresApproval"`
+	ParentToolCallID string            `json:"parentToolCallId,omitempty"`
+	SubagentRunID    string            `json:"subagentRunId,omitempty"`
 	Output           string            `json:"output,omitempty"`
 	Error            string            `json:"error,omitempty"`
 	StartedAt        string            `json:"startedAt"`
@@ -239,6 +241,8 @@ func (h *HTTPController) ListMessages(c WebContext) {
 			Params:           parseToolCallParams(record.ParamsJSON),
 			Status:           record.Status,
 			RequiresApproval: record.RequiresApproval,
+			ParentToolCallID: record.ParentToolCallID,
+			SubagentRunID:    record.SubagentRunID,
 			Output:           record.Output,
 			Error:            record.Error,
 			StartedAt:        record.StartedAt.Format("2006-01-02T15:04:05.000Z07:00"),

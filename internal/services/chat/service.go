@@ -54,14 +54,16 @@ type ChatStreamResult struct {
 
 // NewChatService constructs ChatService with per-session skill activation maps.
 func NewChatService(store domain.ChatStore, providerFactory *llmsvc.Factory, mcpManager *mcp.Manager, skillRuntime *skillsvc.SkillRuntimeService, memory *memsvc.MemoryService) *ChatService {
-	return &ChatService{
+	s := &ChatService{
 		store:          store,
-		agent:          NewAgentService(providerFactory, mcpManager, skillRuntime, memory),
 		skillRuntime:   skillRuntime,
 		memory:         memory,
 		skillsBySess:   make(map[string]map[string]struct{}),
 		skillTouchedAt: make(map[string]time.Time),
 	}
+	s.agent = NewAgentService(providerFactory, mcpManager, skillRuntime, memory)
+	s.agent.SetSubagentHost(s)
+	return s
 }
 
 // SetUploadService injects the upload staging service for one-turn consume/cleanup.

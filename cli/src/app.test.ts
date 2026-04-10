@@ -67,3 +67,47 @@ test("mapHistoryMessages inserts tool calls after assistant messages in timeline
   ]);
 });
 
+test("mapHistoryMessages preserves parentToolCallId for nested tool calls", () => {
+  const messages: Message[] = [
+    {
+      id: "a1",
+      sessionId: "s1",
+      role: "assistant",
+      content: "done",
+      seq: 1,
+      createdAt: "2026-01-01T00:00:01Z",
+    },
+  ];
+  const toolCallsByMsgId: Record<string, ToolCallHistoryItem[]> = {
+    a1: [
+      {
+        toolCallId: "parent",
+        toolName: "run_subagent",
+        command: "delegate",
+        params: { task: "x" },
+        status: "completed",
+        requiresApproval: false,
+        output: "ok",
+        startedAt: "2026-01-01T00:00:00Z",
+      },
+      {
+        toolCallId: "child",
+        toolName: "web_search",
+        command: "search",
+        params: { q: "y" },
+        status: "completed",
+        requiresApproval: false,
+        parentToolCallId: "parent",
+        subagentRunId: "run-1",
+        output: "hits",
+        startedAt: "2026-01-01T00:00:01Z",
+      },
+    ],
+  };
+  const entries = mapHistoryMessages(messages, toolCallsByMsgId);
+  const child = entries.find((e) => e.kind === "tool" && e.toolCallId === "child");
+  assert.ok(child && child.kind === "tool");
+  assert.equal(child.parentToolCallId, "parent");
+  assert.equal(child.subagentRunId, "run-1");
+});
+

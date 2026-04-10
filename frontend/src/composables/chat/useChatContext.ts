@@ -8,6 +8,7 @@ export interface ChatMessageContext {
   getReplyToolSummary: (messageId: string) => string
   getReplyTimeline: (messageId: string) => ReplyTimelineEntry[]
   getReplyToolItem: (messageId: string, toolCallId: string) => ToolCallItem | undefined
+  getSubagentChildTools: (messageId: string, parentToolCallId: string) => ToolCallItem[]
   shouldShowInlineToolCall: (messageId: string, toolCallId: string) => boolean
   isReplyToolCollapsed: (messageId: string) => boolean
   isEmptyPlaceholder: (messageId: string) => boolean

@@ -388,7 +388,7 @@ func (w *Controller) buildCallbacks(
 			return nil
 		},
 		OnToolCallStart: func(req chatsvc.ApprovalRequest) error {
-			if !enqueue(map[string]any{
+			payload := map[string]any{
 				"type":             "tool_call_start",
 				"sessionId":        sessionID,
 				"toolCallId":       req.ToolCallID,
@@ -397,7 +397,14 @@ func (w *Controller) buildCallbacks(
 				"params":           req.Params,
 				"requiresApproval": req.RequiresApproval,
 				"preamble":         req.Preamble,
-			}) {
+			}
+			if req.ParentToolCallID != "" {
+				payload["parentToolCallId"] = req.ParentToolCallID
+			}
+			if req.SubagentRunID != "" {
+				payload["subagentRunId"] = req.SubagentRunID
+			}
+			if !enqueue(payload) {
 				return context.Canceled
 			}
 			return nil
@@ -413,7 +420,7 @@ func (w *Controller) buildCallbacks(
 			}
 		},
 		OnToolCallResult: func(result chatsvc.ToolCallResult) error {
-			if !enqueue(map[string]any{
+			payload := map[string]any{
 				"type":             "tool_call_result",
 				"sessionId":        sessionID,
 				"toolCallId":       result.ToolCallID,
@@ -423,7 +430,57 @@ func (w *Controller) buildCallbacks(
 				"status":           result.Status,
 				"output":           result.Output,
 				"error":            result.Error,
+			}
+			if result.ParentToolCallID != "" {
+				payload["parentToolCallId"] = result.ParentToolCallID
+			}
+			if result.SubagentRunID != "" {
+				payload["subagentRunId"] = result.SubagentRunID
+			}
+			if !enqueue(payload) {
+				return context.Canceled
+			}
+			return nil
+		},
+		OnSubagentStart: func(parentToolCallID, runID, task string) error {
+			t := task
+			if len(t) > 512 {
+				t = t[:512] + "…"
+			}
+			if !enqueue(map[string]any{
+				"type":             "subagent_start",
+				"sessionId":        sessionID,
+				"parentToolCallId": parentToolCallID,
+				"subagentRunId":    runID,
+				"task":             t,
 			}) {
+				return context.Canceled
+			}
+			return nil
+		},
+		OnSubagentChunk: func(parentToolCallID, runID, chunk string) error {
+			if !enqueue(map[string]any{
+				"type":             "subagent_chunk",
+				"sessionId":        sessionID,
+				"parentToolCallId": parentToolCallID,
+				"subagentRunId":    runID,
+				"content":          chunk,
+			}) {
+				return context.Canceled
+			}
+			return nil
+		},
+		OnSubagentDone: func(parentToolCallID, runID string, runErr error) error {
+			payload := map[string]any{
+				"type":             "subagent_done",
+				"sessionId":        sessionID,
+				"parentToolCallId": parentToolCallID,
+				"subagentRunId":    runID,
+			}
+			if runErr != nil {
+				payload["error"] = runErr.Error()
+			}
+			if !enqueue(payload) {
 				return context.Canceled
 			}
 			return nil

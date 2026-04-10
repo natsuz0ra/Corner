@@ -9,9 +9,11 @@ const props = withDefaults(defineProps<{
   item: ToolCallItem & { preamble?: string }
   showPreamble?: boolean
   dense?: boolean
+  nestedTools?: ToolCallItem[]
 }>(), {
   showPreamble: false,
   dense: false,
+  nestedTools: () => [],
 })
 
 const emit = defineEmits<{
@@ -33,8 +35,15 @@ const toolLabel = computed(() => {
   if (props.item.toolName === 'exec') return t('toolExec')
   if (props.item.toolName === 'http_request') return t('toolHttpRequest')
   if (props.item.toolName === 'web_search') return t('toolWebSearch')
+  if (props.item.toolName === 'run_subagent') return t('toolRunSubagent')
   return props.item.toolName
 })
+
+const showSubagentStream = computed(() => {
+  return props.item.toolName === 'run_subagent' && !!props.item.subagentStream && props.item.subagentStream.trim() !== ''
+})
+
+const showNestedTools = computed(() => props.nestedTools.length > 0)
 
 const statusLabel = computed(() => {
   switch (props.item.status) {
@@ -77,6 +86,7 @@ const paramsDisplay = computed(() => {
 
 const showActions = computed(() => props.item.status === 'pending')
 const showResult = computed(() => props.item.status === 'completed' || props.item.status === 'error')
+const isRunSubagent = computed(() => props.item.toolName === 'run_subagent')
 const shouldShowPreamble = computed(() => !!props.showPreamble && !!props.item.preamble)
 const outputPanelId = computed(() => `tool-output-${props.item.toolCallId}`)
 
@@ -122,13 +132,13 @@ function onOutputToggle(event: Event) {
       </div>
     </header>
 
-    <section v-if="paramsDisplay || showResult" class="tool-section mt-2">
-      <template v-if="paramsDisplay">
-        <p class="tool-section-title">{{ t('toolCallParams') }}</p>
-        <pre class="tool-params sb-scrollbar">{{ paramsDisplay }}</pre>
-      </template>
+    <section v-if="paramsDisplay" class="tool-section mt-2">
+      <p class="tool-section-title">{{ t('toolCallParams') }}</p>
+      <pre class="tool-params sb-scrollbar">{{ paramsDisplay }}</pre>
+    </section>
 
-      <div v-if="showResult" class="tool-result-block">
+    <section v-if="!isRunSubagent && showResult" class="tool-section mt-2">
+      <div class="tool-result-block">
         <details v-if="item.output" class="tool-output-details text-sm" @toggle="onOutputToggle">
           <summary
             class="tool-result-summary"
@@ -154,6 +164,47 @@ function onOutputToggle(event: Event) {
       <p class="tool-section-title">{{ t('toolCallPreamble') }}</p>
       <div class="tool-preamble">
       {{ item.preamble }}
+      </div>
+    </section>
+
+    <section v-if="showSubagentStream" class="tool-section mt-2.5">
+      <p class="tool-section-title">{{ t('subagentStreamTitle') }}</p>
+      <pre class="tool-params sb-scrollbar">{{ item.subagentStream }}</pre>
+    </section>
+
+    <section v-if="showNestedTools" class="tool-section mt-2.5 subagent-nested-wrap">
+      <p class="tool-section-title">{{ t('subagentNestedTitle') }}</p>
+      <div class="subagent-nested-list flex flex-col gap-2">
+        <ToolCallCard
+          v-for="nested in nestedTools"
+          :key="nested.toolCallId"
+          :item="nested"
+          :dense="true"
+          @approve="emit('approve', $event)"
+          @reject="emit('reject', $event)"
+        />
+      </div>
+    </section>
+
+    <section v-if="isRunSubagent && showResult" class="tool-section mt-2.5">
+      <div class="tool-result-block">
+        <details v-if="item.output" class="tool-output-details text-sm" @toggle="onOutputToggle">
+          <summary
+            class="tool-result-summary"
+            :aria-expanded="isOutputExpanded ? 'true' : 'false'"
+            :aria-controls="outputPanelId"
+          >
+            <span class="tool-result-label">{{ t('toolCallResult') }}</span>
+            <span class="tool-output-summary">{{ t('toolCallOutput') }}</span>
+          </summary>
+          <pre :id="outputPanelId" class="tool-output sb-scrollbar">{{ item.output }}</pre>
+        </details>
+
+        <div v-else class="tool-result-summary tool-result-summary--plain" aria-live="polite">
+          <span class="tool-result-label">{{ t('toolCallResult') }}</span>
+        </div>
+
+        <div v-if="item.error" class="tool-error">{{ item.error }}</div>
       </div>
     </section>
 
@@ -510,6 +561,19 @@ function onOutputToggle(event: Event) {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   border-radius: 6px;
+}
+
+.subagent-nested-wrap {
+  border-left: 3px solid var(--tool-running-border);
+  padding-left: 12px;
+  margin-left: 4px;
+  border-radius: 0 10px 10px 0;
+  background: var(--tool-section-bg);
+}
+
+.subagent-nested-list :deep(.tool-card) {
+  border-color: var(--tool-section-border);
+  box-shadow: none;
 }
 
 @keyframes tool-dot-pulse {

@@ -191,6 +191,8 @@ func (s *ChatService) recordToolCallStart(
 		Status:           startStatus,
 		RequiresApproval: req.RequiresApproval,
 		StartedAt:        time.Now(),
+		ParentToolCallID: req.ParentToolCallID,
+		SubagentRunID:    req.SubagentRunID,
 	})
 }
 
