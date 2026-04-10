@@ -94,6 +94,8 @@ export function mapHistoryMessages(
           status: (tc.status || "completed") as ToolCallStatus,
           output: tc.output,
           error: tc.error,
+          ...(tc.parentToolCallId ? { parentToolCallId: tc.parentToolCallId } : {}),
+          ...(tc.subagentRunId ? { subagentRunId: tc.subagentRunId } : {}),
         });
       }
       entries.push({ kind: "assistant", content: msg.content });
@@ -596,6 +598,8 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
             params: data.params,
             status: data.requiresApproval ? "pending" : "executing",
             content: "",
+            parentToolCallId: data.parentToolCallId,
+            subagentRunId: data.subagentRunId,
           },
         } as AppAction);
 
@@ -622,7 +626,17 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
             output: data.output,
             error: data.error,
             content: data.output || data.error || "",
+            parentToolCallId: data.parentToolCallId,
+            subagentRunId: data.subagentRunId,
           },
+        } as AppAction);
+      },
+      onSubagentChunk: (data) => {
+        if (!data.parentToolCallId || !data.content) return;
+        dispatch({
+          type: "APPEND_SUBAGENT_STREAM",
+          parentToolCallId: data.parentToolCallId,
+          content: data.content,
         } as AppAction);
       },
     });

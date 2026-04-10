@@ -13,14 +13,16 @@ A personal AI agent demo: an extensible foundation for conversational AI apps. I
 - **Chat & sessions**
   - Session list, create, rename, delete
   - Per-session message history
-  - WebSocket streaming (`start` / `chunk` / `done`, plus `error` and tool-call events)
+  - WebSocket streaming (`start` / `chunk` / `done`, plus `error`, tool-call, and subagent events)
   - Auto-generated session titles with live updates
   - Multimodal support
 - **Tools & agent**
   - Multi-turn agent tool-call flow
   - User approval for sensitive built-in tools (today: `exec`) in the web UI, CLI, and Telegram flows
   - Tool results stored in history with detail views
-  - Built-in tools: `exec`, `http_request`, `web_search` (Tavily)
+  - Built-in tools: `exec`, `http_request`, `web_search` (Tavily), **`run_subagent`** (nested agent)
+  - **Subagent:** the main agent can delegate a self-contained task to an inner agent with **isolated context** (no parent chat history). Only **one nesting level** is allowed (the subagent cannot call `run_subagent` again). Inner tool calls are shown **nested under** the parent tool in the web UI and CLI; session history stores `parentToolCallId` so grouping survives a reload.
+  - WebSocket subagent stream: `subagent_start`, `subagent_chunk`, `subagent_done` (in addition to `tool_call_start` / `tool_call_result`)
 - **Memory**
   - Rolling session summaries
   - Long-context compression with recent-message backfill
@@ -222,8 +224,9 @@ VITE_WS_URL=ws://localhost:8080
 
 **Done**
 
-- Sessions and WebSocket streaming (including errors and tool-call events)
+- Sessions and WebSocket streaming (including errors, tool-call, and subagent events)
 - Agent tools and approvals (`exec` requires confirmation; `http_request`, `web_search` as configured)
+- Subagent / nested agent (`run_subagent`), nested tool UI, and persisted parent linkage in tool-call history
 - MCP and skills
 - File-backed persistent memory with full-text search and prompt injection
 - Telegram integration

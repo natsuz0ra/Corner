@@ -28,7 +28,12 @@ const orderedToolCalls = computed(() => {
     .filter((entry) => entry.kind === 'tool_start')
     .map((entry) => props.items.find((toolCall) => toolCall.toolCallId === entry.toolCallId))
     .filter((toolCall): toolCall is ToolCallItem => !!toolCall)
+    .filter((item) => !item.parentToolCallId)
 })
+
+function nestedForParent(parentId: string) {
+  return props.items.filter((tc) => tc.parentToolCallId === parentId)
+}
 
 const totalCount = computed(() => orderedToolCalls.value.length)
 const inProgressCount = computed(() => {
@@ -74,6 +79,7 @@ function closeDialog() {
           v-for="item in orderedToolCalls"
           :key="item.toolCallId"
           :item="item"
+          :nested-tools="nestedForParent(item.toolCallId)"
           :show-preamble="true"
           :dense="true"
           role="listitem"

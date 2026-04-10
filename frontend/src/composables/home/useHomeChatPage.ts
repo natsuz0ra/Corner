@@ -108,6 +108,7 @@ export function useHomeChatPage() {
     getReplyToolSummary: toolDetailState.getReplyToolSummary,
     getReplyTimeline: toolDetailState.getReplyTimeline,
     getReplyToolItem: toolDetailState.getReplyToolItem,
+    getSubagentChildTools: toolDetailState.getSubagentChildTools,
     shouldShowInlineToolCall: toolDetailState.shouldShowInlineToolCall,
     isReplyToolCollapsed: toolDetailState.isReplyToolCollapsed,
     isEmptyPlaceholder: toolDetailState.isEmptyPlaceholder,

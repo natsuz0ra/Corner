@@ -35,6 +35,27 @@ func TestResolveToolInvocation_ActivateSkill(t *testing.T) {
 	}
 }
 
+func TestResolveToolInvocation_RunSubagent(t *testing.T) {
+	tc := llmsvc.ToolCallInfo{
+		ID:        "call_sa",
+		Name:      constants.RunSubagentTool,
+		Arguments: `{"task":"Summarize X"}`,
+	}
+	invocation, err := resolveToolInvocation(tc, map[string]mcp.ToolMeta{})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if invocation.toolName != constants.RunSubagentTool {
+		t.Fatalf("unexpected toolName: %s", invocation.toolName)
+	}
+	if invocation.command != "run" {
+		t.Fatalf("unexpected command: %s", invocation.command)
+	}
+	if invocation.requiresApproval {
+		t.Fatal("run_subagent should not require approval")
+	}
+}
+
 func TestResolveToolInvocation_SearchMemory(t *testing.T) {
 	tc := llmsvc.ToolCallInfo{
 		ID:        "call_2",

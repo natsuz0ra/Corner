@@ -29,6 +29,8 @@ type ApprovalRequest struct {
 	Params           map[string]string `json:"params"`
 	RequiresApproval bool              `json:"requiresApproval"`
 	Preamble         string            `json:"preamble,omitempty"`
+	ParentToolCallID string            `json:"parentToolCallId,omitempty"`
+	SubagentRunID    string            `json:"subagentRunId,omitempty"`
 }
 
 // ApprovalResponse is the client's approval decision.
@@ -46,6 +48,8 @@ type ToolCallResult struct {
 	Status           string `json:"status"`
 	Output           string `json:"output"`
 	Error            string `json:"error"`
+	ParentToolCallID string `json:"parentToolCallId,omitempty"`
+	SubagentRunID    string `json:"subagentRunId,omitempty"`
 }
 
 // AgentCallbacks wires the agent loop to the outside world (streaming, approval, results).
@@ -54,6 +58,14 @@ type AgentCallbacks struct {
 	OnToolCallStart  func(req ApprovalRequest) error                                         // notify client that a tool awaits approval
 	WaitApproval     func(ctx context.Context, toolCallID string) (*ApprovalResponse, error) // block until approval
 	OnToolCallResult func(result ToolCallResult) error                                       // notify client of tool outcome
+	OnSubagentStart  func(parentToolCallID, runID, task string) error
+	OnSubagentChunk  func(parentToolCallID, runID, chunk string) error
+	OnSubagentDone   func(parentToolCallID, runID string, runErr error) error
+}
+
+// AgentLoopOptions configures nested agent execution.
+type AgentLoopOptions struct {
+	Depth int
 }
 
 // AgentService runs the LLM loop with tools, approvals, and MCP/skill loading.
@@ -62,6 +74,7 @@ type AgentService struct {
 	mcp             *mcp.Manager
 	skillRuntime    *skillsvc.SkillRuntimeService
 	memory          *memsvc.MemoryService
+	subagentHost    SubagentHost
 	toolCacheMu     sync.Mutex
 	toolCache       map[string]cachedToolDefs
 }
@@ -82,6 +95,11 @@ func NewAgentService(providerFactory *llmsvc.Factory, mcpManager *mcp.Manager, s
 		memory:          memory,
 		toolCache:       make(map[string]cachedToolDefs),
 	}
+}
+
+// SetSubagentHost wires ChatService (or tests) for run_subagent delegation.
+func (a *AgentService) SetSubagentHost(h SubagentHost) {
+	a.subagentHost = h
 }
 
 // BuildToolDefs builds function-calling tool definitions from the global registry.
@@ -133,9 +151,34 @@ func BuildToolDefs() []llmsvc.ToolDef {
 	return defs
 }
 
+func buildRunSubagentToolDef() llmsvc.ToolDef {
+	return llmsvc.ToolDef{
+		Name:        constants.RunSubagentTool,
+		Description: "[subagent] Delegate a focused sub-task to a nested agent with isolated context (no chat history). Use for self-contained work (research, multi-step tool use). Compress any parent state into `context` when needed.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"task": map[string]any{
+					"type":        "string",
+					"description": "Concrete task for the sub-agent to complete.",
+				},
+				"context": map[string]any{
+					"type":        "string",
+					"description": "Optional short background from the main assistant.",
+				},
+				"model_id": map[string]any{
+					"type":        "string",
+					"description": "Optional LLM config id for the sub-agent; omit to inherit the current model.",
+				},
+			},
+			"required": []string{"task"},
+		},
+	}
+}
+
 // buildRuntimeToolDefs merges built-in, skill, and MCP tools and returns MCP name mapping.
-func (a *AgentService) buildRuntimeToolDefs(ctx context.Context, configs []domain.MCPConfig) ([]llmsvc.ToolDef, map[string]mcp.ToolMeta, error) {
-	cacheKey := buildToolDefsCacheKey(configs)
+func (a *AgentService) buildRuntimeToolDefs(ctx context.Context, configs []domain.MCPConfig, depth int) ([]llmsvc.ToolDef, map[string]mcp.ToolMeta, error) {
+	cacheKey := buildToolDefsCacheKey(configs, depth)
 	if defs, metaByFunc, ok := a.getCachedToolDefs(cacheKey); ok {
 		return defs, metaByFunc, nil
 	}
@@ -172,6 +215,9 @@ func (a *AgentService) buildRuntimeToolDefs(ctx context.Context, configs []domai
 		if def := a.skillRuntime.BuildActivateSkillToolDef(skills); def != nil {
 			defs = append(defs, *def)
 		}
+	}
+	if depth == 0 {
+		defs = append(defs, buildRunSubagentToolDef())
 	}
 	if a.mcp == nil || len(configs) == 0 {
 		return defs, metaByFunc, nil
@@ -216,15 +262,16 @@ func (a *AgentService) buildRuntimeToolDefs(ctx context.Context, configs []domai
 	return defs, metaByFunc, nil
 }
 
-func buildToolDefsCacheKey(configs []domain.MCPConfig) string {
-	if len(configs) == 0 {
-		return "none"
+func buildToolDefsCacheKey(configs []domain.MCPConfig, depth int) string {
+	base := "none"
+	if len(configs) > 0 {
+		parts := make([]string, 0, len(configs))
+		for _, item := range configs {
+			parts = append(parts, item.ID+":"+item.UpdatedAt.UTC().Format(time.RFC3339Nano))
+		}
+		base = strings.Join(parts, "|")
 	}
-	parts := make([]string, 0, len(configs))
-	for _, item := range configs {
-		parts = append(parts, item.ID+":"+item.UpdatedAt.UTC().Format(time.RFC3339Nano))
-	}
-	return strings.Join(parts, "|")
+	return fmt.Sprintf("%s|d%d", base, depth)
 }
 
 func (a *AgentService) getCachedToolDefs(cacheKey string) ([]llmsvc.ToolDef, map[string]mcp.ToolMeta, bool) {
@@ -272,10 +319,11 @@ func (a *AgentService) RunAgentLoop(
 	mcpConfigs []domain.MCPConfig,
 	activatedSkills map[string]struct{},
 	callbacks AgentCallbacks,
+	opts AgentLoopOptions,
 ) (string, error) {
 	modelConfig.Temperature = balancedTemperature
 
-	toolDefs, mcpToolMeta, err := a.buildRuntimeToolDefs(ctx, mcpConfigs)
+	toolDefs, mcpToolMeta, err := a.buildRuntimeToolDefs(ctx, mcpConfigs, opts.Depth)
 	if err != nil {
 		return "", fmt.Errorf("failed to load MCP tools: %w", err)
 	}
@@ -287,12 +335,20 @@ func (a *AgentService) RunAgentLoop(
 
 	provider := a.providerFactory.GetProvider(modelConfig.Provider)
 
-	for i := 0; i < constants.AgentMaxIterations; i++ {
-		logging.Info("agent_iteration", "iteration", i+1, "messages", len(messages))
+	maxIter := constants.AgentMaxIterations
+	if opts.Depth > 0 {
+		maxIter = constants.SubagentMaxIterations
+	}
+
+	for i := 0; i < maxIter; i++ {
+		logging.Info("agent_iteration", "iteration", i+1, "messages", len(messages), "agent_depth", opts.Depth)
 
 		var chunkBuf strings.Builder
 		result, err := provider.StreamChatWithTools(ctx, modelConfig, messages, toolDefs, func(chunk string) error {
 			chunkBuf.WriteString(chunk)
+			if callbacks.OnChunk == nil {
+				return nil
+			}
 			return callbacks.OnChunk(chunk)
 		})
 		if err != nil {
@@ -332,15 +388,24 @@ func (a *AgentService) RunAgentLoop(
 				continue
 			}
 
-			if err := callbacks.OnToolCallStart(ApprovalRequest{
-				ToolCallID:       tc.ID,
-				ToolName:         invocation.toolName,
-				Command:          invocation.command,
-				Params:           params,
-				RequiresApproval: invocation.requiresApproval,
-				Preamble:         preamble,
-			}); err != nil {
-				return "", fmt.Errorf("failed to push tool approval request: %w", err)
+			if tc.Name == constants.RunSubagentTool {
+				if err := a.handleRunSubagentTool(ctx, modelConfig, sessionID, mcpConfigs, activatedSkills, callbacks, opts, tc, invocation, params, preamble, &messages); err != nil {
+					return "", err
+				}
+				continue
+			}
+
+			if callbacks.OnToolCallStart != nil {
+				if err := callbacks.OnToolCallStart(ApprovalRequest{
+					ToolCallID:       tc.ID,
+					ToolName:         invocation.toolName,
+					Command:          invocation.command,
+					Params:           params,
+					RequiresApproval: invocation.requiresApproval,
+					Preamble:         preamble,
+				}); err != nil {
+					return "", fmt.Errorf("failed to push tool approval request: %w", err)
+				}
 			}
 
 			approved, rejectionMessage := waitApprovalIfNeeded(ctx, callbacks, tc, invocation, params, preamble)
@@ -366,7 +431,7 @@ func (a *AgentService) RunAgentLoop(
 		}
 	}
 
-	return finalAnswer.String(), fmt.Errorf("agent loop reached max iterations (%d)", constants.AgentMaxIterations)
+	return finalAnswer.String(), fmt.Errorf("agent loop reached max iterations (%d)", maxIter)
 }
 
 // parseToolCallName parses "{tool}__{command}" function names.

@@ -220,11 +220,29 @@ func (s *ChatService) executeChatTurn(
 			}
 			return callbacks.OnToolCallResult(result)
 		},
+		OnSubagentStart: func(parentToolCallID, runID, task string) error {
+			if callbacks.OnSubagentStart != nil {
+				return callbacks.OnSubagentStart(parentToolCallID, runID, task)
+			}
+			return nil
+		},
+		OnSubagentChunk: func(parentToolCallID, runID, chunk string) error {
+			if callbacks.OnSubagentChunk != nil {
+				return callbacks.OnSubagentChunk(parentToolCallID, runID, chunk)
+			}
+			return nil
+		},
+		OnSubagentDone: func(parentToolCallID, runID string, runErr error) error {
+			if callbacks.OnSubagentDone != nil {
+				return callbacks.OnSubagentDone(parentToolCallID, runID, runErr)
+			}
+			return nil
+		},
 	}
 
 	activatedSkills := s.getSessionActivatedSkills(sessionID)
 	agentStart := time.Now()
-	answer, err := s.agent.RunAgentLoop(ctx, state.modelConfig, sessionID, state.contextMessages, state.enabledMCPConfigs, activatedSkills, agentCallbacks)
+	answer, err := s.agent.RunAgentLoop(ctx, state.modelConfig, sessionID, state.contextMessages, state.enabledMCPConfigs, activatedSkills, agentCallbacks, AgentLoopOptions{})
 	logging.Span("agent_loop", agentStart)
 	s.mergeSessionActivatedSkills(sessionID, activatedSkills)
 

@@ -4,7 +4,7 @@
  */
 
 import WebSocket from "ws";
-import type { ToolCallStartData, ToolCallResultData } from "../types.js";
+import type { SubagentChunkData, ToolCallStartData, ToolCallResultData } from "../types.js";
 
 export interface WSHandlers {
   onSession: (sessionId: string) => void;
@@ -17,6 +17,7 @@ export interface WSHandlers {
   onError: (error: string, sessionId?: string) => void;
   onToolCallStart?: (data: ToolCallStartData, sessionId?: string) => void;
   onToolCallResult?: (data: ToolCallResultData, sessionId?: string) => void;
+  onSubagentChunk?: (data: SubagentChunkData, sessionId?: string) => void;
 }
 
 interface WSIncoming {
@@ -36,6 +37,9 @@ interface WSIncoming {
   output?: string;
   isInterrupted?: boolean;
   isStopPlaceholder?: boolean;
+  parentToolCallId?: string;
+  subagentRunId?: string;
+  content?: string;
 }
 
 export class CLISocket {
@@ -97,6 +101,8 @@ export class CLISocket {
             params: msg.params || {},
             requiresApproval: !!msg.requiresApproval,
             preamble: msg.preamble || "",
+            parentToolCallId: msg.parentToolCallId,
+            subagentRunId: msg.subagentRunId,
           },
           msg.sessionId,
         );
@@ -112,6 +118,19 @@ export class CLISocket {
             status: (msg.status as ToolCallResultData["status"]) || "completed",
             output: msg.output || "",
             error: msg.error || "",
+            parentToolCallId: msg.parentToolCallId,
+            subagentRunId: msg.subagentRunId,
+          },
+          msg.sessionId,
+        );
+      }
+
+      if (msg.type === "subagent_chunk") {
+        this.handlers?.onSubagentChunk?.(
+          {
+            parentToolCallId: msg.parentToolCallId || "",
+            subagentRunId: msg.subagentRunId || "",
+            content: msg.content || "",
           },
           msg.sessionId,
         );

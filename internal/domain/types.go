@@ -24,6 +24,8 @@ type ToolCallStartRecordInput struct {
 	Status           string
 	RequiresApproval bool
 	StartedAt        time.Time
+	ParentToolCallID string
+	SubagentRunID    string
 }
 
 type ToolCallResultRecordInput struct {

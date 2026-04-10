@@ -154,8 +154,29 @@ export function reducer(state: AppState, action: AppAction): AppState {
       if (idx === -1) {
         entries.push(nextEntry);
       } else {
-        entries[idx] = { ...entries[idx], ...nextEntry };
+        const prev = entries[idx];
+        entries[idx] = {
+          ...prev,
+          ...nextEntry,
+          subagentStream: nextEntry.subagentStream ?? prev.subagentStream,
+        };
       }
+      return { ...state, timeline: entries };
+    }
+
+    case "APPEND_SUBAGENT_STREAM": {
+      const entries = [...state.timeline];
+      const idx = entries.findIndex(
+        (e) => e.kind === "tool" && e.toolCallId === action.parentToolCallId,
+      );
+      if (idx === -1) {
+        return state;
+      }
+      const prev = entries[idx];
+      entries[idx] = {
+        ...prev,
+        subagentStream: (prev.subagentStream || "") + action.content,
+      };
       return { ...state, timeline: entries };
     }
 

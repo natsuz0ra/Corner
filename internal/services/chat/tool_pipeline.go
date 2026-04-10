@@ -39,6 +39,14 @@ func resolveToolInvocation(tc llmsvc.ToolCallInfo, mcpToolMeta map[string]mcp.To
 			requiresApproval: false,
 		}, nil
 	}
+	if tc.Name == constants.RunSubagentTool {
+		return resolvedToolInvocation{
+			toolName:         constants.RunSubagentTool,
+			command:          "run",
+			isMCP:            false,
+			requiresApproval: false,
+		}, nil
+	}
 	toolName, command, err := parseToolCallName(tc.Name)
 	if mcpMeta, ok := mcpToolMeta[tc.Name]; ok {
 		return resolvedToolInvocation{

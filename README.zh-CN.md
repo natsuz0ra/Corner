@@ -13,14 +13,16 @@
 - **会话与消息**
   - 会话列表、创建、重命名、删除
   - 按会话拉取历史消息
-  - 基于 WebSocket 的实时流式回复（`start` / `chunk` / `done`，以及 `error`、工具调用相关事件）
+  - 基于 WebSocket 的实时流式回复（`start` / `chunk` / `done`，以及 `error`、工具调用与子代理相关事件）
   - 会话标题自动生成与更新推送
   - 多模态能力
 - **工具与 Agent**
   - Agent 多轮 tool call 执行链路
   - 敏感内置工具需用户确认（当前为 `exec`），支持 Web、CLI、Telegram 等流程
   - 工具结果写入会话历史并支持详情查看
-  - 内置工具：`exec`、`http_request`、`web_search`（Tavily）
+  - 内置工具：`exec`、`http_request`、`web_search`（Tavily）、**`run_subagent`**（子代理 / 嵌套 Agent）
+  - **子代理：**主 Agent 可将独立子任务交给内层 Agent，内层使用**隔离上下文**（不携带父会话聊天记录）。仅支持**一层嵌套**（子代理内不能再调用 `run_subagent`）。子代理内的工具调用在 Web 与 CLI 中**嵌套展示**在父工具之下；历史记录持久化 `parentToolCallId`，刷新会话后层级仍可还原。
+  - WebSocket 子代理流式事件：`subagent_start`、`subagent_chunk`、`subagent_done`（与 `tool_call_start` / `tool_call_result` 并存）
 - **记忆能力**
   - 会话摘要自动更新
   - 长会话上下文压缩与最近消息回补
@@ -224,8 +226,9 @@ VITE_WS_URL=ws://localhost:8080
 
 ### 已完成
 
-- 会话管理与 WebSocket 流式回复（含错误与工具调用事件）
+- 会话管理与 WebSocket 流式回复（含错误、工具调用与子代理事件）
 - Agent 工具与审批（`exec` 需确认；`http_request`、`web_search` 按配置使用）
+- 子代理 / 嵌套 Agent（`run_subagent`）、嵌套工具 UI，以及工具历史中的父子关联持久化
 - MCP 与 Skills
 - 基于文件与全文索引的持久化记忆及上下文注入
 - Telegram 集成

@@ -44,6 +44,7 @@ const ctx = useChatContext()
           <ToolCallCard
             v-if="ctx.getReplyToolItem(item.id, entry.toolCallId)"
             :item="ctx.getReplyToolItem(item.id, entry.toolCallId)!"
+            :nested-tools="ctx.getSubagentChildTools(item.id, entry.toolCallId)"
             :show-preamble="false"
             @approve="ctx.approveToolCall($event, true)"
             @reject="ctx.approveToolCall($event, false)"

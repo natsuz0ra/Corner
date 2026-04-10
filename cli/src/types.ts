@@ -68,6 +68,8 @@ export interface ToolCallHistoryItem {
   params: Record<string, string>;
   status: string;
   requiresApproval: boolean;
+  parentToolCallId?: string;
+  subagentRunId?: string;
   output?: string;
   error?: string;
   startedAt: string;
@@ -90,6 +92,8 @@ export interface ToolCallStartData {
   params: Record<string, string>;
   requiresApproval: boolean;
   preamble?: string;
+  parentToolCallId?: string;
+  subagentRunId?: string;
 }
 
 export interface ToolCallResultData {
@@ -100,6 +104,14 @@ export interface ToolCallResultData {
   status: ToolCallStatus;
   output: string;
   error: string;
+  parentToolCallId?: string;
+  subagentRunId?: string;
+}
+
+export interface SubagentChunkData {
+  parentToolCallId: string;
+  subagentRunId: string;
+  content: string;
 }
 
 // ===== UI state types =====
@@ -159,6 +171,10 @@ export interface TimelineEntry {
   status?: ToolCallStatus;
   output?: string;
   error?: string;
+  parentToolCallId?: string;
+  subagentRunId?: string;
+  /** Accumulated nested agent stream (parent run_subagent only). */
+  subagentStream?: string;
 }
 
 export interface MenuItem {
@@ -265,6 +281,7 @@ export type AppAction =
   | { type: "TOGGLE_COMPACT" }
   | { type: "TOGGLE_TOOL_OUTPUT" }
   | { type: "UPSERT_TOOL_ENTRY"; entry: TimelineEntry }
+  | { type: "APPEND_SUBAGENT_STREAM"; parentToolCallId: string; content: string }
   | { type: "APPEND_ENTRY"; entry: TimelineEntry }
   | { type: "RESET_SESSION" }
   | { type: "BLINK_TOGGLE" }

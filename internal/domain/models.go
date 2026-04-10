@@ -52,6 +52,8 @@ type ToolCallRecord struct {
 	ParamsJSON         string     `gorm:"type:text;not null" json:"paramsJson"`
 	Status             string     `gorm:"size:32;index;not null" json:"status"`
 	RequiresApproval   bool       `gorm:"not null;default:false" json:"requiresApproval"`
+	ParentToolCallID   string     `gorm:"size:128;index" json:"parentToolCallId,omitempty"`
+	SubagentRunID      string     `gorm:"size:128;index" json:"subagentRunId,omitempty"`
 	Output             string     `gorm:"type:text" json:"output,omitempty"`
 	Error              string     `gorm:"type:text" json:"error,omitempty"`
 	StartedAt          time.Time  `gorm:"index;not null" json:"startedAt"`

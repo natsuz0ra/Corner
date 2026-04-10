@@ -56,10 +56,15 @@ export function buildReplyBatchesFromHistory(sessionId: string, history: Session
       status: normalizeToolStatus(item.status, item.error),
       output: item.output,
       error: item.error,
+      parentToolCallId: item.parentToolCallId,
+      subagentRunId: item.subagentRunId,
     }))
 
     const timeline: AssistantReplyTimelineItem[] = []
     for (const item of toolCalls) {
+      if (item.parentToolCallId) {
+        continue
+      }
       timeline.push({
         id: crypto.randomUUID(),
         kind: 'tool_start',
