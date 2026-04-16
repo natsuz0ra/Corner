@@ -1,5 +1,5 @@
 /**
- * Banner — 顶部信息栏，显示产品名 + 版本 + 模型 + 工作目录。
+ * Banner — top bar showing product name, version, model, and working directory.
  */
 
 import React from "react";

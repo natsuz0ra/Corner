@@ -19,7 +19,7 @@ type httpClient struct {
 	id         int64
 }
 
-// newHTTPClient 基于服务配置创建 HTTP 传输客户端。
+// newHTTPClient builds an HTTP transport client from server config.
 func newHTTPClient(cfg *ServerConfig) Client {
 	timeoutSec := cfg.Timeout
 	if timeoutSec <= 0 {
@@ -38,7 +38,7 @@ func (c *httpClient) nextID() int64 {
 	return atomic.AddInt64(&c.id, 1)
 }
 
-// postRPC 发送 JSON-RPC 请求，并将响应中的 result 提取为 map 返回。
+// postRPC sends a JSON-RPC request and returns the result as a map.
 func (c *httpClient) postRPC(ctx context.Context, method string, params map[string]any) (map[string]any, error) {
 	payload := map[string]any{
 		"jsonrpc": "2.0",
@@ -78,7 +78,7 @@ func (c *httpClient) postRPC(ctx context.Context, method string, params map[stri
 		return nil, err
 	}
 
-	// 如果响应是 SSE 格式，提取 data 字段中的 JSON。
+	// If the response is SSE-shaped, extract JSON from the first data line.
 	var jsonPayload []byte
 	if strings.Contains(contentType, "text/event-stream") {
 		jsonPayload, err = extractSSEData(raw)
@@ -100,7 +100,7 @@ func (c *httpClient) postRPC(ctx context.Context, method string, params map[stri
 	return result, nil
 }
 
-// extractSSEData 从原始 SSE 文本中提取首个 data 字段的 JSON 负载。
+// extractSSEData pulls the first data: JSON payload from raw SSE text.
 func extractSSEData(raw []byte) ([]byte, error) {
 	var dataLines []string
 	for _, line := range strings.Split(string(raw), "\n") {
@@ -118,7 +118,7 @@ func extractSSEData(raw []byte) ([]byte, error) {
 	return []byte(strings.TrimSpace(strings.Join(dataLines, ""))), nil
 }
 
-// ListTools 获取 MCP 服务工具列表并转为内部统一结构。
+// ListTools fetches tools from the MCP server into the internal Tool shape.
 func (c *httpClient) ListTools(ctx context.Context) ([]Tool, error) {
 	result, err := c.postRPC(ctx, "tools/list", map[string]any{})
 	if err != nil {
@@ -127,7 +127,7 @@ func (c *httpClient) ListTools(ctx context.Context) ([]Tool, error) {
 	return parseTools(result), nil
 }
 
-// CallTool 调用指定工具并返回标准化调用结果。
+// CallTool invokes a tool and returns a normalized CallResult.
 func (c *httpClient) CallTool(ctx context.Context, name string, arguments map[string]any) (*CallResult, error) {
 	result, err := c.postRPC(ctx, "tools/call", map[string]any{
 		"name":      name,
@@ -139,5 +139,5 @@ func (c *httpClient) CallTool(ctx context.Context, name string, arguments map[st
 	return parseCallResult(result), nil
 }
 
-// Close 关闭 HTTP 客户端。HTTP 为无状态连接，此处无需额外资源回收。
+// Close is a no-op for HTTP; there is no persistent connection to tear down.
 func (c *httpClient) Close() error { return nil }

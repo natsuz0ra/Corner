@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slimebot/internal/apperrors"
 	"slimebot/internal/logging"
 	"strings"
 	"sync"
@@ -11,10 +12,28 @@ import (
 
 	"slimebot/internal/constants"
 	"slimebot/internal/domain"
-	oaisvc "slimebot/internal/services/openai"
+	llmsvc "slimebot/internal/services/llm"
 )
 
-// HandleChatStream 执行一次完整聊天回合：写入用户消息、构建上下文、驱动 Agent、落库 assistant 结果。
+// chatTurnState holds intermediate state while preparing a chat turn.
+type chatTurnState struct {
+	session           *domain.Session
+	modelConfig       llmsvc.ModelRuntimeConfig
+	contextMessages   []llmsvc.ChatMessage
+	enabledMCPConfigs []domain.MCPConfig
+	attachments       []UploadedAttachment
+}
+
+// chatTurnResult holds intermediate results after the agent runs.
+type chatTurnResult struct {
+	answer        string
+	interrupted   bool
+	title         string
+	memoryPayload string
+	pushErr       error
+}
+
+// HandleChatStream runs one full turn: persist user message, build context, run agent, save assistant.
 func (s *ChatService) HandleChatStream(
 	ctx context.Context,
 	sessionID string,
@@ -28,32 +47,54 @@ func (s *ChatService) HandleChatStream(
 		return nil, fmt.Errorf("Message cannot be empty.")
 	}
 
+	state, err := s.prepareChatTurn(ctx, sessionID, content, modelID, attachmentIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer s.cleanupTurnAttachments(state.attachments)
+
+	result, err := s.executeChatTurn(ctx, sessionID, requestID, state, callbacks)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.finalizeChatTurn(ctx, sessionID, requestID, state, result)
+}
+
+// prepareChatTurn validates input, resolves model config, saves user message, builds context in parallel.
+func (s *ChatService) prepareChatTurn(
+	ctx context.Context,
+	sessionID string,
+	content string,
+	modelID string,
+	attachmentIDs []string,
+) (*chatTurnState, error) {
 	llmConfig, err := s.ResolveLLMConfig(ctx, modelID)
 	if err != nil {
 		return nil, err
 	}
-	modelConfig := oaisvc.ModelRuntimeConfig{
-		BaseURL: llmConfig.BaseURL,
-		APIKey:  llmConfig.APIKey,
-		Model:   llmConfig.Model,
+	modelConfig := llmsvc.ModelRuntimeConfig{
+		Provider: llmConfig.Provider,
+		BaseURL:  llmConfig.BaseURL,
+		APIKey:   llmConfig.APIKey,
+		Model:    llmConfig.Model,
 	}
 
 	session, err := s.store.GetSessionByID(ctx, sessionID)
 	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			return nil, fmt.Errorf("Session not found: %s.", sessionID)
+		}
 		return nil, err
-	}
-	if session == nil {
-		return nil, fmt.Errorf("Session not found: %s.", sessionID)
 	}
 
 	attachments, err := s.resolveTurnAttachments(sessionID, attachmentIDs)
 	if err != nil {
 		return nil, err
 	}
-	defer s.cleanupTurnAttachments(attachments)
 
 	userContentForLLM := strings.TrimSpace(content)
-	userMessageParts := make([]oaisvc.ChatMessageContentPart, 0)
+	userMessageParts := make([]llmsvc.ChatMessageContentPart, 0)
 	var attachmentFallback []string
 	if len(attachments) > 0 {
 		userMessageParts, attachmentFallback = buildUserMessageContentParts(userContentForLLM, attachments)
@@ -75,9 +116,9 @@ func (s *ChatService) HandleChatStream(
 		return nil, err
 	}
 
-	// 上下文消息与启用的 MCP 配置彼此独立，先并行准备以缩短回合启动耗时。
+	// Build context messages and enabled MCP configs in parallel to reduce turn latency.
 	var (
-		contextMessages   []oaisvc.ChatMessage
+		contextMessages   []llmsvc.ChatMessage
 		enabledMCPConfigs []domain.MCPConfig
 		contextErr        error
 		mcpErr            error
@@ -109,12 +150,28 @@ func (s *ChatService) HandleChatStream(
 	}
 	appendProtocolHintToLatestUser(contextMessages, time.Now())
 
-	parser := newTitleStreamParser(!session.IsTitleLocked)
+	return &chatTurnState{
+		session:           session,
+		modelConfig:       modelConfig,
+		contextMessages:   contextMessages,
+		enabledMCPConfigs: enabledMCPConfigs,
+		attachments:       attachments,
+	}, nil
+}
+
+// executeChatTurn runs the agent loop and collects streamed output.
+func (s *ChatService) executeChatTurn(
+	ctx context.Context,
+	sessionID string,
+	requestID string,
+	state *chatTurnState,
+	callbacks AgentCallbacks,
+) (*chatTurnResult, error) {
+	parser := newTitleStreamParser(!state.session.IsTitleLocked)
 	accumulator := &chatStreamAccumulator{}
 	streamStart := time.Now()
 	var firstTokenAt time.Time
 
-	// pushBody 负责同时维护最终答案缓存与对外流式推送，推送失败后不影响后续落库。
 	pushBody := func(body string) error {
 		if body == "" {
 			return nil
@@ -163,11 +220,29 @@ func (s *ChatService) HandleChatStream(
 			}
 			return callbacks.OnToolCallResult(result)
 		},
+		OnSubagentStart: func(parentToolCallID, runID, task string) error {
+			if callbacks.OnSubagentStart != nil {
+				return callbacks.OnSubagentStart(parentToolCallID, runID, task)
+			}
+			return nil
+		},
+		OnSubagentChunk: func(parentToolCallID, runID, chunk string) error {
+			if callbacks.OnSubagentChunk != nil {
+				return callbacks.OnSubagentChunk(parentToolCallID, runID, chunk)
+			}
+			return nil
+		},
+		OnSubagentDone: func(parentToolCallID, runID string, runErr error) error {
+			if callbacks.OnSubagentDone != nil {
+				return callbacks.OnSubagentDone(parentToolCallID, runID, runErr)
+			}
+			return nil
+		},
 	}
 
 	activatedSkills := s.getSessionActivatedSkills(sessionID)
 	agentStart := time.Now()
-	answer, err := s.agent.RunAgentLoop(ctx, modelConfig, sessionID, contextMessages, enabledMCPConfigs, activatedSkills, agentCallbacks)
+	answer, err := s.agent.RunAgentLoop(ctx, state.modelConfig, sessionID, state.contextMessages, state.enabledMCPConfigs, activatedSkills, agentCallbacks, AgentLoopOptions{})
 	logging.Span("agent_loop", agentStart)
 	s.mergeSessionActivatedSkills(sessionID, activatedSkills)
 
@@ -206,12 +281,29 @@ func (s *ChatService) HandleChatStream(
 		finalAnswer = "The model returned no content."
 	}
 
+	return &chatTurnResult{
+		answer:        finalAnswer,
+		interrupted:   interrupted,
+		title:         title,
+		memoryPayload: memoryPayload,
+		pushErr:       accumulator.pushErr,
+	}, nil
+}
+
+// finalizeChatTurn persists assistant message, updates title, enqueues memory.
+func (s *ChatService) finalizeChatTurn(
+	ctx context.Context,
+	sessionID string,
+	requestID string,
+	state *chatTurnState,
+	result *chatTurnResult,
+) (*ChatStreamResult, error) {
 	assistantMessage, err := s.store.AddMessageWithInput(ctx, domain.AddMessageInput{
 		SessionID:         sessionID,
 		Role:              "assistant",
-		Content:           finalAnswer,
-		IsInterrupted:     interrupted,
-		IsStopPlaceholder: interrupted && strings.TrimSpace(finalAnswer) == "",
+		Content:           result.answer,
+		IsInterrupted:     result.interrupted,
+		IsStopPlaceholder: result.interrupted && strings.TrimSpace(result.answer) == "",
 	})
 	if err != nil {
 		return nil, err
@@ -220,25 +312,25 @@ func (s *ChatService) HandleChatStream(
 		return nil, err
 	}
 
-	result := &ChatStreamResult{
-		Answer:            finalAnswer,
-		IsInterrupted:     interrupted,
-		IsStopPlaceholder: interrupted && strings.TrimSpace(finalAnswer) == "",
+	streamResult := &ChatStreamResult{
+		Answer:            result.answer,
+		IsInterrupted:     result.interrupted,
+		IsStopPlaceholder: result.interrupted && strings.TrimSpace(result.answer) == "",
 	}
-	if err := s.applySessionTitleUpdate(ctx, s.store, session, title, result); err != nil {
+	if err := s.applySessionTitleUpdate(ctx, s.store, state.session, result.title, streamResult); err != nil {
 		return nil, err
 	}
-	if s.memory != nil && strings.TrimSpace(memoryPayload) != "" {
-		s.memory.EnqueueTurnMemory(sessionID, assistantMessage.ID, memoryPayload)
+	if s.memory != nil && strings.TrimSpace(result.memoryPayload) != "" {
+		s.memory.EnqueueTurnMemory(sessionID, assistantMessage.ID, result.memoryPayload)
 		logging.Info("memory_enqueue_triggered", "session", sessionID)
 	} else if s.memory != nil {
 		logging.Info("memory_enqueue_skipped", "session", sessionID, "reason", "empty_or_unparsed")
 	}
-	if accumulator.pushErr != nil {
-		result.PushFailed = true
-		result.PushError = accumulator.pushErr.Error()
+	if result.pushErr != nil {
+		streamResult.PushFailed = true
+		streamResult.PushError = result.pushErr.Error()
 	}
-	return result, nil
+	return streamResult, nil
 }
 
 type sessionTitleUpdater interface {

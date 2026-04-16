@@ -44,6 +44,8 @@ export interface SessionHistoryToolCallItem {
   params: Record<string, string>
   status: ToolCallStatus
   requiresApproval: boolean
+  parentToolCallId?: string
+  subagentRunId?: string
   output?: string
   error?: string
   startedAt?: string
@@ -85,6 +87,13 @@ export interface ToolCallItem {
   status: ToolCallStatus
   output?: string
   error?: string
+  /** Present on tools invoked inside a sub-agent run */
+  parentToolCallId?: string
+  subagentRunId?: string
+  /** Streaming text from nested agent (parent run_subagent only) */
+  subagentStream?: string
+  /** Task summary from subagent_start */
+  subagentTask?: string
 }
 
 export const sessionAPI = {

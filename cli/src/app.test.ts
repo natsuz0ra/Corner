@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mapHistoryMessages } from "./app.tsx";
-import type { Message, ToolCallHistoryItem } from "./types.ts";
+import type { Key } from "ink";
+import { handleChatShortcut, mapHistoryMessages } from "./app";
+import type { Message, ToolCallHistoryItem } from "./types";
 
 test("mapHistoryMessages inserts tool calls after assistant messages in timeline order", () => {
   const messages: Message[] = [
@@ -65,5 +66,86 @@ test("mapHistoryMessages inserts tool calls after assistant messages in timeline
     },
     { kind: "assistant", content: "running tool" },
   ]);
+});
+
+test("mapHistoryMessages preserves parentToolCallId for nested tool calls", () => {
+  const messages: Message[] = [
+    {
+      id: "a1",
+      sessionId: "s1",
+      role: "assistant",
+      content: "done",
+      seq: 1,
+      createdAt: "2026-01-01T00:00:01Z",
+    },
+  ];
+  const toolCallsByMsgId: Record<string, ToolCallHistoryItem[]> = {
+    a1: [
+      {
+        toolCallId: "parent",
+        toolName: "run_subagent",
+        command: "delegate",
+        params: { task: "x" },
+        status: "completed",
+        requiresApproval: false,
+        output: "ok",
+        startedAt: "2026-01-01T00:00:00Z",
+      },
+      {
+        toolCallId: "child",
+        toolName: "web_search",
+        command: "search",
+        params: { q: "y" },
+        status: "completed",
+        requiresApproval: false,
+        parentToolCallId: "parent",
+        subagentRunId: "run-1",
+        output: "hits",
+        startedAt: "2026-01-01T00:00:01Z",
+      },
+    ],
+  };
+  const entries = mapHistoryMessages(messages, toolCallsByMsgId);
+  const child = entries.find((e) => e.kind === "tool" && e.toolCallId === "child");
+  assert.ok(child && child.kind === "tool");
+  assert.equal(child.parentToolCallId, "parent");
+  assert.equal(child.subagentRunId, "run-1");
+});
+
+function key(overrides: Partial<Key> = {}): Key {
+  return {
+    upArrow: false,
+    downArrow: false,
+    leftArrow: false,
+    rightArrow: false,
+    pageDown: false,
+    pageUp: false,
+    home: false,
+    end: false,
+    return: false,
+    escape: false,
+    ctrl: false,
+    shift: false,
+    tab: false,
+    backspace: false,
+    delete: false,
+    meta: false,
+    ...overrides,
+  } as Key;
+}
+
+test("handleChatShortcut handles Ctrl+O and raw Ctrl+O", () => {
+  const actions: string[] = [];
+  const dispatch = (action: { type: string }) => {
+    actions.push(action.type);
+    return action as any;
+  };
+
+  const handledNormal = handleChatShortcut("o", key({ ctrl: true }), dispatch as any);
+  const handledRaw = handleChatShortcut(String.fromCharCode(15), key(), dispatch as any);
+
+  assert.equal(handledNormal, true);
+  assert.equal(handledRaw, true);
+  assert.equal(actions.filter((x) => x === "TOGGLE_TOOL_OUTPUT").length, 2);
 });
 

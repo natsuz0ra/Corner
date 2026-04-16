@@ -1,10 +1,10 @@
 /**
- * WebSocket 客户端：与 Go 后端 /ws/chat 通信，支持流式聊天 + 工具审批。
- * 从 frontend/src/api/chatSocket.ts 移植，使用 ws 包替代浏览器 WebSocket。
+ * WebSocket client for Go backend /ws/chat: streaming chat + tool approval.
+ * Ported from frontend/src/api/chatSocket.ts; uses the ws package instead of browser WebSocket.
  */
 
 import WebSocket from "ws";
-import type { ToolCallStartData, ToolCallResultData } from "../types.js";
+import type { SubagentChunkData, ToolCallStartData, ToolCallResultData } from "../types.js";
 
 export interface WSHandlers {
   onSession: (sessionId: string) => void;
@@ -17,6 +17,7 @@ export interface WSHandlers {
   onError: (error: string, sessionId?: string) => void;
   onToolCallStart?: (data: ToolCallStartData, sessionId?: string) => void;
   onToolCallResult?: (data: ToolCallResultData, sessionId?: string) => void;
+  onSubagentChunk?: (data: SubagentChunkData, sessionId?: string) => void;
 }
 
 interface WSIncoming {
@@ -36,6 +37,9 @@ interface WSIncoming {
   output?: string;
   isInterrupted?: boolean;
   isStopPlaceholder?: boolean;
+  parentToolCallId?: string;
+  subagentRunId?: string;
+  content?: string;
 }
 
 export class CLISocket {
@@ -46,11 +50,11 @@ export class CLISocket {
   connect(apiURL: string, cliToken: string, handlers: WSHandlers): void {
     this.handlers = handlers;
 
-    // 构建 WS URL：http → ws, https → wss
+    // Build WS URL: http → ws, https → wss
     const wsBase = apiURL.replace(/^http/, "ws");
     const url = `${wsBase}/ws/chat`;
 
-    // 通过 X-CLI-Token header 传递认证信息（与服务端中间件匹配）
+    // Pass auth via X-CLI-Token header (matches server middleware)
     this.ws = new WebSocket(url, {
       headers: {
         "X-CLI-Token": cliToken,
@@ -97,6 +101,8 @@ export class CLISocket {
             params: msg.params || {},
             requiresApproval: !!msg.requiresApproval,
             preamble: msg.preamble || "",
+            parentToolCallId: msg.parentToolCallId,
+            subagentRunId: msg.subagentRunId,
           },
           msg.sessionId,
         );
@@ -112,6 +118,19 @@ export class CLISocket {
             status: (msg.status as ToolCallResultData["status"]) || "completed",
             output: msg.output || "",
             error: msg.error || "",
+            parentToolCallId: msg.parentToolCallId,
+            subagentRunId: msg.subagentRunId,
+          },
+          msg.sessionId,
+        );
+      }
+
+      if (msg.type === "subagent_chunk") {
+        this.handlers?.onSubagentChunk?.(
+          {
+            parentToolCallId: msg.parentToolCallId || "",
+            subagentRunId: msg.subagentRunId || "",
+            content: msg.content || "",
           },
           msg.sessionId,
         );

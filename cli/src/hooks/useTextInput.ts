@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import stripAnsi from "strip-ansi";
 import type { Key } from "ink";
 import {
@@ -17,13 +17,36 @@ type InputHandler = (input: string) => MaybeCursor;
 type InputMapper = (input: string) => MaybeCursor;
 const NOOP_HANDLER: InputHandler = () => {};
 
-/** Returns true when input is a raw control character (0x01–0x1A) that
- *  Ink failed to flag with `key.ctrl`.  Prevents the character from being
- *  inserted as plain text on terminals/OS combos where the ctrl flag is
- *  unreliable (e.g. Windows). */
+/** Returns true when input is a raw control character (0x01-0x1A) that
+ *  Ink failed to flag with `key.ctrl`. Prevents accidental text insertion. */
 function isRawControlChar(input: string): boolean {
   const code = input.charCodeAt(0);
   return code >= 1 && code <= 26;
+}
+
+function isRawNewlineInput(input: string): boolean {
+  return input === "\n";
+}
+
+function rawControlToLetter(input: string): string {
+  const code = input.charCodeAt(0);
+  if (code < 1 || code > 26) return "";
+  return String.fromCharCode(code + 96);
+}
+
+export function shouldInsertNewlineOnEnter(
+  multiline: boolean,
+  hasSubmitHandler: boolean,
+  key: Key,
+  input: string,
+): boolean {
+  if (!multiline) {
+    return false;
+  }
+  if (!hasSubmitHandler) {
+    return true;
+  }
+  return key.meta || key.shift || key.ctrl || isRawNewlineInput(input);
 }
 
 function mapInput(inputMap: Array<[string, InputHandler]>): InputMapper {
@@ -46,10 +69,11 @@ export interface UseTextInputProps {
   invert: (text: string) => string;
   columns: number;
   maxVisibleLines?: number;
+  onUnhandledInput?: (input: string, key: Key) => void;
 }
 
 export interface TextInputState {
-  onInput: (input: string, key: Key) => void;
+  onInput: (input: string, key: Key) => boolean;
   renderedValue: string;
   offset: number;
   setOffset: (offset: number) => void;
@@ -70,6 +94,7 @@ export function useTextInput({
   invert,
   columns,
   maxVisibleLines,
+  onUnhandledInput,
 }: UseTextInputProps): TextInputState {
   const [offset, setOffset] = useState(() => value.length);
 
@@ -152,8 +177,8 @@ export function useTextInput({
     return cursor;
   }
 
-  function handleEnter(key: Key): MaybeCursor {
-    if (multiline && (key.meta || key.shift || key.ctrl)) {
+  function handleEnter(key: Key, input: string): MaybeCursor {
+    if (shouldInsertNewlineOnEnter(multiline, Boolean(onSubmit), key, input)) {
       return cursor.insert("\n");
     }
     onSubmit?.(value);
@@ -194,14 +219,9 @@ export function useTextInput({
       case key.rightArrow && (key.ctrl || key.meta):
         return () => cursor.nextWord();
       case key.backspace || key.delete:
-        // ink maps \x7f (Backspace on most terminals) to key.delete instead of
-        // key.backspace. Treat both as backspace so the physical Backspace key
-        // deletes the character *before* the cursor on all platforms.
         return key.meta || key.ctrl
           ? killWordBefore
           : () => cursor.deleteTokenBefore() ?? cursor.backspace();
-      case key.ctrl:
-        return enableCtrlShortcuts ? handleCtrl : () => cursor;
       case key.home:
         return () => cursor.startOfLine();
       case key.end:
@@ -211,7 +231,9 @@ export function useTextInput({
       case key.pageUp:
         return () => cursor.startOfLine();
       case key.return:
-        return () => handleEnter(key);
+        return () => handleEnter(key, input);
+      case key.ctrl:
+        return enableCtrlShortcuts ? handleCtrl : () => cursor;
       case key.meta:
         return handleMeta;
       case key.tab:
@@ -231,9 +253,16 @@ export function useTextInput({
       case key.rightArrow:
         return () => cursor.right();
       case isRawControlChar(input):
-        // Raw control character (e.g. ctrl+O on Windows where key.ctrl is unset).
-        // Don't insert as text — let the App-level handler process it.
-        return () => cursor;
+        if (isRawNewlineInput(input)) {
+          return () => handleEnter(key, input);
+        }
+        if (enableCtrlShortcuts) {
+          const letter = rawControlToLetter(input);
+          if (letter) {
+            return () => handleCtrl(letter);
+          }
+        }
+        return () => undefined;
       default:
         return (input: string): MaybeCursor => {
           const text = stripAnsi(input).replace(/\r/g, "\n");
@@ -259,7 +288,7 @@ export function useTextInput({
     return (key.ctrl || key.meta) && input === "y";
   }
 
-  function onInput(input: string, key: Key): void {
+  function onInput(input: string, key: Key): boolean {
     if (!isKillKey(key, input)) {
       resetKillAccumulation();
     }
@@ -269,7 +298,8 @@ export function useTextInput({
 
     const nextCursor = mapKey(key, input)(input);
     if (!nextCursor) {
-      return;
+      onUnhandledInput?.(input, key);
+      return false;
     }
 
     if (cursor.text !== nextCursor.text) {
@@ -278,6 +308,7 @@ export function useTextInput({
     if (offset !== nextCursor.offset) {
       setOffset(nextCursor.offset);
     }
+    return true;
   }
 
   const position = cursor.getPosition();

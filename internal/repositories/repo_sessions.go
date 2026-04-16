@@ -3,6 +3,8 @@ package repositories
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slimebot/internal/apperrors"
 	"slimebot/internal/domain"
 	"strings"
 	"time"
@@ -34,7 +36,7 @@ func (r *Repository) GetSessionByID(ctx context.Context, id string) (*domain.Ses
 	var session domain.Session
 	err := r.dbWithContext(ctx).First(&session, "id = ?", id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
+		return nil, fmt.Errorf("session %s: %w", id, apperrors.ErrNotFound)
 	}
 	return &session, err
 }
@@ -76,18 +78,15 @@ func (r *Repository) UpdateSessionTitle(ctx context.Context, id, name string) (b
 
 func (r *Repository) DeleteSession(id string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("session_id = ?", id).Delete(&domain.Message{}).Error; err != nil {
+		// Delete messages.
+		if err := tx.Table("messages").Where("session_id = ?", id).Delete(nil).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("session_id = ?", id).Delete(&domain.ToolCallRecord{}).Error; err != nil {
+		// Delete tool call records.
+		if err := tx.Table("tool_call_records").Where("session_id = ?", id).Delete(nil).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("session_id = ?", id).Delete(&domain.EpisodeMemory{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("session_id = ?", id).Delete(&domain.StickyMemory{}).Error; err != nil {
-			return err
-		}
-		return tx.Where("id = ?", id).Delete(&domain.Session{}).Error
+		// Delete the session row.
+		return tx.Table("sessions").Where("id = ?", id).Delete(nil).Error
 	})
 }

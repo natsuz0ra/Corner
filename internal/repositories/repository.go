@@ -3,14 +3,26 @@ package repositories
 import (
 	"context"
 
+	"slimebot/internal/domain"
+
 	"gorm.io/gorm"
+)
+
+// Interface compliance checks at compile time.
+var (
+	_ domain.ChatStore                  = (*Repository)(nil)
+	_ domain.SessionStore               = (*Repository)(nil)
+	_ domain.LLMConfigStore             = (*Repository)(nil)
+	_ domain.MCPConfigStore             = (*Repository)(nil)
+	_ domain.MessagePlatformConfigStore = (*Repository)(nil)
+	_ domain.SettingsStore              = (*Repository)(nil)
 )
 
 type Repository struct {
 	db *gorm.DB
 }
 
-// New 创建 Repository 实例
+// New constructs a Repository.
 func New(db *gorm.DB) *Repository {
 	return &Repository{db: db}
 }

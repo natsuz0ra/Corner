@@ -109,14 +109,14 @@ async function onConfirm() {
     const responseError = String(error?.response?.data?.error || '')
     if (
       responseStatus === 401
-      || (responseStatus === 400 && responseError.includes('旧密码错误'))
-      || responseError.includes('旧密码错误')
+      || (responseStatus === 400 && responseError.includes('Current password is incorrect'))
+      || responseError.includes('Current password is incorrect')
     ) {
       oldPasswordError.value = t('oldPasswordIncorrect')
       triggerOldPasswordShake()
       return
     }
-    if (responseStatus === 400 && responseError.includes('新密码不能与旧密码相同')) {
+    if (responseStatus === 400 && responseError.includes('New password must be different from the current password')) {
       newPasswordError.value = t('newPasswordSameAsOld')
       return
     }

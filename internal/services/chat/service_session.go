@@ -2,24 +2,26 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"slimebot/internal/apperrors"
 	"slimebot/internal/constants"
 	"slimebot/internal/domain"
 )
 
 const platformModelCacheTTL = 30 * time.Second
 
-// EnsureSession 确保普通聊天会话存在；传入有效 sessionID 时优先复用，否则创建新会话。
+// EnsureSession ensures a normal chat session exists; reuses valid sessionID or creates one.
 func (s *ChatService) EnsureSession(ctx context.Context, sessionID string) (*domain.Session, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if sessionID != "" {
 		existing, err := s.store.GetSessionByID(ctx, sessionID)
-		if err != nil {
+		if err != nil && !errors.Is(err, apperrors.ErrNotFound) {
 			return nil, err
 		}
 		if existing != nil {
@@ -29,13 +31,13 @@ func (s *ChatService) EnsureSession(ctx context.Context, sessionID string) (*dom
 	return s.store.CreateSession(ctx, "New Chat")
 }
 
-// EnsureMessagePlatformSession 确保消息平台桥接会话存在，并固定使用预定义 ID。
+// EnsureMessagePlatformSession ensures the bridged platform session exists with a fixed ID.
 func (s *ChatService) EnsureMessagePlatformSession(ctx context.Context) (*domain.Session, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	session, err := s.store.GetSessionByID(ctx, constants.MessagePlatformSessionID)
-	if err != nil {
+	if err != nil && !errors.Is(err, apperrors.ErrNotFound) {
 		return nil, err
 	}
 	if session != nil {
@@ -44,7 +46,7 @@ func (s *ChatService) EnsureMessagePlatformSession(ctx context.Context) (*domain
 	return s.store.CreateSessionWithID(ctx, constants.MessagePlatformSessionID, constants.MessagePlatformSessionName)
 }
 
-// ResolvePlatformModel 为消息平台入口解析默认模型，优先平台级设置，再回退全局设置和首个可用模型。
+// ResolvePlatformModel resolves the default model for platform ingress (platform setting, then global, then first).
 func (s *ChatService) ResolvePlatformModel(ctx context.Context) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -55,7 +57,7 @@ func (s *ChatService) ResolvePlatformModel(ctx context.Context) (string, error) 
 	s.platformModelMu.Unlock()
 	if cacheID != "" && time.Since(cacheAt) < platformModelCacheTTL {
 		item, err := s.store.GetLLMConfigByID(ctx, cacheID)
-		if err != nil {
+		if err != nil && !errors.Is(err, apperrors.ErrNotFound) {
 			return "", err
 		}
 		if item != nil {
@@ -63,7 +65,7 @@ func (s *ChatService) ResolvePlatformModel(ctx context.Context) (string, error) 
 		}
 	}
 
-	// 统一校验候选模型 ID 是否存在，避免重复写 store 查询逻辑。
+	// Helper to verify a model ID exists without duplicating store lookups.
 	resolveModel := func(modelID string) (string, bool, error) {
 		trimmed := strings.TrimSpace(modelID)
 		if trimmed == "" {
@@ -71,10 +73,10 @@ func (s *ChatService) ResolvePlatformModel(ctx context.Context) (string, error) 
 		}
 		item, err := s.store.GetLLMConfigByID(ctx, trimmed)
 		if err != nil {
+			if errors.Is(err, apperrors.ErrNotFound) {
+				return "", false, nil
+			}
 			return "", false, err
-		}
-		if item == nil {
-			return "", false, nil
 		}
 		return item.ID, true, nil
 	}
@@ -127,7 +129,7 @@ func (s *ChatService) ResolvePlatformModel(ctx context.Context) (string, error) 
 	return fallbackID, nil
 }
 
-// ResolveLLMConfig 读取并校验模型配置，保证发起请求前关键字段完整。
+// ResolveLLMConfig loads and validates model config before requests.
 func (s *ChatService) ResolveLLMConfig(ctx context.Context, modelID string) (*domain.LLMConfig, error) {
 	configID := strings.TrimSpace(modelID)
 	if configID == "" {
@@ -136,10 +138,10 @@ func (s *ChatService) ResolveLLMConfig(ctx context.Context, modelID string) (*do
 
 	config, err := s.store.GetLLMConfigByID(ctx, configID)
 	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			return nil, fmt.Errorf("Model config not found: %s.", configID)
+		}
 		return nil, err
-	}
-	if config == nil {
-		return nil, fmt.Errorf("Model config not found: %s.", configID)
 	}
 	if strings.TrimSpace(config.BaseURL) == "" || strings.TrimSpace(config.APIKey) == "" || strings.TrimSpace(config.Model) == "" {
 		return nil, fmt.Errorf("Model config is incomplete: %s.", config.Name)

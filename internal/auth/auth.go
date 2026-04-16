@@ -10,19 +10,19 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Claims 定义 JWT 中承载的业务字段与标准声明。
+// Claims carries app fields plus standard JWT registered claims.
 type Claims struct {
 	Username string `json:"username"`
 	jwt.RegisteredClaims
 }
 
-// TokenManager 负责 JWT 的签发与解析。
+// TokenManager signs and parses JWTs.
 type TokenManager struct {
 	secret        []byte
 	expireMinutes int
 }
 
-// NewTokenManager 创建 JWT 管理器并校验关键配置。
+// NewTokenManager constructs a TokenManager after validating secret and TTL.
 func NewTokenManager(secret string, expireMinutes int) (*TokenManager, error) {
 	if strings.TrimSpace(secret) == "" {
 		return nil, errors.New("jwt secret cannot be empty")
@@ -36,7 +36,7 @@ func NewTokenManager(secret string, expireMinutes int) (*TokenManager, error) {
 	}, nil
 }
 
-// Generate 为指定用户名生成带过期时间的 JWT。
+// Generate issues a JWT for the given username with configured expiry.
 func (m *TokenManager) Generate(username string) (string, error) {
 	now := time.Now()
 	claims := Claims{
@@ -51,7 +51,7 @@ func (m *TokenManager) Generate(username string) (string, error) {
 	return token.SignedString(m.secret)
 }
 
-// Parse 校验并解析 JWT，返回业务 Claims。
+// Parse validates a JWT string and returns Claims.
 func (m *TokenManager) Parse(tokenString string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (any, error) {
 		if token.Method != jwt.SigningMethodHS256 {
@@ -69,12 +69,12 @@ func (m *TokenManager) Parse(tokenString string) (*Claims, error) {
 	return claims, nil
 }
 
-// ExpireMinutes 返回当前 token 过期分钟数配置。
+// ExpireMinutes returns configured token lifetime in minutes.
 func (m *TokenManager) ExpireMinutes() int {
 	return m.expireMinutes
 }
 
-// HashPassword 使用 bcrypt 对密码做哈希存储。
+// HashPassword hashes a password with bcrypt for storage.
 func HashPassword(password string) (string, error) {
 	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -83,7 +83,7 @@ func HashPassword(password string) (string, error) {
 	return string(hashed), nil
 }
 
-// ComparePassword 校验明文密码与 bcrypt 哈希是否匹配。
+// ComparePassword checks plaintext against a bcrypt hash.
 func ComparePassword(hash, plain string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(plain)) == nil
 }

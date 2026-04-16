@@ -105,7 +105,7 @@ onUnmounted(() => {
 
 <template>
   <div class="relative inline-block">
-    <!-- 触发按钮 -->
+    <!-- Trigger -->
     <button
       ref="triggerRef"
       type="button"
@@ -127,7 +127,7 @@ onUnmounted(() => {
       />
     </button>
 
-    <!-- 下拉列表 -->
+    <!-- Dropdown list -->
     <Teleport to="body">
       <Transition :name="goUp ? 'select-dropdown-top' : 'select-dropdown'">
         <div

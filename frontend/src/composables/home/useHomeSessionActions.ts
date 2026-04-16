@@ -151,7 +151,7 @@ export function useHomeSessionActions(options: {
         store.resetToNewSession()
       }
     } catch {
-      showError('删除失败')
+      showError(t('sessionDeleteFailed'))
     } finally {
       uiState.deleteConfirmVisible.value = false
       uiState.deleteTargetId.value = ''

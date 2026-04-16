@@ -31,14 +31,14 @@ type UploadedAttachment struct {
 	Path      string
 }
 
-// LocalAttachmentFile 描述由服务内部直接提供的附件内容（非 HTTP multipart 上传）。
+// LocalAttachmentFile describes attachment bytes supplied in-process (not HTTP multipart).
 type LocalAttachmentFile struct {
 	Name     string
 	MimeType string
 	Data     []byte
 }
 
-// ToMessageAttachment 将运行时上传对象转换为可持久化的附件元信息。
+// ToMessageAttachment converts a runtime upload to persistable attachment metadata.
 func (a UploadedAttachment) ToMessageAttachment() domain.MessageAttachment {
 	return domain.MessageAttachment{
 		ID:        a.ID,
@@ -51,10 +51,10 @@ func (a UploadedAttachment) ToMessageAttachment() domain.MessageAttachment {
 	}
 }
 
-// ChatUploadService 管理聊天附件的临时生命周期：
-// 1) SaveFiles 暂存并注册；
-// 2) Consume 按会话消费；
-// 3) Cleanup 在回合结束后删除临时文件。
+// ChatUploadService manages temporary chat attachment lifecycle:
+// 1) SaveFiles stages and registers files;
+// 2) Consume takes attachments by session;
+// 3) Cleanup removes temp files after the turn.
 type ChatUploadService struct {
 	root string
 
@@ -62,7 +62,7 @@ type ChatUploadService struct {
 	items map[string]UploadedAttachment
 }
 
-// NewChatUploadService 创建聊天附件临时存储服务。
+// NewChatUploadService creates a temporary chat attachment store.
 func NewChatUploadService(root string) *ChatUploadService {
 	return &ChatUploadService{
 		root:  root,
@@ -70,7 +70,14 @@ func NewChatUploadService(root string) *ChatUploadService {
 	}
 }
 
-// normalizeAttachmentName 归一化文件名，避免空名或路径注入。
+// saveableFile is the shared input shape for SaveFiles and RegisterLocalFiles.
+type saveableFile struct {
+	Name     string
+	Data     []byte
+	MimeType string // Optional; if empty, detected from file content
+}
+
+// normalizeAttachmentName normalizes a filename and blocks path injection.
 func normalizeAttachmentName(name string) string {
 	trimmed := strings.TrimSpace(name)
 	if trimmed == "" {
@@ -83,7 +90,7 @@ func normalizeAttachmentName(name string) string {
 	return base
 }
 
-// attachmentIconType 根据扩展名/mime 推断前端展示图标类型。
+// attachmentIconType maps ext/mime to a frontend icon type.
 func attachmentIconType(ext, mimeType string) string {
 	e := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(ext), "."))
 	m := strings.ToLower(strings.TrimSpace(mimeType))
@@ -109,9 +116,8 @@ func attachmentIconType(ext, mimeType string) string {
 	}
 }
 
-// SaveFiles 校验并保存上传文件到临时目录，并返回可消费的附件引用。
-// 目录按 session + 日期 + requestID 隔离，减少并发回合互相影响。
-func (s *ChatUploadService) SaveFiles(sessionID string, files []*multipart.FileHeader) ([]UploadedAttachment, error) {
+// saveAndRegister writes files under a temp dir and registers them in memory.
+func (s *ChatUploadService) saveAndRegister(sessionID string, files []saveableFile) ([]UploadedAttachment, error) {
 	if s == nil {
 		return nil, fmt.Errorf("chat upload service is not initialized")
 	}
@@ -131,116 +137,35 @@ func (s *ChatUploadService) SaveFiles(sessionID string, files []*multipart.FileH
 	}
 
 	saved := make([]UploadedAttachment, 0, len(files))
-	for _, header := range files {
-		if header == nil {
-			continue
-		}
-		if header.Size <= 0 {
-			return nil, fmt.Errorf("file %q is empty", header.Filename)
-		}
-		if header.Size > maxChatUploadBytes {
-			return nil, fmt.Errorf("file %q exceeds 10MB size limit", header.Filename)
-		}
-		src, err := header.Open()
-		if err != nil {
-			return nil, fmt.Errorf("failed to open file %q: %w", header.Filename, err)
-		}
-
-		attachmentID := uuid.NewString()
-		ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(header.Filename)), ".")
-		dstPath := filepath.Join(requestDir, attachmentID+"_"+normalizeAttachmentName(header.Filename))
-		dst, err := os.Create(dstPath)
-		if err != nil {
-			_ = src.Close()
-			return nil, fmt.Errorf("failed to create temp file %q: %w", header.Filename, err)
-		}
-
-		written, copyErr := io.Copy(dst, src)
-		closeErr := dst.Close()
-		_ = src.Close()
-		if copyErr != nil {
-			return nil, fmt.Errorf("failed to save file %q: %w", header.Filename, copyErr)
-		}
-		if closeErr != nil {
-			return nil, fmt.Errorf("failed to close temp file %q: %w", header.Filename, closeErr)
-		}
-
-		mimeType := detectStoredFileMime(dstPath, header.Header.Get("Content-Type"), ext)
-		category := classifyAttachmentCategory(mimeType, ext)
-		item := UploadedAttachment{
-			ID:        attachmentID,
-			SessionID: sessionID,
-			Name:      normalizeAttachmentName(header.Filename),
-			Ext:       strings.ToUpper(ext),
-			SizeBytes: written,
-			MimeType:  mimeType,
-			Category:  category,
-			IconType:  attachmentIconType(ext, mimeType),
-			Path:      dstPath,
-		}
-		saved = append(saved, item)
-	}
-
-	// 统一注册到内存索引，后续由 Consume 一次性取走。
-	s.mu.Lock()
-	for _, item := range saved {
-		s.items[item.ID] = item
-	}
-	s.mu.Unlock()
-	return saved, nil
-}
-
-// RegisterLocalFiles 将内存中的文件内容注册为可消费附件，适用于平台侧下载后桥接。
-func (s *ChatUploadService) RegisterLocalFiles(sessionID string, files []LocalAttachmentFile) ([]UploadedAttachment, error) {
-	if s == nil {
-		return nil, fmt.Errorf("chat upload service is not initialized")
-	}
-	if strings.TrimSpace(sessionID) == "" {
-		return nil, fmt.Errorf("session id is required")
-	}
-	if len(files) == 0 {
-		return []UploadedAttachment{}, nil
-	}
-	if len(files) > maxChatUploadFiles {
-		return nil, fmt.Errorf("at most %d files can be uploaded", maxChatUploadFiles)
-	}
-
-	requestDir := filepath.Join(s.root, sessionID, time.Now().UTC().Format("20060102"), uuid.NewString())
-	if err := os.MkdirAll(requestDir, os.ModePerm); err != nil {
-		return nil, fmt.Errorf("failed to create upload directory: %w", err)
-	}
-
-	saved := make([]UploadedAttachment, 0, len(files))
-	for _, input := range files {
-		name := normalizeAttachmentName(input.Name)
-		if len(input.Data) == 0 {
+	for _, f := range files {
+		name := normalizeAttachmentName(f.Name)
+		if len(f.Data) == 0 {
 			return nil, fmt.Errorf("file %q is empty", name)
 		}
-		if int64(len(input.Data)) > maxChatUploadBytes {
+		if int64(len(f.Data)) > maxChatUploadBytes {
 			return nil, fmt.Errorf("file %q exceeds 10MB size limit", name)
 		}
 
 		attachmentID := uuid.NewString()
 		ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(name)), ".")
 		dstPath := filepath.Join(requestDir, attachmentID+"_"+name)
-		if err := os.WriteFile(dstPath, input.Data, 0o600); err != nil {
+		if err := os.WriteFile(dstPath, f.Data, 0o600); err != nil {
 			return nil, fmt.Errorf("failed to save file %q: %w", name, err)
 		}
 
-		mimeType := detectStoredFileMime(dstPath, input.MimeType, ext)
+		mimeType := detectStoredFileMime(dstPath, f.MimeType, ext)
 		category := classifyAttachmentCategory(mimeType, ext)
-		item := UploadedAttachment{
+		saved = append(saved, UploadedAttachment{
 			ID:        attachmentID,
 			SessionID: sessionID,
 			Name:      name,
 			Ext:       strings.ToUpper(ext),
-			SizeBytes: int64(len(input.Data)),
+			SizeBytes: int64(len(f.Data)),
 			MimeType:  mimeType,
 			Category:  category,
 			IconType:  attachmentIconType(ext, mimeType),
 			Path:      dstPath,
-		}
-		saved = append(saved, item)
+		})
 	}
 
 	s.mu.Lock()
@@ -251,7 +176,45 @@ func (s *ChatUploadService) RegisterLocalFiles(sessionID string, files []LocalAt
 	return saved, nil
 }
 
-// Consume 按会话消费附件 ID，并从内存索引移除，避免重复复用。
+// SaveFiles validates and saves multipart uploads; returns consumable attachment refs.
+func (s *ChatUploadService) SaveFiles(sessionID string, files []*multipart.FileHeader) ([]UploadedAttachment, error) {
+	sf := make([]saveableFile, 0, len(files))
+	for _, header := range files {
+		if header == nil {
+			continue
+		}
+		src, err := header.Open()
+		if err != nil {
+			return nil, fmt.Errorf("failed to open file %q: %w", header.Filename, err)
+		}
+		data, err := io.ReadAll(src)
+		_ = src.Close()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read file %q: %w", header.Filename, err)
+		}
+		sf = append(sf, saveableFile{
+			Name:     header.Filename,
+			Data:     data,
+			MimeType: header.Header.Get("Content-Type"),
+		})
+	}
+	return s.saveAndRegister(sessionID, sf)
+}
+
+// RegisterLocalFiles registers in-memory bytes as consumable attachments (e.g. platform bridge).
+func (s *ChatUploadService) RegisterLocalFiles(sessionID string, files []LocalAttachmentFile) ([]UploadedAttachment, error) {
+	sf := make([]saveableFile, 0, len(files))
+	for _, f := range files {
+		sf = append(sf, saveableFile{
+			Name:     f.Name,
+			Data:     f.Data,
+			MimeType: f.MimeType,
+		})
+	}
+	return s.saveAndRegister(sessionID, sf)
+}
+
+// Consume takes attachment IDs for a session and removes them from the index (single use).
 func (s *ChatUploadService) Consume(sessionID string, ids []string) ([]UploadedAttachment, error) {
 	if s == nil {
 		return []UploadedAttachment{}, nil
@@ -281,7 +244,7 @@ func (s *ChatUploadService) Consume(sessionID string, ids []string) ([]UploadedA
 	return items, nil
 }
 
-// Cleanup 删除临时文件并尝试清理空目录；该方法设计为幂等调用。
+// Cleanup deletes temp files and prunes empty dirs; safe to call repeatedly.
 func (s *ChatUploadService) Cleanup(items []UploadedAttachment) {
 	if len(items) == 0 {
 		return

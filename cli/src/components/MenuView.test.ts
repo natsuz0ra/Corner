@@ -4,7 +4,7 @@ import {
   formatMenuDescriptionLines,
   truncateMenuDescription,
   truncateMenuTitle,
-} from "./MenuView.tsx";
+} from "./MenuView";
 
 test("truncateMenuTitle truncates long titles with ellipsis", () => {
   const input = "12345678901234567890123456";

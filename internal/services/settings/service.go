@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// AppSettings 是后端对前端暴露的设置视图模型。
+// AppSettings is the settings DTO exposed to the frontend.
 type AppSettings struct {
 	Language                    string
 	DefaultModel                string
@@ -17,7 +17,7 @@ type AppSettings struct {
 	WebSearchAPIKey             string
 }
 
-// UpdateSettingsInput 是设置更新请求的领域输入。
+// UpdateSettingsInput is the domain input for partial settings updates.
 type UpdateSettingsInput struct {
 	Language                    string
 	DefaultModel                string
@@ -33,7 +33,7 @@ func NewSettingsService(store domain.SettingsStore) *SettingsService {
 	return &SettingsService{store: store}
 }
 
-// Get 读取设置并补齐默认值，保证接口返回稳定字段。
+// Get loads settings and fills defaults for a stable API surface.
 func (s *SettingsService) Get() (*AppSettings, error) {
 	language, err := s.store.GetSetting(context.Background(), constants.SettingLanguage)
 	if err != nil {
@@ -62,7 +62,7 @@ func (s *SettingsService) Get() (*AppSettings, error) {
 	}, nil
 }
 
-// Update 仅更新请求中显式提供的字段，避免覆盖未传值配置。
+// Update applies only fields that are explicitly set in the request.
 func (s *SettingsService) Update(input UpdateSettingsInput) error {
 	if strings.TrimSpace(input.Language) != "" {
 		if err := s.store.SetSetting(context.Background(), constants.SettingLanguage, input.Language); err != nil {

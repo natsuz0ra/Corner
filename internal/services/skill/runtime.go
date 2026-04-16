@@ -11,10 +11,10 @@ import (
 
 	"slimebot/internal/constants"
 	"slimebot/internal/domain"
-	"slimebot/internal/services/openai"
+	llmsvc "slimebot/internal/services/llm"
 )
 
-// SkillRuntimeService 负责技能目录注入、激活与运行期删除。
+// SkillRuntimeService manages skill directory injection, activation, and runtime deletion.
 type SkillRuntimeService struct {
 	store         domain.SkillStore
 	skillsRootAbs string
@@ -26,7 +26,7 @@ type SkillRuntimeService struct {
 
 const catalogCacheTTL = 30 * time.Second
 
-// NewSkillRuntimeService 创建技能运行时服务。
+// NewSkillRuntimeService creates a skill runtime service.
 func NewSkillRuntimeService(store domain.SkillStore, skillsRoot string) *SkillRuntimeService {
 	absRoot, _ := filepath.Abs(strings.TrimSpace(skillsRoot))
 	return &SkillRuntimeService{
@@ -35,7 +35,7 @@ func NewSkillRuntimeService(store domain.SkillStore, skillsRoot string) *SkillRu
 	}
 }
 
-// ListSkills 返回当前已安装技能列表。
+// ListSkills returns installed skills.
 func (s *SkillRuntimeService) ListSkills() ([]domain.Skill, error) {
 	items, err := s.store.ListSkills()
 	if err != nil {
@@ -47,7 +47,7 @@ func (s *SkillRuntimeService) ListSkills() ([]domain.Skill, error) {
 	return items, nil
 }
 
-// BuildCatalogPrompt 生成可注入模型上下文的技能目录描述。
+// BuildCatalogPrompt builds the skill catalog text for model context.
 func (s *SkillRuntimeService) BuildCatalogPrompt() (string, []domain.Skill, error) {
 	s.catalogMu.RLock()
 	if time.Now().Before(s.cacheUntil) {
@@ -97,8 +97,8 @@ func (s *SkillRuntimeService) BuildCatalogPrompt() (string, []domain.Skill, erro
 	return prompt, items, nil
 }
 
-// BuildActivateSkillToolDef 构造 activate_skill 工具定义，供模型触发技能加载。
-func (s *SkillRuntimeService) BuildActivateSkillToolDef(skills []domain.Skill) *openai.ToolDef {
+// BuildActivateSkillToolDef builds the activate_skill tool definition for the model.
+func (s *SkillRuntimeService) BuildActivateSkillToolDef(skills []domain.Skill) *llmsvc.ToolDef {
 	if len(skills) == 0 {
 		return nil
 	}
@@ -107,7 +107,7 @@ func (s *SkillRuntimeService) BuildActivateSkillToolDef(skills []domain.Skill) *
 		enumValues = append(enumValues, item.Name)
 	}
 
-	return &openai.ToolDef{
+	return &llmsvc.ToolDef{
 		Name:        "activate_skill",
 		Description: "Load a skill guide by name. Call only when the task matches the skill description.",
 		Parameters: map[string]any{
@@ -124,7 +124,7 @@ func (s *SkillRuntimeService) BuildActivateSkillToolDef(skills []domain.Skill) *
 	}
 }
 
-// ActivateSkill 按名称加载 SKILL.md 内容并标记本轮会话已激活。
+// ActivateSkill loads SKILL.md by name and marks the skill active for this session.
 func (s *SkillRuntimeService) ActivateSkill(name string, activated map[string]struct{}) (string, bool, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -181,7 +181,7 @@ func (s *SkillRuntimeService) ActivateSkill(name string, activated map[string]st
 	return b.String(), false, nil
 }
 
-// DeleteSkillByID 删除技能目录并清空运行时缓存。
+// DeleteSkillByID removes the skill directory and clears runtime cache.
 func (s *SkillRuntimeService) DeleteSkillByID(id string) error {
 	if err := s.store.DeleteSkill(id); err != nil {
 		return err
@@ -194,7 +194,7 @@ func (s *SkillRuntimeService) DeleteSkillByID(id string) error {
 	return nil
 }
 
-// resolveSkillDir 根据存储路径解析技能目录并校验越界风险。
+// resolveSkillDir resolves the skill directory from stored paths and checks traversal safety.
 func (s *SkillRuntimeService) resolveSkillDir(item domain.Skill) (string, error) {
 	base := filepath.Clean(s.skillsRootAbs)
 	candidate := filepath.Join(base, item.Name)
@@ -211,7 +211,7 @@ func (s *SkillRuntimeService) resolveSkillDir(item domain.Skill) (string, error)
 	return candidate, nil
 }
 
-// stripFrontmatter 解析并移除 SKILL.md 的 YAML frontmatter。
+// stripFrontmatter parses and strips YAML frontmatter from SKILL.md.
 func stripFrontmatter(content string) (string, error) {
 	text := strings.TrimPrefix(content, "\uFEFF")
 	if !strings.HasPrefix(text, "---") {
@@ -228,7 +228,7 @@ func stripFrontmatter(content string) (string, error) {
 	return body, nil
 }
 
-// escapeXML 对技能内容做 XML 转义，避免嵌入提示词时破坏结构。
+// escapeXML escapes skill content for safe embedding in XML-shaped prompts.
 func escapeXML(s string) string {
 	replacer := strings.NewReplacer(
 		"&", "&amp;",

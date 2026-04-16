@@ -8,7 +8,7 @@ import (
 	"slimebot/internal/domain"
 )
 
-// SessionService 负责会话领域编排，控制器仅处理协议转换。
+// SessionService orchestrates session use cases; controllers stay thin.
 type SessionService struct {
 	store domain.SessionStore
 }

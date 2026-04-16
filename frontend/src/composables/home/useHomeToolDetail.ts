@@ -16,8 +16,14 @@ export function useHomeToolDetail(options: {
     return store.replyBatches.find((batch) => batch.assistantMessageId === messageId)
   }
 
+  function topLevelToolCalls(batch: { toolCalls: ToolCallItem[] }) {
+    return batch.toolCalls.filter((tc) => !tc.parentToolCallId)
+  }
+
   function getReplyToolCount(messageId: string) {
-    return findReplyBatchByMessageId(messageId)?.toolCalls.length || 0
+    const batch = findReplyBatchByMessageId(messageId)
+    if (!batch) return 0
+    return topLevelToolCalls(batch).length
   }
 
   function getToolCallDesc(toolCall: ToolCallItem) {
@@ -27,6 +33,14 @@ export function useHomeToolDetail(options: {
     if (toolCall.toolName === 'web_search') {
       const query = String(params.query ?? '').trim()
       if (query !== '') return `query: ${query}`
+    }
+
+    if (toolCall.toolName === 'run_subagent') {
+      const task = String(params.task ?? '').trim()
+      if (task !== '') {
+        const short = task.length > 100 ? `${task.slice(0, 100)}…` : task
+        return `task: ${short}`
+      }
     }
 
     if (nonEmptyEntries.length === 0) return toolCall.command || ''
@@ -39,11 +53,12 @@ export function useHomeToolDetail(options: {
     const batch = findReplyBatchByMessageId(messageId)
     if (!batch) return ''
 
-    const count = batch.toolCalls.length
+    const calls = topLevelToolCalls(batch)
+    const count = calls.length
     if (count === 0) return ''
     if (batch.collapsed) return t('toolExecutionCount', { count })
 
-    const runningCall = [...batch.toolCalls].reverse().find((item) => item.status === 'pending' || item.status === 'executing')
+    const runningCall = [...calls].reverse().find((item) => item.status === 'pending' || item.status === 'executing')
     if (runningCall) {
       const desc = getToolCallDesc(runningCall).trim()
       if (desc !== '') {
@@ -52,7 +67,7 @@ export function useHomeToolDetail(options: {
       return t('toolExecutionRunningNoDesc', { command: runningCall.toolName })
     }
 
-    const latest = batch.toolCalls[count - 1]
+    const latest = calls[count - 1]
     if (!latest) return t('toolExecutionCount', { count })
     if (latest.status === 'completed') {
       return t('toolExecutionSuccess', { command: latest.toolName })
@@ -72,10 +87,18 @@ export function useHomeToolDetail(options: {
     return getReplyToolCalls(messageId).find((item) => item.toolCallId === toolCallId)
   }
 
+  function getSubagentChildTools(messageId: string, parentToolCallId: string) {
+    const batch = findReplyBatchByMessageId(messageId)
+    if (!batch) return []
+    return batch.toolCalls.filter((tc) => tc.parentToolCallId === parentToolCallId)
+  }
+
   function shouldShowInlineToolCall(messageId: string, toolCallId: string) {
     const item = getReplyToolItem(messageId, toolCallId)
     if (!item) return false
-    return item.requiresApproval
+    if (item.parentToolCallId) return false
+    if (item.requiresApproval) return true
+    return item.toolName === 'run_subagent'
   }
 
   function isReplyToolCollapsed(messageId: string) {
@@ -114,6 +137,7 @@ export function useHomeToolDetail(options: {
     getReplyToolSummary,
     getReplyTimeline,
     getReplyToolItem,
+    getSubagentChildTools,
     shouldShowInlineToolCall,
     isReplyToolCollapsed,
     isEmptyPlaceholder,

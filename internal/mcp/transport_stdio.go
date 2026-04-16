@@ -22,7 +22,7 @@ type stdioClient struct {
 	id int64
 }
 
-// newStdioClient 启动 MCP 子进程并完成初始化握手。
+// newStdioClient starts an MCP subprocess and completes the initialize handshake.
 func newStdioClient(cfg *ServerConfig) (Client, error) {
 	command := strings.TrimSpace(cfg.Command)
 	if command == "" {
@@ -59,7 +59,7 @@ func (c *stdioClient) nextID() int64 {
 	return atomic.AddInt64(&c.id, 1)
 }
 
-// initialize 执行 MCP initialize 流程，并发送 initialized 通知。
+// initialize runs MCP initialize and sends initialized.
 func (c *stdioClient) initialize(ctx context.Context) error {
 	_, err := c.request(ctx, "initialize", map[string]any{
 		"protocolVersion": "2024-11-05",
@@ -76,7 +76,7 @@ func (c *stdioClient) initialize(ctx context.Context) error {
 	return err
 }
 
-// request 通过 stdio 串行发送 JSON-RPC 请求并读取对应响应。
+// request sends one JSON-RPC over stdio and reads the matching response.
 func (c *stdioClient) request(ctx context.Context, method string, params map[string]any) (map[string]any, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -107,7 +107,7 @@ func (c *stdioClient) request(ctx context.Context, method string, params map[str
 	if err := json.Unmarshal(respRaw, &rpc); err != nil {
 		return nil, err
 	}
-	// 与 HTTP 传输保持一致：优先处理 RPC 层错误对象。
+	// Match HTTP transport: surface RPC-level error objects first.
 	if errObj, ok := rpc["error"]; ok && errObj != nil {
 		return nil, fmt.Errorf("mcp rpc error: %v", errObj)
 	}
@@ -165,7 +165,7 @@ func readRPCMessageBlocking(r io.Reader) ([]byte, error) {
 	return buf, nil
 }
 
-// ListTools 获取 MCP 服务工具列表并转为内部统一结构。
+// ListTools fetches tools from the MCP server into the internal Tool shape.
 func (c *stdioClient) ListTools(ctx context.Context) ([]Tool, error) {
 	result, err := c.request(ctx, "tools/list", map[string]any{})
 	if err != nil {
@@ -174,7 +174,7 @@ func (c *stdioClient) ListTools(ctx context.Context) ([]Tool, error) {
 	return parseTools(result), nil
 }
 
-// CallTool 调用指定工具并返回标准化调用结果。
+// CallTool invokes a tool and returns a normalized CallResult.
 func (c *stdioClient) CallTool(ctx context.Context, name string, arguments map[string]any) (*CallResult, error) {
 	result, err := c.request(ctx, "tools/call", map[string]any{
 		"name":      name,
@@ -186,7 +186,7 @@ func (c *stdioClient) CallTool(ctx context.Context, name string, arguments map[s
 	return parseCallResult(result), nil
 }
 
-// Close 关闭 stdio 管道并终止子进程，避免僵尸进程残留。
+// Close closes stdio and terminates the child process to avoid zombies.
 func (c *stdioClient) Close() error {
 	if c.stdin != nil {
 		_ = c.stdin.Close()

@@ -1,7 +1,7 @@
 package apierrors
 
-// APIError 统一的 API 错误对象。
-// 兼容性要求：至少包含 `{"error": "..."}`
+// APIError is the standard JSON error shape.
+// Compatibility: response must include at least `{"error": "..."}`.
 type APIError struct {
 	Code    string `json:"code,omitempty"`
 	Message string `json:"error"`

@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// ServerConfig 描述单个 MCP 服务的连接配置。
+// ServerConfig describes how to connect to one MCP server.
 type ServerConfig struct {
 	Transport      string            `json:"transport"`
 	Command        string            `json:"command"`
@@ -17,7 +17,7 @@ type ServerConfig struct {
 	SSEReadTimeout int               `json:"sse_read_timeout"`
 }
 
-// ParseAndValidateConfig 解析并校验 MCP 配置，返回可直接使用的标准化结果。
+// ParseAndValidateConfig parses and validates MCP JSON config.
 func ParseAndValidateConfig(raw string) (*ServerConfig, error) {
 	content := strings.TrimSpace(raw)
 	if content == "" {
@@ -31,12 +31,12 @@ func ParseAndValidateConfig(raw string) (*ServerConfig, error) {
 
 	transport := strings.TrimSpace(cfg.Transport)
 	if transport == "" {
-		// 与历史行为保持一致：未显式指定时默认走 stdio。
+		// Historical default: stdio when transport is omitted.
 		transport = "stdio"
 		cfg.Transport = transport
 	}
 
-	// 不同 transport 的必填字段不同，按协议类型分别校验。
+	// Required fields differ per transport; validate accordingly.
 	switch transport {
 	case "stdio":
 		if strings.TrimSpace(cfg.Command) == "" {

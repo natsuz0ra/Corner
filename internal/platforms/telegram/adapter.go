@@ -19,85 +19,6 @@ type Adapter struct {
 	http  *http.Client
 }
 
-type getUpdatesResponse struct {
-	OK     bool     `json:"ok"`
-	Result []update `json:"result"`
-}
-
-type update struct {
-	UpdateID      int64          `json:"update_id"`
-	Message       *message       `json:"message"`
-	CallbackQuery *callbackQuery `json:"callback_query"`
-}
-
-type message struct {
-	MessageID int64            `json:"message_id"`
-	Chat      chat             `json:"chat"`
-	Text      string           `json:"text"`
-	Caption   string           `json:"caption"`
-	Photo     []photoSize      `json:"photo"`
-	Voice     *voiceAttachment `json:"voice"`
-	Audio     *audioAttachment `json:"audio"`
-	Document  *docAttachment   `json:"document"`
-}
-
-type photoSize struct {
-	FileID   string `json:"file_id"`
-	FileSize int64  `json:"file_size"`
-}
-
-type voiceAttachment struct {
-	FileID   string `json:"file_id"`
-	MimeType string `json:"mime_type"`
-	FileSize int64  `json:"file_size"`
-}
-
-type audioAttachment struct {
-	FileID   string `json:"file_id"`
-	FileName string `json:"file_name"`
-	MimeType string `json:"mime_type"`
-	FileSize int64  `json:"file_size"`
-}
-
-type docAttachment struct {
-	FileID   string `json:"file_id"`
-	FileName string `json:"file_name"`
-	MimeType string `json:"mime_type"`
-	FileSize int64  `json:"file_size"`
-}
-
-type chat struct {
-	ID int64 `json:"id"`
-}
-
-type callbackQuery struct {
-	ID      string   `json:"id"`
-	From    user     `json:"from"`
-	Message *message `json:"message"`
-	Data    string   `json:"data"`
-}
-
-type user struct {
-	ID int64 `json:"id"`
-}
-
-type getFileResponse struct {
-	OK     bool          `json:"ok"`
-	Result *telegramFile `json:"result"`
-}
-
-type telegramFile struct {
-	FilePath string `json:"file_path"`
-}
-
-type mediaCandidate struct {
-	Source         string
-	ProviderFileID string
-	Name           string
-	MimeType       string
-	SizeBytes      int64
-}
-
 func NewAdapter(token string) *Adapter {
 	return &Adapter{
 		token: strings.TrimSpace(token),
@@ -113,8 +34,29 @@ func (a *Adapter) getFileURL(filePath string) string {
 	return "https://api.telegram.org/file/bot" + a.token + "/" + strings.TrimLeft(strings.TrimSpace(filePath), "/")
 }
 
-// GetUpdates 调用 Telegram getUpdates 长轮询接口拉取增量更新。
-// 该方法同时校验 HTTP 状态码与 payload.ok，避免将异常响应当作有效数据。
+// postJSON sends a JSON POST to the Telegram API and checks the status code.
+func (a *Adapter) postJSON(method string, payload any) error {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, a.getAPIURL(method), bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := a.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("telegram %s failed: status=%d", method, resp.StatusCode)
+	}
+	return nil
+}
+
+// GetUpdates calls Telegram getUpdates long-polling for incremental updates.
 func (a *Adapter) GetUpdates(ctx context.Context, offset int64, timeoutSeconds int) ([]update, error) {
 	if a == nil || strings.TrimSpace(a.token) == "" {
 		return nil, fmt.Errorf("telegram token is empty")
@@ -281,42 +223,23 @@ func collectMediaCandidates(msg *message) []mediaCandidate {
 	return items
 }
 
-// SendText 发送纯文本消息，作为平台统一回包能力。
+// SendText sends a plain text message.
 func (a *Adapter) SendText(chatID string, text string) error {
 	if a == nil || strings.TrimSpace(a.token) == "" {
 		return fmt.Errorf("telegram token is empty")
 	}
-	payload := map[string]any{
+	return a.postJSON("sendMessage", map[string]any{
 		"chat_id": strings.TrimSpace(chatID),
 		"text":    text,
-	}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequest(http.MethodPost, a.getAPIURL("sendMessage"), bytes.NewReader(raw))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := a.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return fmt.Errorf("telegram sendMessage failed: status=%d", resp.StatusCode)
-	}
-	return nil
+	})
 }
 
-// SendApprovalKeyboard 发送带 Inline Keyboard 的审批消息；
-// callback_data 会被 approval broker 解析为批准/拒绝指令。
+// SendApprovalKeyboard sends an approval prompt with an inline keyboard.
 func (a *Adapter) SendApprovalKeyboard(chatID string, text string, approveData string, rejectData string) error {
 	if a == nil || strings.TrimSpace(a.token) == "" {
 		return fmt.Errorf("telegram token is empty")
 	}
-	payload := map[string]any{
+	return a.postJSON("sendMessage", map[string]any{
 		"chat_id": strings.TrimSpace(chatID),
 		"text":    text,
 		"reply_markup": map[string]any{
@@ -327,28 +250,10 @@ func (a *Adapter) SendApprovalKeyboard(chatID string, text string, approveData s
 				},
 			},
 		},
-	}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequest(http.MethodPost, a.getAPIURL("sendMessage"), bytes.NewReader(raw))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := a.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return fmt.Errorf("telegram sendMessage(approval) failed: status=%d", resp.StatusCode)
-	}
-	return nil
+	})
 }
 
-// AnswerCallbackQuery 应答按钮点击，避免 Telegram 客户端持续转圈。
+// AnswerCallbackQuery acknowledges a button press so Telegram stops the loading spinner.
 func (a *Adapter) AnswerCallbackQuery(callbackQueryID string, text string) error {
 	if a == nil || strings.TrimSpace(a.token) == "" {
 		return fmt.Errorf("telegram token is empty")
@@ -359,22 +264,5 @@ func (a *Adapter) AnswerCallbackQuery(callbackQueryID string, text string) error
 	if strings.TrimSpace(text) != "" {
 		payload["text"] = text
 	}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequest(http.MethodPost, a.getAPIURL("answerCallbackQuery"), bytes.NewReader(raw))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := a.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return fmt.Errorf("telegram answerCallbackQuery failed: status=%d", resp.StatusCode)
-	}
-	return nil
+	return a.postJSON("answerCallbackQuery", payload)
 }

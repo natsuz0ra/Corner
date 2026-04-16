@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"slimebot/internal/constants"
+	"slimebot/internal/repositories"
 )
 
 type sessionMessagesResponse struct {
@@ -27,13 +28,15 @@ type sessionToolCallHistory struct {
 	Params           map[string]string `json:"params"`
 	Status           string            `json:"status"`
 	RequiresApproval bool              `json:"requiresApproval"`
+	ParentToolCallID string            `json:"parentToolCallId,omitempty"`
+	SubagentRunID    string            `json:"subagentRunId,omitempty"`
 	Output           string            `json:"output,omitempty"`
 	Error            string            `json:"error,omitempty"`
 	StartedAt        string            `json:"startedAt"`
 	FinishedAt       string            `json:"finishedAt,omitempty"`
 }
 
-// parseToolCallParams 解析 tool_call 参数 JSON；异常时回退为空对象避免前端崩溃。
+// parseToolCallParams parses tool_call params JSON; on error returns empty map to avoid client crashes.
 func parseToolCallParams(raw string) map[string]string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -63,7 +66,7 @@ type listSessionsResponse struct {
 	HasMore  bool             `json:"hasMore"`
 }
 
-// ListSessions 返回当前用户的会话列表。
+// ListSessions returns the current user's sessions.
 func (h *HTTPController) ListSessions(c WebContext) {
 	limit := 100
 	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
@@ -87,20 +90,16 @@ func (h *HTTPController) ListSessions(c WebContext) {
 		offset = parsed
 	}
 	q := strings.TrimSpace(c.Query("q"))
-	fetchLimit := limit + 1
-	sessions, err := h.sessions.List(fetchLimit, offset, q)
+	sessions, err := h.sessions.List(limit+1, offset, q)
 	if err != nil {
 		jsonInternalError(c, err)
 		return
 	}
-	hasMore := len(sessions) > limit
-	if hasMore {
-		sessions = sessions[:limit]
-	}
+	sessions, hasMore := repositories.FetchWindow(sessions, limit)
 	c.JSON(http.StatusOK, listSessionsResponse{Sessions: sessions, HasMore: hasMore})
 }
 
-// CreateSession 创建会话；未传 name 时使用默认名称。
+// CreateSession creates a session; default name is used when name is omitted.
 func (h *HTTPController) CreateSession(c WebContext) {
 	var req struct {
 		Name string `json:"name"`
@@ -117,7 +116,7 @@ func (h *HTTPController) CreateSession(c WebContext) {
 	c.JSON(http.StatusOK, session)
 }
 
-// RenameSession 修改指定会话名称。
+// RenameSession renames a session.
 func (h *HTTPController) RenameSession(c WebContext) {
 	id := c.Param("id")
 	if id == constants.MessagePlatformSessionID {
@@ -137,7 +136,7 @@ func (h *HTTPController) RenameSession(c WebContext) {
 	c.Status(http.StatusNoContent)
 }
 
-// DeleteSession 删除指定会话及其关联数据。
+// DeleteSession deletes a session and related rows.
 func (h *HTTPController) DeleteSession(c WebContext) {
 	id := c.Param("id")
 	if id == constants.MessagePlatformSessionID {
@@ -151,7 +150,7 @@ func (h *HTTPController) DeleteSession(c WebContext) {
 	c.Status(http.StatusNoContent)
 }
 
-// ListMessages 返回会话消息，并附带 assistant 消息关联的工具调用历史。
+// ListMessages returns session messages plus tool-call history keyed by assistant message id.
 func (h *HTTPController) ListMessages(c WebContext) {
 	listStart := time.Now()
 	sessionID := c.Param("id")
@@ -242,6 +241,8 @@ func (h *HTTPController) ListMessages(c WebContext) {
 			Params:           parseToolCallParams(record.ParamsJSON),
 			Status:           record.Status,
 			RequiresApproval: record.RequiresApproval,
+			ParentToolCallID: record.ParentToolCallID,
+			SubagentRunID:    record.SubagentRunID,
 			Output:           record.Output,
 			Error:            record.Error,
 			StartedAt:        record.StartedAt.Format("2006-01-02T15:04:05.000Z07:00"),

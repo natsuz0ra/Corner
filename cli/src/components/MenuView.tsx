@@ -1,5 +1,5 @@
 /**
- * MenuView — 通用菜单组件，支持 session/model/skills/mcp/help 五种菜单。
+ * MenuView — shared menu for session / model / skills / mcp / help.
  */
 
 import React from "react";

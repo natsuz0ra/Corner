@@ -1,6 +1,6 @@
 /**
- * MCPEditor — MCP 配置编辑器。
- * 键盘事件由 App 统一分发，此组件仅负责展示和字段编辑。
+ * MCPEditor — MCP configuration editor.
+ * Keyboard events are dispatched by App; this component only renders and edits fields.
  */
 
 import React from "react";
@@ -73,7 +73,7 @@ export function MCPEditor({
             onChange={onConfigChange}
             focus={!focusName}
             columns={columns}
-            multiline={false}
+            multiline={true}
             enableCtrlShortcuts={false}
           />
         ) : (

@@ -13,7 +13,7 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-// Login 校验账号并签发 JWT，返回前端会话所需鉴权信息。
+// Login validates credentials and issues a JWT for the web client.
 func (h *HTTPController) Login(c WebContext) {
 	if h.tokenManager == nil {
 		jsonError(c, http.StatusInternalServerError, "Authentication service is not initialized.")
@@ -66,7 +66,7 @@ func (h *HTTPController) Login(c WebContext) {
 	})
 }
 
-// UpdateAccount 更新账号信息；修改密码时会强制校验旧密码。
+// UpdateAccount updates username/password; password changes require the current password.
 func (h *HTTPController) UpdateAccount(c WebContext) {
 	var req struct {
 		Username    string `json:"username"`

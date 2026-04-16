@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -13,9 +12,12 @@ import (
 	"slimebot/internal/logging"
 	"slimebot/internal/mcp"
 	"slimebot/internal/repositories"
+	sbruntime "slimebot/internal/runtime"
+	antsvc "slimebot/internal/services/anthropic"
 	authsvc "slimebot/internal/services/auth"
 	chatsvc "slimebot/internal/services/chat"
 	configsvc "slimebot/internal/services/config"
+	llmsvc "slimebot/internal/services/llm"
 	memsvc "slimebot/internal/services/memory"
 	oaisvc "slimebot/internal/services/openai"
 	sessionsvc "slimebot/internal/services/session"
@@ -23,7 +25,7 @@ import (
 	skillsvc "slimebot/internal/services/skill"
 )
 
-// Core 聚合 server/cli 共用的基础依赖与服务。
+// Core holds shared dependencies for server and CLI entrypoints.
 type Core struct {
 	Config config.Config
 	Repo   *repositories.Repository
@@ -42,15 +44,12 @@ type Core struct {
 	MCPManager       *mcp.Manager
 	MemoryService    *memsvc.MemoryService
 
-	embedding  io.Closer
-	vectorRepo *repositories.MemoryVectorRepository
-
 	warmupOnce    sync.Once
 	warmupDone    chan struct{}
 	warmupStarted atomic.Bool
 }
 
-// NewCore 初始化可复用核心依赖，不包含 server/telegram/鉴权路由等入口级组件。
+// NewCore wires reusable services; it does not include HTTP routes, Telegram, or auth wiring.
 func NewCore(cfg config.Config) (*Core, error) {
 	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), os.ModePerm); err != nil {
 		return nil, err
@@ -72,6 +71,9 @@ func NewCore(cfg config.Config) (*Core, error) {
 	}
 
 	openaiClient := oaisvc.NewOpenAIClient()
+	anthropicClient := antsvc.NewAnthropicClient()
+	providerFactory := llmsvc.NewFactory(openaiClient)
+	providerFactory.Register(llmsvc.ProviderAnthropic, anthropicClient)
 	mcpManager := mcp.NewManager()
 	settingsService := settingssvc.NewSettingsService(repo)
 	sessionService := sessionsvc.NewSessionService(repo)
@@ -83,10 +85,13 @@ func NewCore(cfg config.Config) (*Core, error) {
 	skillPackage := skillsvc.NewSkillPackageService(skillStore, cfg.SkillsRoot)
 	skillRuntime := skillsvc.NewSkillRuntimeService(skillStore, cfg.SkillsRoot)
 
-	memoryService := memsvc.NewMemoryService(repo, openaiClient)
+	memoryService, err := memsvc.NewMemoryService(cfg.MemoryDir)
+	if err != nil {
+		return nil, err
+	}
 
 	chatUpload := chatsvc.NewChatUploadService(cfg.ChatUploadRoot)
-	chatService := chatsvc.NewChatService(repo, openaiClient, mcpManager, skillRuntime, memoryService)
+	chatService := chatsvc.NewChatService(repo, providerFactory, mcpManager, skillRuntime, memoryService)
 	chatService.SetUploadService(chatUpload)
 
 	return &Core{
@@ -109,7 +114,7 @@ func NewCore(cfg config.Config) (*Core, error) {
 	}, nil
 }
 
-// WarmupInBackground 启动后台 goroutine 异步加载重量级服务。
+// WarmupInBackground starts a goroutine to warm up the memory index.
 func (c *Core) WarmupInBackground(ctx context.Context) {
 	if c == nil {
 		return
@@ -122,46 +127,19 @@ func (c *Core) WarmupInBackground(ctx context.Context) {
 		go func() {
 			defer close(c.warmupDone)
 
-			embeddingService, embeddingCloser, err := initEmbeddingService(ctx, c.Config)
-			if err != nil {
-				logging.Warn("async_embedding_init_failed", "err", err)
-				return
-			}
-			if embeddingService != nil {
-				c.embedding = embeddingCloser
-				if c.MemoryService != nil {
-					c.MemoryService.SetEmbeddingService(embeddingService)
+			// Rebuild memory index on startup.
+			if c.MemoryService != nil && c.MemoryService.Store() != nil {
+				if err := c.MemoryService.Store().RebuildIndex(); err != nil {
+					logging.Warn("memory_index_warmup_failed", "err", err)
+				} else {
+					logging.Info("memory_index_warmup_complete", "dir", c.Config.MemoryDir)
 				}
 			}
-
-			vectorRepo, err := initVectorStore(ctx, c.Config)
-			if err != nil {
-				logging.Warn("async_vector_store_init_failed", "err", err)
-				return
-			}
-			if vectorRepo != nil {
-				c.vectorRepo = vectorRepo
-				if c.MemoryService != nil {
-					c.MemoryService.SetVectorStore(vectorRepo)
-					c.MemoryService.SetVectorSearchTopK(c.Config.MemoryVectorTopK)
-				}
-				logging.Info("memory_vectorization_enabled",
-					"provider", "onnx_go",
-					"chroma_path", c.Config.ChromaPath,
-					"collection", c.Config.ChromaCollection,
-					"topk", c.Config.MemoryVectorTopK,
-				)
-			}
-
-			if c.MemoryService != nil {
-				c.MemoryService.WarmupTokenizer()
-			}
-			logging.Info("async_warmup_complete")
 		}()
 	})
 }
 
-// Close 关闭核心依赖持有的后台资源。
+// Close releases background resources held by Core.
 func (c *Core) Close(ctx context.Context) {
 	if c == nil {
 		return
@@ -170,14 +148,12 @@ func (c *Core) Close(ctx context.Context) {
 		ctx = context.Background()
 	}
 
-	warmupFinished := true
 	if c.warmupStarted.Load() {
 		waitCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
 		select {
 		case <-c.warmupDone:
 		case <-waitCtx.Done():
-			warmupFinished = false
 			logging.Warn("async_warmup_wait_timeout", "err", waitCtx.Err())
 		}
 	}
@@ -187,21 +163,21 @@ func (c *Core) Close(ctx context.Context) {
 			logging.Warn("memory_shutdown", "err", err)
 		}
 	}
-	if warmupFinished {
-		if c.embedding != nil {
-			if err := c.embedding.Close(); err != nil {
-				logging.Warn("embedding_close", "err", err)
-			}
-		}
-		if c.vectorRepo != nil {
-			if err := c.vectorRepo.Close(); err != nil {
-				logging.Warn("vector_repo_close", "err", err)
-			}
-		}
-	} else {
-		logging.Warn("skip_vector_resource_close", "reason", "warmup_not_finished")
-	}
 	if c.MCPManager != nil {
 		c.MCPManager.CloseAll()
+	}
+}
+
+// buildRunContext builds ChatService RunContext for CLI vs server.
+func buildRunContext(isCLI bool) chatsvc.RunContext {
+	cwd := ""
+	if isCLI {
+		cwd, _ = os.Getwd()
+	}
+	return chatsvc.RunContext{
+		ConfigHomeDir:        sbruntime.SlimeBotHomeDir(),
+		ConfigDirDescription: sbruntime.DescribeConfigHome(),
+		WorkingDir:           cwd,
+		IsCLI:                isCLI,
 	}
 }

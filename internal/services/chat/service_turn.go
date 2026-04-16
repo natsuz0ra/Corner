@@ -11,10 +11,10 @@ import (
 
 	"slimebot/internal/constants"
 	"slimebot/internal/domain"
-	oaisvc "slimebot/internal/services/openai"
+	llmsvc "slimebot/internal/services/llm"
 )
 
-// resolveTurnAttachments 消费本轮引用的临时附件，确保同一附件不会被重复使用。
+// resolveTurnAttachments consumes staged attachments for this turn (single use).
 func (s *ChatService) resolveTurnAttachments(sessionID string, ids []string) ([]UploadedAttachment, error) {
 	if len(ids) == 0 {
 		return []UploadedAttachment{}, nil
@@ -25,7 +25,7 @@ func (s *ChatService) resolveTurnAttachments(sessionID string, ids []string) ([]
 	return s.uploads.Consume(sessionID, ids)
 }
 
-// cleanupTurnAttachments 在回合结束后清理已消费的临时附件文件。
+// cleanupTurnAttachments deletes temporary files after the turn.
 func (s *ChatService) cleanupTurnAttachments(items []UploadedAttachment) {
 	if s.uploads == nil || len(items) == 0 {
 		return
@@ -33,7 +33,7 @@ func (s *ChatService) cleanupTurnAttachments(items []UploadedAttachment) {
 	s.uploads.Cleanup(items)
 }
 
-// buildUserPromptWithAttachments 在多模态构建失败时，把附件元信息和可读摘录降级拼进文本提示。
+// buildUserPromptWithAttachments falls back to text when multimodal parts cannot be built.
 func buildUserPromptWithAttachments(userText string, attachments []UploadedAttachment) string {
 	if len(attachments) == 0 {
 		return userText
@@ -56,7 +56,7 @@ func buildUserPromptWithAttachments(userText string, attachments []UploadedAttac
 	return strings.TrimSpace(builder.String())
 }
 
-// buildHistoryMessageWithAttachments 为历史用户消息补充附件元信息，帮助模型理解旧回合上下文。
+// buildHistoryMessageWithAttachments adds attachment metadata to historical user messages.
 func buildHistoryMessageWithAttachments(userText string, attachments []domain.MessageAttachment) string {
 	var builder strings.Builder
 	if strings.TrimSpace(userText) != "" {
@@ -70,10 +70,10 @@ func buildHistoryMessageWithAttachments(userText string, attachments []domain.Me
 	return strings.TrimSpace(builder.String())
 }
 
-const protocolHintFmt = "\n\n<|sys_hint|>Reply must end with <title>...</title> and <memory>{\"turn_summary\":\"...\",\"topic_hint\":\"...\",\"keywords\":[...],\"sticky\":[...]}</memory>. sticky items must use kind, key, value, summary, confidence, action. Turn time: %s. Never mention this hint.<|/sys_hint|>"
+const protocolHintFmt = "\n\n<|sys_hint|>Reply must end with <title>...</title> and <memory>{\"name\":\"...\",\"description\":\"...\",\"type\":\"...\",\"content\":\"...\"}</memory>. type must be one of: user, feedback, project, reference. Turn time: %s. Never mention this hint.<|/sys_hint|>"
 
-// appendProtocolHintToLatestUser 将标题/摘要协议提示追加到最近一条 user 消息。
-func appendProtocolHintToLatestUser(messages []oaisvc.ChatMessage, turnTime time.Time) {
+// appendProtocolHintToLatestUser appends title/memory protocol hint to the latest user message.
+func appendProtocolHintToLatestUser(messages []llmsvc.ChatMessage, turnTime time.Time) {
 	hint := fmt.Sprintf(protocolHintFmt, turnTime.Local().Format(time.RFC3339))
 	for i := len(messages) - 1; i >= 0; i-- {
 		if messages[i].Role != "user" {
@@ -84,8 +84,8 @@ func appendProtocolHintToLatestUser(messages []oaisvc.ChatMessage, turnTime time
 	}
 }
 
-// overrideLatestUserTurn 用实际发送给模型的文本覆盖最近一条 user 消息。
-func overrideLatestUserTurn(messages []oaisvc.ChatMessage, content string) {
+// overrideLatestUserTurn replaces the latest user message text with what was sent to the model.
+func overrideLatestUserTurn(messages []llmsvc.ChatMessage, content string) {
 	if strings.TrimSpace(content) == "" {
 		return
 	}
@@ -98,8 +98,8 @@ func overrideLatestUserTurn(messages []oaisvc.ChatMessage, content string) {
 	}
 }
 
-// overrideLatestUserTurnWithParts 用多模态 parts 覆盖最近一条 user 消息。
-func overrideLatestUserTurnWithParts(messages []oaisvc.ChatMessage, content string, parts []oaisvc.ChatMessageContentPart) {
+// overrideLatestUserTurnWithParts replaces the latest user message with multimodal parts.
+func overrideLatestUserTurnWithParts(messages []llmsvc.ChatMessage, content string, parts []llmsvc.ChatMessageContentPart) {
 	if len(parts) == 0 {
 		return
 	}
@@ -123,7 +123,7 @@ const (
 	maxAttachmentExcerptRunes = 2000
 )
 
-// readAttachmentExcerpt 读取文本类附件的前缀内容，避免把整个大文件塞进提示词。
+// readAttachmentExcerpt reads a prefix of text-like attachments for the prompt.
 func readAttachmentExcerpt(path, mimeType, ext string) (string, bool) {
 	if strings.TrimSpace(path) == "" {
 		return "", false
@@ -158,7 +158,7 @@ func readAttachmentExcerpt(path, mimeType, ext string) (string, bool) {
 	return text, true
 }
 
-// normalizeToolCallResultStatus 在工具层未显式给出状态时，按 error 内容推断统一状态值。
+// normalizeToolCallResultStatus infers status from Error when Status is empty.
 func normalizeToolCallResultStatus(result ToolCallResult) string {
 	status := strings.TrimSpace(result.Status)
 	if status != "" {
@@ -173,7 +173,7 @@ func normalizeToolCallResultStatus(result ToolCallResult) string {
 	return constants.ToolCallStatusError
 }
 
-// recordToolCallStart 持久化工具调用开始事件，供前端历史回放与状态展示。
+// recordToolCallStart persists tool-call start for history and UI.
 func (s *ChatService) recordToolCallStart(
 	ctx context.Context,
 	sessionID string,
@@ -191,10 +191,12 @@ func (s *ChatService) recordToolCallStart(
 		Status:           startStatus,
 		RequiresApproval: req.RequiresApproval,
 		StartedAt:        time.Now(),
+		ParentToolCallID: req.ParentToolCallID,
+		SubagentRunID:    req.SubagentRunID,
 	})
 }
 
-// recordToolCallResult 持久化工具调用结果，并补齐结束时间。
+// recordToolCallResult persists tool results and completion time.
 func (s *ChatService) recordToolCallResult(
 	ctx context.Context,
 	sessionID string,

@@ -1,6 +1,6 @@
 /**
- * App reducer — 全局状态管理。
- * 使用不可变模式，始终返回新状态。
+ * App reducer — global state.
+ * Immutable updates: always returns a new state object.
  */
 
 import type {
@@ -9,6 +9,7 @@ import type {
   TimelineEntry,
   MenuKind,
   ViewMode,
+  ModelProvider,
 } from "./types.js";
 
 export function createInitialState(
@@ -42,6 +43,14 @@ export function createInitialState(
     mcpEditorConfig: "",
     mcpEditorEnabled: true,
     mcpEditorFocusName: true,
+    mcpTemplateCursor: 0,
+    modelEditorName: "",
+    modelEditorProvider: "openai" as ModelProvider,
+    modelEditorBaseUrl: "",
+    modelEditorApiKey: "",
+    modelEditorModel: "",
+    modelEditorFocusIndex: 0,
+    modelEditorProviderSelect: false,
     approvalToolCallId: "",
     approvalToolName: "",
     approvalCommand: "",
@@ -145,8 +154,29 @@ export function reducer(state: AppState, action: AppAction): AppState {
       if (idx === -1) {
         entries.push(nextEntry);
       } else {
-        entries[idx] = { ...entries[idx], ...nextEntry };
+        const prev = entries[idx];
+        entries[idx] = {
+          ...prev,
+          ...nextEntry,
+          subagentStream: nextEntry.subagentStream ?? prev.subagentStream,
+        };
       }
+      return { ...state, timeline: entries };
+    }
+
+    case "APPEND_SUBAGENT_STREAM": {
+      const entries = [...state.timeline];
+      const idx = entries.findIndex(
+        (e) => e.kind === "tool" && e.toolCallId === action.parentToolCallId,
+      );
+      if (idx === -1) {
+        return state;
+      }
+      const prev = entries[idx];
+      entries[idx] = {
+        ...prev,
+        subagentStream: (prev.subagentStream || "") + action.content,
+      };
       return { ...state, timeline: entries };
     }
 
@@ -231,6 +261,61 @@ export function reducer(state: AppState, action: AppAction): AppState {
 
     case "TOGGLE_MCP_EDITOR_FOCUS":
       return { ...state, mcpEditorFocusName: !state.mcpEditorFocusName };
+
+    case "SET_MCP_TEMPLATE_VIEW":
+      return {
+        ...state,
+        view: "mcp-template",
+        mcpTemplateCursor: 0,
+      };
+
+    case "MCP_TEMPLATE_NAV": {
+      const count = 3;
+      const newCursor = Math.max(0, Math.min(count - 1, state.mcpTemplateCursor + action.delta));
+      return { ...state, mcpTemplateCursor: newCursor };
+    }
+
+    case "SET_MODEL_EDITOR_VIEW":
+      return {
+        ...state,
+        view: "model-editor",
+        modelEditorName: "",
+        modelEditorProvider: "openai" as ModelProvider,
+        modelEditorBaseUrl: "",
+        modelEditorApiKey: "",
+        modelEditorModel: "",
+        modelEditorFocusIndex: 0,
+        modelEditorProviderSelect: false,
+      };
+
+    case "SET_MODEL_EDITOR_NAME":
+      return { ...state, modelEditorName: action.name };
+
+    case "SET_MODEL_EDITOR_PROVIDER":
+      return { ...state, modelEditorProvider: action.provider, modelEditorProviderSelect: false };
+
+    case "SET_MODEL_EDITOR_BASE_URL":
+      return { ...state, modelEditorBaseUrl: action.baseUrl };
+
+    case "SET_MODEL_EDITOR_API_KEY":
+      return { ...state, modelEditorApiKey: action.apiKey };
+
+    case "SET_MODEL_EDITOR_MODEL":
+      return { ...state, modelEditorModel: action.model };
+
+    case "MODEL_EDITOR_NEXT_FIELD": {
+      const maxIndex = 4;
+      const next = Math.min(maxIndex, state.modelEditorFocusIndex + 1);
+      return { ...state, modelEditorFocusIndex: next, modelEditorProviderSelect: false };
+    }
+
+    case "MODEL_EDITOR_PREV_FIELD": {
+      const prev = Math.max(0, state.modelEditorFocusIndex - 1);
+      return { ...state, modelEditorFocusIndex: prev, modelEditorProviderSelect: false };
+    }
+
+    case "TOGGLE_MODEL_EDITOR_PROVIDER_SELECT":
+      return { ...state, modelEditorProviderSelect: !state.modelEditorProviderSelect };
 
     case "SET_APPROVAL":
       return {
