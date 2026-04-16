@@ -137,6 +137,40 @@ func TestBuildToolDefs_SortedByName(t *testing.T) {
 	}
 }
 
+func TestBuildToolDefs_ExecRunSchema(t *testing.T) {
+	defs := BuildToolDefs()
+	var execDef *llmsvc.ToolDef
+	for i := range defs {
+		if defs[i].Name == "exec__run" {
+			execDef = &defs[i]
+			break
+		}
+	}
+	if execDef == nil {
+		t.Fatal("expected exec__run tool definition")
+	}
+
+	params, ok := execDef.Parameters["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected exec__run properties type: %#v", execDef.Parameters["properties"])
+	}
+
+	expected := []string{"command", "timeout_ms", "shell", "working_directory", "description"}
+	for _, key := range expected {
+		if _, found := params[key]; !found {
+			t.Fatalf("expected exec__run param %q in tool schema", key)
+		}
+	}
+
+	required, ok := execDef.Parameters["required"].([]string)
+	if !ok {
+		t.Fatalf("unexpected required type: %#v", execDef.Parameters["required"])
+	}
+	if len(required) != 1 || required[0] != "command" {
+		t.Fatalf("expected required=[command], got %#v", required)
+	}
+}
+
 // Ensure underscore sanitization in names
 var _ = filepath.Join
 var _ = os.ReadFile

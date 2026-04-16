@@ -13,6 +13,8 @@ import {
   wrapText,
   formatCollapsedLines,
   TOOL_OUTPUT_PREVIEW_LINES,
+  formatToolExecutionOutput,
+  formatToolParamEntries,
 } from "../utils/format.js";
 import { GradientFlowText } from "./GradientFlowText.js";
 import { Spinner } from "./Spinner.js";
@@ -62,7 +64,7 @@ function renderToolSuffix(status: ToolCallStatus): string {
 
 export function formatSubagentStreamLines(stream: string, maxWidth: number, expanded: boolean): string[] {
   const { lines } = formatCollapsedLines(stream.trim(), TOOL_OUTPUT_PREVIEW_LINES, expanded);
-  const linePrefix = "   │ ";
+  const linePrefix = "   |> ";
   const contentWidth = Math.max(1, maxWidth - linePrefix.length);
   const out: string[] = [];
   for (const line of lines) {
@@ -75,20 +77,38 @@ export function formatSubagentStreamLines(stream: string, maxWidth: number, expa
 }
 
 export function formatToolOutputLines(entry: TimelineEntry, maxWidth: number, expanded: boolean): string[] {
-  const outputPrefix = "   ⎿ ";
-  const continuationPrefix = "     ";
-  const prefixWidth = 5;
+  const outputPrefix = "   => ";
+  const continuationPrefix = "      ";
+  const prefixWidth = outputPrefix.length;
   const contentWidth = Math.max(1, maxWidth - prefixWidth);
   const raw = (entry.status === "error" || entry.status === "rejected")
     ? (entry.error || entry.content)
     : (entry.output || entry.content);
-  const { lines: rawLines } = formatCollapsedLines(raw || "", TOOL_OUTPUT_PREVIEW_LINES, expanded);
+  const formatted = formatToolExecutionOutput(entry.toolName || "", entry.command || "", raw || "");
+  const { lines: rawLines } = formatCollapsedLines(formatted, TOOL_OUTPUT_PREVIEW_LINES, expanded);
   const result: string[] = [];
   for (const line of rawLines) {
     const wrapped = wrapText(line, contentWidth);
     const subLines = wrapped.split("\n");
     for (const sub of subLines) {
       result.push(result.length === 0 ? `${outputPrefix}${sub}` : `${continuationPrefix}${sub}`);
+    }
+  }
+  return result;
+}
+
+export function formatToolParamLines(entry: TimelineEntry, maxWidth: number): string[] {
+  const paramPrefix = "   :: ";
+  const continuationPrefix = "      ";
+  const prefixWidth = paramPrefix.length;
+  const contentWidth = Math.max(1, maxWidth - prefixWidth);
+  const rawLines = formatToolParamEntries(entry.params);
+  const result: string[] = [];
+  for (const line of rawLines) {
+    const wrapped = wrapText(line, contentWidth);
+    const subLines = wrapped.split("\n");
+    for (const sub of subLines) {
+      result.push(result.length === 0 ? `${paramPrefix}${sub}` : `${continuationPrefix}${sub}`);
     }
   }
   return result;
@@ -237,15 +257,15 @@ function TimelineBlock({
     entry.parentToolCallId !== undefined && entry.parentToolCallId !== ""
       ? nestedUnderParent
         ? "  "
-        : "│ "
+        : "> "
       : "";
   const invocation =
     nestPrefix +
     formatToolInvocation(
       entry.toolName || "",
       entry.command || "",
-      entry.params,
     );
+  const paramLines = formatToolParamLines(entry, maxWidth);
   const resultLines = (status === "completed" || status === "error" || status === "rejected")
     ? formatToolOutputLines(entry, maxWidth, toolOutputExpanded)
     : [];
@@ -263,6 +283,11 @@ function TimelineBlock({
         <Text>{" "}</Text>
         <Text>{invocation}{renderToolSuffix(status)}</Text>
       </Text>
+      {paramLines.map((line, index) => (
+        <Text key={`${entry.toolCallId || invocation}-param-${index}`} color="gray">
+          {line}
+        </Text>
+      ))}
       {subStreamLines.map((line, index) => (
         <Text key={`${entry.toolCallId || invocation}-sub-${index}`} color="gray">
           {line}
@@ -338,4 +363,3 @@ export function Timeline({
     </Box>
   );
 }
-

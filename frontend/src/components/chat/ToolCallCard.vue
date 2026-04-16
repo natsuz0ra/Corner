@@ -4,6 +4,7 @@ import { mdiCheck, mdiClose, mdiConsoleLine, mdiWeb } from '@mdi/js'
 import { useI18n } from 'vue-i18n'
 import MdiIcon from '@/components/ui/MdiIcon.vue'
 import type { ToolCallItem } from '@/api/chat'
+import { buildToolResultDisplay, formatDisplayText, formatToolParams } from '@/utils/toolDisplay'
 
 const props = withDefaults(defineProps<{
   item: ToolCallItem & { preamble?: string }
@@ -79,14 +80,15 @@ const statusTextClass = computed(() => {
 })
 
 const paramsDisplay = computed(() => {
-  const entries = Object.entries(props.item.params)
-  if (entries.length === 0) return ''
-  return entries.map(([k, v]) => `${k}: ${v}`).join('\n')
+  return formatToolParams(props.item.params)
 })
 
 const showActions = computed(() => props.item.status === 'pending')
 const showResult = computed(() => props.item.status === 'completed' || props.item.status === 'error')
+const resultDisplay = computed(() => buildToolResultDisplay(props.item.toolName, props.item.command, props.item.output))
+const errorDisplay = computed(() => (props.item.error ? formatDisplayText(props.item.error) : ''))
 const isRunSubagent = computed(() => props.item.toolName === 'run_subagent')
+const execExitOk = computed(() => resultDisplay.value.mode === 'exec' && resultDisplay.value.exec && resultDisplay.value.exec.exit_code === 0)
 const shouldShowPreamble = computed(() => !!props.showPreamble && !!props.item.preamble)
 const outputPanelId = computed(() => `tool-output-${props.item.toolCallId}`)
 
@@ -132,32 +134,58 @@ function onOutputToggle(event: Event) {
       </div>
     </header>
 
-    <section v-if="paramsDisplay" class="tool-section mt-2">
+    <section v-if="paramsDisplay.length > 0" class="tool-section mt-2">
       <p class="tool-section-title">{{ t('toolCallParams') }}</p>
-      <pre class="tool-params sb-scrollbar">{{ paramsDisplay }}</pre>
+      <div class="tool-kv-list sb-scrollbar">
+        <div v-for="row in paramsDisplay" :key="row.key" class="tool-kv-row">
+          <div class="tool-kv-key">{{ row.key }}</div>
+          <pre class="tool-kv-value">{{ row.value }}</pre>
+        </div>
+      </div>
     </section>
 
     <section v-if="!isRunSubagent && showResult" class="tool-section mt-2">
-      <div class="tool-result-block">
-        <details v-if="item.output" class="tool-output-details text-sm" @toggle="onOutputToggle">
-          <summary
-            class="tool-result-summary"
-            :aria-expanded="isOutputExpanded ? 'true' : 'false'"
-            :aria-controls="outputPanelId"
-          >
-            <span class="tool-result-label">{{ t('toolCallResult') }}</span>
-            <span class="tool-output-summary">{{ t('toolCallOutput') }}</span>
-          </summary>
-          <!-- Keep scrollbar visual style consistent with detail dialog via global sb-scrollbar -->
-          <pre :id="outputPanelId" class="tool-output sb-scrollbar">{{ item.output }}</pre>
-        </details>
-
-        <div v-else class="tool-result-summary tool-result-summary--plain" aria-live="polite">
+      <details v-if="item.output" class="tool-output-details text-sm" @toggle="onOutputToggle">
+        <summary
+          class="tool-result-summary"
+          :aria-expanded="isOutputExpanded ? 'true' : 'false'"
+          :aria-controls="outputPanelId"
+        >
+          <span class="tool-result-arrow" aria-hidden="true">▸</span>
           <span class="tool-result-label">{{ t('toolCallResult') }}</span>
+          <span class="tool-output-summary">{{ t('toolCallOutput') }}</span>
+        </summary>
+        <div :id="outputPanelId" class="tool-output sb-scrollbar">
+          <template v-if="resultDisplay.mode === 'exec' && resultDisplay.exec">
+            <div class="tool-kv-grid">
+              <div :class="['tool-kv-pill', execExitOk ? 'tool-kv-pill--ok' : 'tool-kv-pill--err']">exit_code: {{ resultDisplay.exec.exit_code }}</div>
+              <div class="tool-kv-pill">timed_out: {{ resultDisplay.exec.timed_out }}</div>
+              <div class="tool-kv-pill">truncated: {{ resultDisplay.exec.truncated }}</div>
+              <div class="tool-kv-pill">duration_ms: {{ resultDisplay.exec.duration_ms }}</div>
+            </div>
+            <div class="tool-exec-line">shell: {{ resultDisplay.exec.shell }}</div>
+            <div class="tool-exec-line">working_directory: {{ resultDisplay.exec.working_directory }}</div>
+            <div v-if="resultDisplay.exec.stdout.trim() !== ''" class="tool-exec-block tool-exec-block--stdout">
+              <p class="tool-exec-label">stdout</p>
+              <pre class="tool-exec-pre">{{ formatDisplayText(resultDisplay.exec.stdout) }}</pre>
+            </div>
+            <div v-if="resultDisplay.exec.stderr.trim() !== ''" class="tool-exec-block tool-exec-block--stderr">
+              <p class="tool-exec-label">stderr</p>
+              <pre class="tool-exec-pre">{{ formatDisplayText(resultDisplay.exec.stderr) }}</pre>
+            </div>
+            <div v-if="resultDisplay.exec.stdout.trim() === '' && resultDisplay.exec.stderr.trim() === ''" class="tool-exec-empty">
+              (No output)
+            </div>
+          </template>
+          <pre v-else class="tool-output-pre">{{ resultDisplay.outputText }}</pre>
         </div>
+      </details>
 
-        <div v-if="item.error" class="tool-error">{{ item.error }}</div>
+      <div v-else class="tool-result-summary tool-result-summary--plain" aria-live="polite">
+        <span class="tool-result-label">{{ t('toolCallResult') }}</span>
       </div>
+
+      <div v-if="item.error" class="tool-error">{{ errorDisplay }}</div>
     </section>
 
     <section v-if="shouldShowPreamble" class="tool-section mt-2.5">
@@ -187,25 +215,47 @@ function onOutputToggle(event: Event) {
     </section>
 
     <section v-if="isRunSubagent && showResult" class="tool-section mt-2.5">
-      <div class="tool-result-block">
-        <details v-if="item.output" class="tool-output-details text-sm" @toggle="onOutputToggle">
-          <summary
-            class="tool-result-summary"
-            :aria-expanded="isOutputExpanded ? 'true' : 'false'"
-            :aria-controls="outputPanelId"
-          >
-            <span class="tool-result-label">{{ t('toolCallResult') }}</span>
-            <span class="tool-output-summary">{{ t('toolCallOutput') }}</span>
-          </summary>
-          <pre :id="outputPanelId" class="tool-output sb-scrollbar">{{ item.output }}</pre>
-        </details>
-
-        <div v-else class="tool-result-summary tool-result-summary--plain" aria-live="polite">
+      <details v-if="item.output" class="tool-output-details text-sm" @toggle="onOutputToggle">
+        <summary
+          class="tool-result-summary"
+          :aria-expanded="isOutputExpanded ? 'true' : 'false'"
+          :aria-controls="outputPanelId"
+        >
+          <span class="tool-result-arrow" aria-hidden="true">▸</span>
           <span class="tool-result-label">{{ t('toolCallResult') }}</span>
+          <span class="tool-output-summary">{{ t('toolCallOutput') }}</span>
+        </summary>
+        <div :id="outputPanelId" class="tool-output sb-scrollbar">
+          <template v-if="resultDisplay.mode === 'exec' && resultDisplay.exec">
+            <div class="tool-kv-grid">
+              <div :class="['tool-kv-pill', execExitOk ? 'tool-kv-pill--ok' : 'tool-kv-pill--err']">exit_code: {{ resultDisplay.exec.exit_code }}</div>
+              <div class="tool-kv-pill">timed_out: {{ resultDisplay.exec.timed_out }}</div>
+              <div class="tool-kv-pill">truncated: {{ resultDisplay.exec.truncated }}</div>
+              <div class="tool-kv-pill">duration_ms: {{ resultDisplay.exec.duration_ms }}</div>
+            </div>
+            <div class="tool-exec-line">shell: {{ resultDisplay.exec.shell }}</div>
+            <div class="tool-exec-line">working_directory: {{ resultDisplay.exec.working_directory }}</div>
+            <div v-if="resultDisplay.exec.stdout.trim() !== ''" class="tool-exec-block tool-exec-block--stdout">
+              <p class="tool-exec-label">stdout</p>
+              <pre class="tool-exec-pre">{{ formatDisplayText(resultDisplay.exec.stdout) }}</pre>
+            </div>
+            <div v-if="resultDisplay.exec.stderr.trim() !== ''" class="tool-exec-block tool-exec-block--stderr">
+              <p class="tool-exec-label">stderr</p>
+              <pre class="tool-exec-pre">{{ formatDisplayText(resultDisplay.exec.stderr) }}</pre>
+            </div>
+            <div v-if="resultDisplay.exec.stdout.trim() === '' && resultDisplay.exec.stderr.trim() === ''" class="tool-exec-empty">
+              (No output)
+            </div>
+          </template>
+          <pre v-else class="tool-output-pre">{{ resultDisplay.outputText }}</pre>
         </div>
+      </details>
 
-        <div v-if="item.error" class="tool-error">{{ item.error }}</div>
+      <div v-else class="tool-result-summary tool-result-summary--plain" aria-live="polite">
+        <span class="tool-result-label">{{ t('toolCallResult') }}</span>
       </div>
+
+      <div v-if="item.error" class="tool-error">{{ errorDisplay }}</div>
     </section>
 
     <section v-if="showActions" class="tool-actions">
@@ -422,6 +472,39 @@ function onOutputToggle(event: Event) {
   overflow-wrap: anywhere;
 }
 
+.tool-kv-list {
+  max-height: 176px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-kv-row {
+  border: 1px solid var(--tool-section-border);
+  border-radius: 7px;
+  padding: 6px 8px;
+  background: #000000;
+}
+
+.tool-kv-key {
+  color: var(--tool-summary-text);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-bottom: 4px;
+}
+
+.tool-kv-value {
+  margin: 0;
+  color: var(--tool-detail-body-text);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .tool-preamble {
   color: var(--tool-content-text);
   font-size: 14px;
@@ -487,10 +570,16 @@ function onOutputToggle(event: Event) {
   overflow-wrap: anywhere;
 }
 
-.tool-result-block {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--tool-section-border);
+.tool-result-arrow {
+  display: inline-block;
+  font-size: 10px;
+  color: var(--tool-summary-text);
+  transition: transform 150ms ease;
+  flex-shrink: 0;
+}
+
+details[open] > .tool-result-summary .tool-result-arrow {
+  transform: rotate(90deg);
 }
 
 .tool-result-summary {
@@ -553,8 +642,88 @@ function onOutputToggle(event: Event) {
   line-height: 1.45;
   max-height: 224px;
   overflow-y: auto;
+}
+
+.tool-output-pre {
+  margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.tool-kv-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tool-kv-pill {
+  color: var(--tool-detail-body-text);
+  background: #111111;
+  border: 1px solid var(--tool-section-border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
+}
+
+.tool-kv-pill--ok {
+  color: var(--tool-success-text);
+  border-color: var(--tool-success-border);
+  background: var(--tool-success-bg);
+}
+
+.tool-kv-pill--err {
+  color: var(--tool-error-text);
+  border-color: var(--tool-error-border);
+  background: var(--tool-error-bg);
+}
+
+.tool-exec-line {
+  margin-top: 6px;
+  color: var(--tool-detail-body-text);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tool-exec-block {
+  margin-top: 8px;
+}
+
+.tool-exec-block--stdout {
+  border-left: 3px solid rgba(99, 102, 241, 0.4);
+  padding-left: 8px;
+}
+
+.tool-exec-block--stderr {
+  border-left: 3px solid rgba(239, 68, 68, 0.4);
+  padding-left: 8px;
+}
+
+.tool-exec-label {
+  margin: 0 0 4px 0;
+  color: var(--tool-summary-text);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.tool-exec-pre {
+  margin: 0;
+  padding: 8px;
+  background: #111111;
+  border: 1px solid var(--tool-section-border);
+  border-radius: 7px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tool-exec-empty {
+  margin-top: 8px;
+  color: var(--tool-detail-body-text);
+  font-size: 12px;
 }
 
 .tool-result-summary:focus-visible {

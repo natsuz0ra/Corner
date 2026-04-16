@@ -2,208 +2,311 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
-
-	"golang.org/x/text/encoding/simplifiedchinese"
-	"golang.org/x/text/transform"
-	"slimebot/internal/constants"
+	"time"
 )
 
-func TestBuildExecInvocationProgramArgs(t *testing.T) {
-	inv, err := buildExecInvocation(runtime.GOOS, "go", `["version"]`, "", "none")
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
-	}
-	if inv.commandName != "go" {
-		t.Fatalf("unexpected command name: %s", inv.commandName)
-	}
-	if len(inv.commandArgs) != 1 || inv.commandArgs[0] != "version" {
-		t.Fatalf("unexpected command args: %#v", inv.commandArgs)
-	}
-}
-
-func TestBuildExecInvocationInvalidArgsJSON(t *testing.T) {
-	_, err := buildExecInvocation(runtime.GOOS, "go", `["version"`, "", "none")
+func TestBuildExecInvocationRequiresCommand(t *testing.T) {
+	_, err := buildExecInvocation("linux", execRunConfig{command: "", shell: "auto"})
 	if err == nil {
-		t.Fatal("expected parse error, got nil")
+		t.Fatal("expected error when command is empty")
 	}
-	if !strings.Contains(err.Error(), "failed to parse args") {
+	if !strings.Contains(err.Error(), "command is required") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestBuildExecInvocationArgsWithoutProgram(t *testing.T) {
-	_, err := buildExecInvocation(runtime.GOOS, "", `["version"]`, "echo hello", "none")
+func TestBuildExecInvocationRejectsInvalidShell(t *testing.T) {
+	_, err := buildExecInvocation("linux", execRunConfig{command: "echo ok", shell: "fish"})
 	if err == nil {
-		t.Fatal("expected params error, got nil")
+		t.Fatal("expected invalid shell error")
 	}
-	if !strings.Contains(err.Error(), "args can only be used with program") {
+	if !strings.Contains(err.Error(), "invalid shell") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestBuildExecInvocationWindowsShellSelection(t *testing.T) {
-	defaultInv, err := buildExecInvocation("windows", "", "", "echo hello", "none")
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
-	}
-	if defaultInv.commandName != "powershell" {
-		t.Fatalf("expected powershell by default on windows, got %s", defaultInv.commandName)
-	}
-
-	cmdInv, err := buildExecInvocation("windows", "", "", "echo hello", "cmd")
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
-	}
-	if cmdInv.commandName != "cmd" {
-		t.Fatalf("expected cmd shell, got %s", cmdInv.commandName)
-	}
-}
-
-func TestTrimOutput(t *testing.T) {
-	large := strings.Repeat("a", constants.ExecMaxOutputBytes+100)
-	trimmed := trimOutput([]byte(large))
-	if len(trimmed) != constants.ExecMaxOutputBytes {
-		t.Fatalf("unexpected trimmed size: %d", len(trimmed))
-	}
-}
-
-func TestDecodeCommandOutputUTF8(t *testing.T) {
-	raw := []byte("中文输出")
-	decoded := decodeCommandOutput("windows", raw)
-	if decoded != "中文输出" {
-		t.Fatalf("unexpected decoded output: %s", decoded)
-	}
-}
-
-func TestDecodeCommandOutputUTF16LEBOM(t *testing.T) {
-	raw := []byte{
-		0xFF, 0xFE,
-		0x2D, 0x4E, // UTF-16LE LE word for U+4E2D
-		0x87, 0x65, // UTF-16LE LE word for U+6587
-		0x93, 0x8F, // UTF-16LE LE word for U+8F93
-		0xFA, 0x51, // UTF-16LE LE word for U+51FA
-	}
-	decoded := decodeCommandOutput("windows", raw)
-	if decoded != "中文输出" {
-		t.Fatalf("unexpected utf16 decoded output: %s", decoded)
-	}
-}
-
-func TestDecodeCommandOutputGB18030OnWindows(t *testing.T) {
-	raw, err := encodeGB18030("中文预览")
-	if err != nil {
-		t.Fatalf("encode gb18030 failed: %v", err)
-	}
-	decoded := decodeCommandOutput("windows", raw)
-	if decoded != "中文预览" {
-		t.Fatalf("unexpected gb18030 decoded output: %s", decoded)
-	}
-}
-
-func TestDecodeCommandOutputGB18030NoFallbackOnLinux(t *testing.T) {
-	raw, err := encodeGB18030("中文预览")
-	if err != nil {
-		t.Fatalf("encode gb18030 failed: %v", err)
-	}
-	decoded := decodeCommandOutput("linux", raw)
-	if decoded == "中文预览" {
-		t.Fatal("expected linux path to avoid gb18030 fallback decoding")
-	}
-}
-
-func TestDecodeCommandOutputGB18030WithTruncatedTail(t *testing.T) {
-	raw, err := encodeGB18030(strings.Repeat("中", 30000))
-	if err != nil {
-		t.Fatalf("encode gb18030 failed: %v", err)
-	}
-	trimmed := trimOutput(raw)
-	decoded := decodeCommandOutput("windows", trimmed)
-	if strings.Contains(decoded, "\uFFFD") {
-		preview := decoded
-		if len(preview) > 50 {
-			preview = preview[:50]
+func TestBuildExecInvocationAutoShellLinux(t *testing.T) {
+	orig := execLookPath
+	t.Cleanup(func() { execLookPath = orig })
+	execLookPath = func(file string) (string, error) {
+		if file == "bash" {
+			return "/bin/bash", nil
 		}
-		t.Fatalf("decoded output should not contain replacement chars: %q", preview)
+		return "", errors.New("not found")
 	}
-	if decoded == "" {
-		t.Fatal("decoded output should not be empty")
+
+	inv, err := buildExecInvocation("linux", execRunConfig{command: "echo ok", shell: "auto"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if inv.commandName != "bash" {
+		t.Fatalf("expected bash for linux auto shell, got %s", inv.commandName)
+	}
+	if len(inv.commandArgs) != 2 || inv.commandArgs[0] != "-lc" {
+		t.Fatalf("unexpected args: %#v", inv.commandArgs)
 	}
 }
 
-func TestBuildShellInvocationWindowsPowerShellForcesUTF8(t *testing.T) {
-	inv := buildShellInvocation("windows", "Write-Output '中文'", "powershell")
+func TestBuildExecInvocationAutoShellWindows(t *testing.T) {
+	inv, err := buildExecInvocation("windows", execRunConfig{command: "echo ok", shell: "auto"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if inv.commandName != "powershell" {
-		t.Fatalf("expected powershell command, got %s", inv.commandName)
+		t.Fatalf("expected powershell for windows auto shell, got %s", inv.commandName)
 	}
-	if len(inv.commandArgs) < 4 {
-		t.Fatalf("unexpected command args length: %#v", inv.commandArgs)
+	if len(inv.commandArgs) < 4 || inv.commandArgs[2] != "-Command" {
+		t.Fatalf("unexpected args: %#v", inv.commandArgs)
 	}
-	if inv.commandArgs[2] != "-Command" {
-		t.Fatalf("expected -Command argument, got %#v", inv.commandArgs)
+}
+
+func TestResolveTimeoutMsDefaultAndClamp(t *testing.T) {
+	if got := resolveTimeoutMs(""); got != 30000 {
+		t.Fatalf("expected default 30000, got %d", got)
 	}
-	if !strings.Contains(inv.commandArgs[3], "OutputEncoding") {
-		t.Fatalf("expected utf-8 output encoding setup in command, got %s", inv.commandArgs[3])
+	if got := resolveTimeoutMs("700000"); got != 600000 {
+		t.Fatalf("expected clamp to 600000, got %d", got)
+	}
+	if got := resolveTimeoutMs("1"); got != 1 {
+		t.Fatalf("expected parsed timeout 1, got %d", got)
+	}
+}
+
+func TestValidateWorkingDirectoryRejectsMissing(t *testing.T) {
+	_, err := validateWorkingDirectory(filepath.Join(t.TempDir(), "missing"))
+	if err == nil {
+		t.Fatal("expected missing directory error")
+	}
+}
+
+func TestValidateWorkingDirectoryRejectsFile(t *testing.T) {
+	d := t.TempDir()
+	f := filepath.Join(d, "x.txt")
+	if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	_, err := validateWorkingDirectory(f)
+	if err == nil {
+		t.Fatal("expected file path rejection")
+	}
+}
+
+func TestCommandSafetyRejectsInteractive(t *testing.T) {
+	if err := validateCommandSafety("Read-Host 'x'"); err == nil {
+		t.Fatal("expected interactive command rejection")
+	}
+	if err := validateCommandSafety("git rebase -i HEAD~1"); err == nil {
+		t.Fatal("expected interactive git rejection")
+	}
+}
+
+func TestCommandSafetyRejectsDestructive(t *testing.T) {
+	if err := validateCommandSafety("rm -rf /"); err == nil {
+		t.Fatal("expected dangerous rm rejection")
+	}
+	if err := validateCommandSafety("git reset --hard && git clean -fd"); err == nil {
+		t.Fatal("expected destructive git rejection")
+	}
+}
+
+func TestCommandSafetyAllowsNormalCommand(t *testing.T) {
+	if err := validateCommandSafety("go version"); err != nil {
+		t.Fatalf("expected command to be allowed, got %v", err)
 	}
 }
 
 func TestFormatExecErrorNotFound(t *testing.T) {
 	err := &exec.Error{Name: "no-such-binary", Err: exec.ErrNotFound}
 	formatted := formatExecError(err)
-	if !strings.Contains(formatted, "Command not found") {
+	if !strings.Contains(strings.ToLower(formatted.Error()), "not found") {
 		t.Fatalf("unexpected formatted error: %s", formatted)
 	}
 }
 
-func TestExecRunProgramArgsSuccess(t *testing.T) {
+func TestExecRunReturnsStructuredOutput(t *testing.T) {
 	e := &execTool{}
-	result, err := e.run(context.Background(), map[string]string{
-		"program": "go",
-		"args":    `["version"]`,
-		"timeout": "10",
+	res, err := e.run(context.Background(), map[string]string{
+		"command": "go version",
 	})
 	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if result == nil {
-		t.Fatal("expected non-nil result")
+	if res.Error != "" {
+		t.Fatalf("expected empty tool error, got: %s", res.Error)
 	}
-	if result.Error != "" {
-		t.Fatalf("expected empty result error, got %s", result.Error)
+	out := parseExecOutput(t, res.Output)
+	if out.ExitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d", out.ExitCode)
 	}
-	if !strings.Contains(strings.ToLower(result.Output), "go version") {
-		t.Fatalf("expected go version output, got %s", result.Output)
+	if strings.TrimSpace(out.Stdout) == "" && strings.TrimSpace(out.Stderr) == "" {
+		t.Fatal("expected stdout/stderr content")
+	}
+	if out.DurationMs <= 0 {
+		t.Fatalf("expected duration_ms > 0, got %d", out.DurationMs)
+	}
+	if out.Shell == "" {
+		t.Fatal("expected shell to be set")
+	}
+	if out.WorkingDirectory == "" {
+		t.Fatal("expected working_directory to be set")
 	}
 }
 
-func TestExecRunTimeout(t *testing.T) {
+func TestExecRunTimeoutProducesStructuredFlag(t *testing.T) {
 	e := &execTool{}
 	command := "sleep 2"
 	if runtime.GOOS == "windows" {
 		command = "Start-Sleep -Seconds 2"
 	}
-	result, err := e.run(context.Background(), map[string]string{
-		"command": command,
-		"timeout": "1",
+	res, err := e.run(context.Background(), map[string]string{
+		"command":    command,
+		"timeout_ms": "50",
 	})
 	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if result == nil {
-		t.Fatal("expected non-nil result")
+	if res.Error != "" {
+		t.Fatalf("expected no tool-level error, got: %s", res.Error)
 	}
-	if !strings.Contains(result.Error, "Command timed out") {
-		t.Fatalf("expected timeout error, got %s", result.Error)
+	out := parseExecOutput(t, res.Output)
+	if !out.TimedOut {
+		t.Fatal("expected timed_out=true")
+	}
+	if out.ExitCode != -1 {
+		t.Fatalf("expected timeout exit code -1, got %d", out.ExitCode)
 	}
 }
 
-func encodeGB18030(input string) ([]byte, error) {
-	encoded, _, err := transform.String(simplifiedchinese.GB18030.NewEncoder(), input)
-	if err != nil {
-		return nil, err
+func TestExecRunDangerousCommandReturnsToolError(t *testing.T) {
+	e := &execTool{}
+	res, err := e.run(context.Background(), map[string]string{
+		"command": "rm -rf /",
+	})
+	if err == nil {
+		t.Fatal("expected tool error for dangerous command")
 	}
-	return []byte(encoded), nil
+	if res != nil {
+		t.Fatal("expected nil result when validation fails")
+	}
+}
+
+func TestTrimOutputReportsTruncation(t *testing.T) {
+	data := []byte(strings.Repeat("a", 70*1024))
+	trimmed, truncated := trimOutput(data)
+	if !truncated {
+		t.Fatal("expected truncation=true")
+	}
+	if len(trimmed) == 0 || len(trimmed) >= len(data) {
+		t.Fatalf("unexpected trimmed length: %d", len(trimmed))
+	}
+}
+
+func TestEncodeExecOutputJSON(t *testing.T) {
+	payload := execOutputPayload{
+		Stdout:           "ok",
+		Stderr:           "",
+		ExitCode:         0,
+		TimedOut:         false,
+		Truncated:        false,
+		Shell:            "bash",
+		WorkingDirectory: "/tmp",
+		DurationMs:       12,
+	}
+	encoded, err := encodeExecOutput(payload)
+	if err != nil {
+		t.Fatalf("encode output: %v", err)
+	}
+	parsed := parseExecOutput(t, encoded)
+	if parsed.Stdout != "ok" || parsed.Shell != "bash" || parsed.DurationMs != 12 {
+		t.Fatalf("unexpected parsed payload: %+v", parsed)
+	}
+}
+
+func TestBuildExecInvocationBashFallbackToSh(t *testing.T) {
+	orig := execLookPath
+	t.Cleanup(func() { execLookPath = orig })
+	execLookPath = func(file string) (string, error) {
+		if file == "bash" {
+			return "", errors.New("not found")
+		}
+		if file == "sh" {
+			return "/bin/sh", nil
+		}
+		return "", errors.New("not found")
+	}
+	inv, err := buildExecInvocation("linux", execRunConfig{command: "echo ok", shell: "auto"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if inv.commandName != "sh" {
+		t.Fatalf("expected sh fallback, got %s", inv.commandName)
+	}
+}
+
+func TestResolveWorkingDirectoryUsesCurrentWhenEmpty(t *testing.T) {
+	cwd, err := resolveWorkingDirectory("")
+	if err != nil {
+		t.Fatalf("resolve working directory: %v", err)
+	}
+	if cwd == "" {
+		t.Fatal("expected non-empty cwd")
+	}
+}
+
+func TestExecRunUsesProvidedWorkingDirectory(t *testing.T) {
+	e := &execTool{}
+	dir := t.TempDir()
+	res, err := e.run(context.Background(), map[string]string{
+		"command":           "go version",
+		"working_directory": dir,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("unexpected tool-level error: %s", res.Error)
+	}
+	out := parseExecOutput(t, res.Output)
+	if out.WorkingDirectory != dir {
+		t.Fatalf("expected working directory %s, got %s", dir, out.WorkingDirectory)
+	}
+}
+
+func parseExecOutput(t *testing.T, raw string) execOutputPayload {
+	t.Helper()
+	var out execOutputPayload
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		t.Fatalf("invalid exec output json: %v\nraw: %s", err, raw)
+	}
+	return out
+}
+
+func TestResolveTimeoutMsInvalidFallsBackDefault(t *testing.T) {
+	if got := resolveTimeoutMs("abc"); got != 30000 {
+		t.Fatalf("expected default timeout for invalid input, got %d", got)
+	}
+}
+
+func TestRunDurationIsMeasured(t *testing.T) {
+	e := &execTool{}
+	start := time.Now()
+	res, err := e.run(context.Background(), map[string]string{"command": "go version"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := parseExecOutput(t, res.Output)
+	if out.DurationMs < 0 {
+		t.Fatalf("duration should be >= 0, got %d", out.DurationMs)
+	}
+	if time.Since(start).Milliseconds()+100 < out.DurationMs {
+		t.Fatalf("duration_ms seems unrealistic: %d", out.DurationMs)
+	}
 }

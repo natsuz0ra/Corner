@@ -41,8 +41,8 @@ const (
 	TelegramIdleWaitInterval       = 60 * time.Second
 	TelegramErrorBackoff           = 5 * time.Second
 	TelegramPlatformName           = "telegram"
-	ExecDefaultTimeout             = 30
-	ExecMaxTimeout                 = 300
+	ExecDefaultTimeoutMs           = 30_000
+	ExecMaxTimeoutMs               = 600_000
 	ExecMaxOutputBytes             = 64 * 1024
 	ExecToolName                   = "exec"
 	ActivateSkillTool              = "activate_skill"

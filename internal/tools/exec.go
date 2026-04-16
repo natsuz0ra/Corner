@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -19,13 +21,42 @@ import (
 	"slimebot/internal/constants"
 )
 
+const (
+	defaultTimeoutMs = constants.ExecDefaultTimeoutMs
+	maxTimeoutMs     = constants.ExecMaxTimeoutMs
+)
+
+var execLookPath = exec.LookPath
+
 // execTool runs host commands.
 type execTool struct{}
 
+// execRunConfig is the parsed configuration for exec__run.
+type execRunConfig struct {
+	command          string
+	shell            string
+	timeoutMs        int
+	workingDirectory string
+	description      string
+}
+
 // execInvocation is a single os/exec invocation.
 type execInvocation struct {
-	commandName string
-	commandArgs []string
+	commandName      string
+	commandArgs      []string
+	shell            string
+	workingDirectory string
+}
+
+type execOutputPayload struct {
+	Stdout           string `json:"stdout"`
+	Stderr           string `json:"stderr"`
+	ExitCode         int    `json:"exit_code"`
+	TimedOut         bool   `json:"timed_out"`
+	Truncated        bool   `json:"truncated"`
+	Shell            string `json:"shell"`
+	WorkingDirectory string `json:"working_directory"`
+	DurationMs       int64  `json:"duration_ms"`
 }
 
 func init() {
@@ -35,20 +66,20 @@ func init() {
 func (e *execTool) Name() string { return "exec" }
 
 func (e *execTool) Description() string {
-	return "Run system commands on the host and return command output."
+	return "Execute one terminal command using shell auto-routing (Windows=PowerShell, Linux/macOS=bash/sh). Use for host command execution only. Prefer specialized tools for file reads/writes/search. Avoid interactive commands and dangerous destructive operations unless explicitly requested and approved."
 }
 
 func (e *execTool) Commands() []Command {
 	return []Command{
 		{
 			Name:        "run",
-			Description: "Run a system command and return combined stdout/stderr output.",
+			Description: "Run exactly one command and return structured JSON output: stdout/stderr/exit_code/timed_out/truncated/shell/working_directory/duration_ms. Keep command concise, quote paths with spaces, avoid unnecessary sleep/poll loops, and use safer git operations by default.",
 			Params: []CommandParam{
-				{Name: "program", Required: false, Description: "Executable name (recommended; takes precedence over command).", Example: "python"},
-				{Name: "args", Required: false, Description: "Program arguments (JSON string array).", Example: "[\"-c\",\"print('hello')\"]"},
-				{Name: "shell", Required: false, Description: "Shell used in command mode: none|powershell|cmd (Windows default none=PowerShell).", Example: "none"},
-				{Name: "command", Required: false, Description: "Command string to execute (compatibility mode).", Example: "echo hello"},
-				{Name: "timeout", Required: false, Description: "Command timeout in seconds, default 30, max 300.", Example: "60"},
+				{Name: "command", Required: true, Description: "Single command string to execute.", Example: "go test ./..."},
+				{Name: "timeout_ms", Required: false, Description: "Optional timeout in milliseconds. Default 30000, max 600000.", Example: "120000"},
+				{Name: "shell", Required: false, Description: "Shell selection: auto|bash|sh|powershell|cmd. Default auto.", Example: "auto"},
+				{Name: "working_directory", Required: false, Description: "Optional working directory. Must exist and be a directory.", Example: "g:\\gitCode\\SlimeBot"},
+				{Name: "description", Required: false, Description: "Short human-readable intent for approval and audit.", Example: "Run unit tests for tools package"},
 			},
 		},
 	}
@@ -63,127 +94,244 @@ func (e *execTool) Execute(ctx context.Context, command string, params map[strin
 	}
 }
 
-// run parses params, runs the command, and returns normalized output/errors.
+// run parses params, executes command, and returns structured JSON output.
 func (e *execTool) run(ctx context.Context, params map[string]string) (*ExecuteResult, error) {
-	program := strings.TrimSpace(params["program"])
-	cmdStr := strings.TrimSpace(params["command"])
-	argsRaw := strings.TrimSpace(params["args"])
-	shell := normalizeShell(params["shell"])
-
-	timeout := constants.ExecDefaultTimeout
-	if ts := strings.TrimSpace(params["timeout"]); ts != "" {
-		if v, err := strconv.Atoi(ts); err == nil && v > 0 {
-			timeout = v
-		}
+	cfg, err := parseExecRunConfig(params)
+	if err != nil {
+		return nil, err
 	}
-	if timeout > constants.ExecMaxTimeout {
-		timeout = constants.ExecMaxTimeout
+	if err := validateCommandSafety(cfg.command); err != nil {
+		return nil, err
 	}
 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(cfg.timeoutMs)*time.Millisecond)
 	defer cancel()
 
-	invocation, parseErr := buildExecInvocation(runtime.GOOS, program, argsRaw, cmdStr, shell)
-	if parseErr != nil {
-		return nil, parseErr
+	invocation, err := buildExecInvocation(runtime.GOOS, cfg)
+	if err != nil {
+		return nil, err
 	}
-	cmd := exec.CommandContext(ctx, invocation.commandName, invocation.commandArgs...)
 
-	output, err := cmd.CombinedOutput()
-	outStr := decodeCommandOutput(runtime.GOOS, trimOutput(output))
+	cmd := exec.CommandContext(ctx, invocation.commandName, invocation.commandArgs...)
+	cmd.Dir = invocation.workingDirectory
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	start := time.Now()
+	err = cmd.Run()
+	durationMs := time.Since(start).Milliseconds()
+
+	stdoutTrimmed, stdoutTruncated := trimOutput(stdoutBuf.Bytes())
+	stderrTrimmed, stderrTruncated := trimOutput(stderrBuf.Bytes())
+	payload := execOutputPayload{
+		Stdout:           decodeCommandOutput(runtime.GOOS, stdoutTrimmed),
+		Stderr:           decodeCommandOutput(runtime.GOOS, stderrTrimmed),
+		ExitCode:         0,
+		TimedOut:         false,
+		Truncated:        stdoutTruncated || stderrTruncated,
+		Shell:            invocation.shell,
+		WorkingDirectory: invocation.workingDirectory,
+		DurationMs:       durationMs,
+	}
 
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return &ExecuteResult{
-				Output: outStr,
-				Error:  fmt.Sprintf("Command timed out (%d seconds).", timeout),
-			}, nil
+			payload.TimedOut = true
+			payload.ExitCode = -1
+			out, encodeErr := encodeExecOutput(payload)
+			if encodeErr != nil {
+				return nil, encodeErr
+			}
+			return &ExecuteResult{Output: out}, nil
 		}
-		return &ExecuteResult{
-			Output: outStr,
-			Error:  formatExecError(err),
-		}, nil
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			payload.ExitCode = exitErr.ExitCode()
+			out, encodeErr := encodeExecOutput(payload)
+			if encodeErr != nil {
+				return nil, encodeErr
+			}
+			return &ExecuteResult{Output: out}, nil
+		}
+		return nil, formatExecError(err)
 	}
 
-	return &ExecuteResult{Output: outStr}, nil
+	out, err := encodeExecOutput(payload)
+	if err != nil {
+		return nil, err
+	}
+	_ = cfg.description
+	return &ExecuteResult{Output: out}, nil
 }
 
-// buildExecInvocation parses program+args vs command+shell modes.
-func buildExecInvocation(goos, program, argsRaw, command, shell string) (execInvocation, error) {
-	if shell != "" && shell != "none" && shell != "powershell" && shell != "cmd" {
-		return execInvocation{}, fmt.Errorf("Invalid shell value: %s (allowed: none|powershell|cmd).", shell)
+func parseExecRunConfig(params map[string]string) (execRunConfig, error) {
+	cfg := execRunConfig{}
+	cfg.command = strings.TrimSpace(params["command"])
+	cfg.description = strings.TrimSpace(params["description"])
+	cfg.shell = normalizeShell(params["shell"])
+	if cfg.shell == "" {
+		cfg.shell = "auto"
 	}
+	cfg.timeoutMs = resolveTimeoutMs(params["timeout_ms"])
 
-	if program != "" {
-		if command != "" {
-			return execInvocation{}, fmt.Errorf("program and command cannot be provided together; choose one.")
+	wd, err := resolveWorkingDirectory(params["working_directory"])
+	if err != nil {
+		return execRunConfig{}, err
+	}
+	cfg.workingDirectory = wd
+	if cfg.command == "" {
+		return execRunConfig{}, fmt.Errorf("command is required")
+	}
+	return cfg, nil
+}
+
+func resolveTimeoutMs(raw string) int {
+	timeout := defaultTimeoutMs
+	if ts := strings.TrimSpace(raw); ts != "" {
+		if v, err := strconv.Atoi(ts); err == nil && v > 0 {
+			timeout = v
 		}
-		parsedArgs, err := parseJSONArgs(argsRaw)
+	}
+	if timeout > maxTimeoutMs {
+		return maxTimeoutMs
+	}
+	return timeout
+}
+
+func resolveWorkingDirectory(raw string) (string, error) {
+	candidate := strings.TrimSpace(raw)
+	if candidate == "" {
+		cwd, err := os.Getwd()
 		if err != nil {
-			return execInvocation{}, err
+			return "", fmt.Errorf("failed to resolve current working directory: %w", err)
 		}
-		return execInvocation{
-			commandName: program,
-			commandArgs: parsedArgs,
-		}, nil
+		candidate = cwd
 	}
-
-	if argsRaw != "" {
-		return execInvocation{}, fmt.Errorf("args can only be used with program.")
-	}
-	if command == "" {
-		return execInvocation{}, fmt.Errorf("command is required (or use program + args).")
-	}
-
-	return buildShellInvocation(goos, command, shell), nil
+	return validateWorkingDirectory(candidate)
 }
 
-// buildShellInvocation builds the final argv for the chosen shell on this OS.
-func buildShellInvocation(goos, command, shell string) execInvocation {
-	normalizedShell := shell
-	if normalizedShell == "" || normalizedShell == "none" {
+func validateWorkingDirectory(path string) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("working_directory is invalid: %w", err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("working_directory must be a directory")
+	}
+	resolved, err := filepathAbs(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve working_directory: %w", err)
+	}
+	return resolved, nil
+}
+
+var filepathAbs = func(path string) (string, error) {
+	return filepath.Abs(path)
+}
+
+func buildExecInvocation(goos string, cfg execRunConfig) (execInvocation, error) {
+	if cfg.command == "" {
+		return execInvocation{}, fmt.Errorf("command is required")
+	}
+	if cfg.shell != "auto" && cfg.shell != "bash" && cfg.shell != "sh" && cfg.shell != "powershell" && cfg.shell != "cmd" {
+		return execInvocation{}, fmt.Errorf("invalid shell value: %s (allowed: auto|bash|sh|powershell|cmd)", cfg.shell)
+	}
+
+	shell := cfg.shell
+	if shell == "auto" {
 		if goos == "windows" {
-			normalizedShell = "powershell"
+			shell = "powershell"
 		} else {
-			normalizedShell = "sh"
+			shell = resolvePosixAutoShell()
 		}
 	}
-	switch normalizedShell {
-	case "cmd":
-		return execInvocation{commandName: "cmd", commandArgs: []string{"/C", command}}
+
+	switch shell {
 	case "powershell":
 		return execInvocation{
-			commandName: "powershell",
-			commandArgs: []string{"-NoProfile", "-NonInteractive", "-Command", wrapPowerShellUTF8Command(command)},
-		}
+			commandName:      "powershell",
+			commandArgs:      []string{"-NoProfile", "-NonInteractive", "-Command", wrapPowerShellUTF8Command(cfg.command)},
+			shell:            "powershell",
+			workingDirectory: cfg.workingDirectory,
+		}, nil
+	case "cmd":
+		return execInvocation{commandName: "cmd", commandArgs: []string{"/C", cfg.command}, shell: "cmd", workingDirectory: cfg.workingDirectory}, nil
+	case "bash":
+		return execInvocation{commandName: "bash", commandArgs: []string{"-lc", cfg.command}, shell: "bash", workingDirectory: cfg.workingDirectory}, nil
 	case "sh":
-		return execInvocation{commandName: "sh", commandArgs: []string{"-c", command}}
+		return execInvocation{commandName: "sh", commandArgs: []string{"-c", cfg.command}, shell: "sh", workingDirectory: cfg.workingDirectory}, nil
 	default:
-		return execInvocation{commandName: "sh", commandArgs: []string{"-c", command}}
+		return execInvocation{}, fmt.Errorf("unsupported shell: %s", shell)
 	}
 }
 
-// parseJSONArgs parses command arguments from a JSON string array.
-func parseJSONArgs(argsRaw string) ([]string, error) {
-	if strings.TrimSpace(argsRaw) == "" {
-		return nil, nil
+func resolvePosixAutoShell() string {
+	if _, err := execLookPath("bash"); err == nil {
+		return "bash"
 	}
-	var parsed []string
-	if err := json.Unmarshal([]byte(argsRaw), &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse args; expected a JSON string array: %w", err)
+	return "sh"
+}
+
+func validateCommandSafety(command string) error {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return fmt.Errorf("command is required")
 	}
-	return parsed, nil
+	lower := strings.ToLower(trimmed)
+
+	interactivePatterns := []string{
+		"read-host",
+		" pause",
+		"pause ",
+		" git add -i",
+		" git rebase -i",
+		"git add -i",
+		"git rebase -i",
+	}
+	for _, p := range interactivePatterns {
+		if strings.Contains(lower, p) {
+			return fmt.Errorf("command rejected: interactive/blocking command is not allowed in exec tool")
+		}
+	}
+
+	dangerPatterns := []string{
+		"rm -rf /",
+		"rm -fr /",
+		"rm -rf --no-preserve-root /",
+		"git reset --hard && git clean -fd",
+		"git reset --hard && git clean -xdf",
+		"git clean -fd && git reset --hard",
+		"git clean -xdf && git reset --hard",
+	}
+	for _, p := range dangerPatterns {
+		if strings.Contains(lower, p) {
+			return fmt.Errorf("command rejected: dangerous destructive pattern detected")
+		}
+	}
+
+	return nil
+}
+
+func encodeExecOutput(payload execOutputPayload) (string, error) {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to encode exec output: %w", err)
+	}
+	return string(b), nil
 }
 
 // trimOutput caps output size to avoid huge context payloads.
-func trimOutput(output []byte) []byte {
+func trimOutput(output []byte) ([]byte, bool) {
 	if len(output) > constants.ExecMaxOutputBytes {
-		return output[:constants.ExecMaxOutputBytes]
+		return output[:constants.ExecMaxOutputBytes], true
 	}
-	return output
+	return output, false
 }
 
 // decodeCommandOutput decodes process output using BOM/heuristics for readability.
@@ -274,10 +422,10 @@ func normalizeShell(raw string) string {
 }
 
 // formatExecError normalizes low-level exec errors for clearer messages.
-func formatExecError(err error) string {
+func formatExecError(err error) error {
 	var execErr *exec.Error
 	if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
-		return fmt.Sprintf("Command not found: %s.", execErr.Name)
+		return fmt.Errorf("command not found: %s", execErr.Name)
 	}
-	return err.Error()
+	return err
 }
