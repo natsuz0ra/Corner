@@ -18,6 +18,7 @@ func (h *HTTPController) GetSettings(c WebContext) {
 		"defaultModel":                settings.DefaultModel,
 		"messagePlatformDefaultModel": settings.MessagePlatformDefaultModel,
 		"webSearchApiKey":             settings.WebSearchAPIKey,
+		"approvalMode":                settings.ApprovalMode,
 	})
 }
 
@@ -28,6 +29,7 @@ func (h *HTTPController) UpdateSettings(c WebContext) {
 		DefaultModel                string `json:"defaultModel"`
 		MessagePlatformDefaultModel string `json:"messagePlatformDefaultModel"`
 		WebSearchAPIKey             string `json:"webSearchApiKey"`
+		ApprovalMode                string `json:"approvalMode"`
 	}
 	if !bindJSONOrBadRequest(c, &req, "Invalid request payload format.") {
 		return
@@ -37,6 +39,7 @@ func (h *HTTPController) UpdateSettings(c WebContext) {
 		DefaultModel:                req.DefaultModel,
 		MessagePlatformDefaultModel: req.MessagePlatformDefaultModel,
 		WebSearchAPIKey:             req.WebSearchAPIKey,
+		ApprovalMode:                req.ApprovalMode,
 	})
 	if err != nil {
 		jsonInternalError(c, err)

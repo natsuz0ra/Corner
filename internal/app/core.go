@@ -91,7 +91,7 @@ func NewCore(cfg config.Config) (*Core, error) {
 	}
 
 	chatUpload := chatsvc.NewChatUploadService(cfg.ChatUploadRoot)
-	chatService := chatsvc.NewChatService(repo, providerFactory, mcpManager, skillRuntime, memoryService)
+	chatService := chatsvc.NewChatService(repo, repo, providerFactory, mcpManager, skillRuntime, memoryService)
 	chatService.SetUploadService(chatUpload)
 
 	return &Core{

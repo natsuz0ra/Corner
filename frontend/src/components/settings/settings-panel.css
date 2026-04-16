@@ -169,6 +169,28 @@ button.account-edit-btn:hover {
   color: var(--text-primary);
 }
 
+.approval-mode-active {
+  background: var(--primary-alpha-15);
+  color: var(--sb-brand);
+  border: 1px solid var(--primary-alpha-30);
+  font-weight: 500;
+}
+.approval-mode-active-auto {
+  background: var(--warning-alpha-15, rgba(234, 179, 8, 0.15));
+  color: var(--warning-text, #b45309);
+  border: 1px solid var(--warning-alpha-30, rgba(234, 179, 8, 0.3));
+  font-weight: 500;
+}
+.approval-mode-inactive {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--text-secondary);
+}
+.approval-mode-inactive:hover {
+  background: var(--primary-alpha-07);
+  color: var(--text-primary);
+}
+
 @media (max-width: 640px) {
   .settings-body {
     flex-direction: column;

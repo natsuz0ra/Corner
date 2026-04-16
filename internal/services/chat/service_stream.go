@@ -241,8 +241,16 @@ func (s *ChatService) executeChatTurn(
 	}
 
 	activatedSkills := s.getSessionActivatedSkills(sessionID)
+
+	approvalMode := constants.ApprovalModeStandard
+	if s.settingsStore != nil {
+		if mode, err := s.settingsStore.GetSetting(ctx, constants.SettingApprovalMode); err == nil && mode != "" {
+			approvalMode = mode
+		}
+	}
+
 	agentStart := time.Now()
-	answer, err := s.agent.RunAgentLoop(ctx, state.modelConfig, sessionID, state.contextMessages, state.enabledMCPConfigs, activatedSkills, agentCallbacks, AgentLoopOptions{})
+	answer, err := s.agent.RunAgentLoop(ctx, state.modelConfig, sessionID, state.contextMessages, state.enabledMCPConfigs, activatedSkills, agentCallbacks, AgentLoopOptions{ApprovalMode: approvalMode})
 	logging.Span("agent_loop", agentStart)
 	s.mergeSessionActivatedSkills(sessionID, activatedSkills)
 

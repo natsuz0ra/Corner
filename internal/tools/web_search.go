@@ -169,9 +169,6 @@ func extractDetailError(detail any) string {
 
 func formatTavilyOutput(data tavilySearchResponse) string {
 	var b strings.Builder
-	if q := strings.TrimSpace(data.Query); q != "" {
-		b.WriteString("Query: " + q + "\n")
-	}
 	if a := strings.TrimSpace(data.Answer); a != "" {
 		b.WriteString("Answer:\n")
 		b.WriteString(a + "\n")

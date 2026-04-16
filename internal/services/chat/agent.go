@@ -65,7 +65,8 @@ type AgentCallbacks struct {
 
 // AgentLoopOptions configures nested agent execution.
 type AgentLoopOptions struct {
-	Depth int
+	Depth        int
+	ApprovalMode string
 }
 
 // AgentService runs the LLM loop with tools, approvals, and MCP/skill loading.
@@ -365,7 +366,7 @@ func (a *AgentService) RunAgentLoop(
 		preamble := strings.TrimSpace(result.AssistantMessage.Content)
 
 		for _, tc := range result.ToolCalls {
-			invocation, err := resolveToolInvocation(tc, mcpToolMeta)
+			invocation, err := resolveToolInvocation(tc, mcpToolMeta, opts.ApprovalMode)
 			if err != nil {
 				messages = appendToolMessage(messages, tc.ID, fmt.Sprintf("failed to parse tool invocation: %s", err.Error()))
 				continue
@@ -491,7 +492,11 @@ func executeToolCall(ctx context.Context, toolName, command string, params map[s
 }
 
 // requiresToolApproval defines which tools need user approval (currently exec only).
-func requiresToolApproval(toolName string, isMCP bool) bool {
+// When approvalMode is "auto", all tools skip approval.
+func requiresToolApproval(toolName string, isMCP bool, approvalMode string) bool {
+	if approvalMode == constants.ApprovalModeAuto {
+		return false
+	}
 	if isMCP {
 		return false
 	}

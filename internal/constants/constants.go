@@ -58,6 +58,10 @@ const (
 	MCPFuncNameMaxLen              = 64
 	MCPFuncHashLen                 = 8
 
+	SettingApprovalMode  = "approvalMode"
+	ApprovalModeStandard = "standard"
+	ApprovalModeAuto     = "auto"
+
 	// WebSocket
 	WSChatTimeout     = 600 * time.Second
 	WSWriteChannelBuf = 128
