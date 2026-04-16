@@ -275,7 +275,7 @@ export const useChatStore = defineStore('chat', () => {
       resetSessionRuntimeState()
       rebuildReplyBatchesFromHistory(id, history)
     } catch {
-      // 固定消息平台会话在首条平台消息前可能尚未落库，前端先展示只读空态。
+      // Message-platform session may have no DB row before the first platform message; show read-only empty state first.
       if (id === MESSAGE_PLATFORM_SESSION_ID) {
         currentSessionId.value = id
         messages.value = []
@@ -450,12 +450,16 @@ export const useChatStore = defineStore('chat', () => {
           preamble: data.preamble,
           requiresApproval: data.requiresApproval,
           status: data.requiresApproval ? 'pending' : 'executing',
+          parentToolCallId: data.parentToolCallId,
+          subagentRunId: data.subagentRunId,
         })
-        batch.timeline.push({
-          id: crypto.randomUUID(),
-          kind: 'tool_start',
-          toolCallId: data.toolCallId,
-        })
+        if (!data.parentToolCallId) {
+          batch.timeline.push({
+            id: crypto.randomUUID(),
+            kind: 'tool_start',
+            toolCallId: data.toolCallId,
+          })
+        }
       },
       onToolCallResult: (data, sessionId) => {
         if (!sessionId || sessionId !== currentSessionId.value) return
@@ -467,12 +471,41 @@ export const useChatStore = defineStore('chat', () => {
           item.output = data.output
           item.error = data.error
           item.requiresApproval = data.requiresApproval
+          if (data.parentToolCallId) item.parentToolCallId = data.parentToolCallId
+          if (data.subagentRunId) item.subagentRunId = data.subagentRunId
         }
-        batch.timeline.push({
-          id: crypto.randomUUID(),
-          kind: 'tool_result',
-          toolCallId: data.toolCallId,
-        })
+        if (!data.parentToolCallId) {
+          batch.timeline.push({
+            id: crypto.randomUUID(),
+            kind: 'tool_result',
+            toolCallId: data.toolCallId,
+          })
+        }
+      },
+      onSubagentStart: (data, sessionId) => {
+        if (!sessionId || sessionId !== currentSessionId.value) return
+        const batch = getCurrentBatch()
+        if (!batch) return
+        const parent = batch.toolCalls.find((tc) => tc.toolCallId === data.parentToolCallId)
+        if (parent) {
+          parent.subagentRunId = data.subagentRunId
+          parent.subagentTask = data.task
+          if (parent.subagentStream === undefined) parent.subagentStream = ''
+        }
+      },
+      onSubagentChunk: (data, sessionId) => {
+        if (!sessionId || sessionId !== currentSessionId.value) return
+        const batch = getCurrentBatch()
+        if (!batch) return
+        const parent = batch.toolCalls.find((tc) => tc.toolCallId === data.parentToolCallId)
+        if (parent) {
+          if (parent.subagentStream === undefined) parent.subagentStream = ''
+          parent.subagentStream += data.content
+        }
+      },
+      onSubagentDone: (_data, sessionId) => {
+        if (!sessionId || sessionId !== currentSessionId.value) return
+        // Final text also arrives via tool_call_result; no state change required here.
       },
       onSocketError: (error) => {
         waiting.value = false

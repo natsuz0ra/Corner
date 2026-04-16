@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { renderMarkdown } from "./markdown.ts";
+import { renderMarkdown } from "./markdown";
 
 function stripAnsi(text: string): string {
   // eslint-disable-next-line no-control-regex

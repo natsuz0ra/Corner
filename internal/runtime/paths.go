@@ -16,6 +16,28 @@ func SlimeBotHomeDir() string {
 	return filepath.Join(home, SlimeBotDirName)
 }
 
+// DescribeConfigHome returns a human-readable listing of the SlimeBot config directory.
+// Only top-level entries are scanned; call once at startup and cache if needed.
+func DescribeConfigHome() string {
+	home := SlimeBotHomeDir()
+	entries, err := os.ReadDir(home)
+	if err != nil {
+		return home + " (directory not yet created)"
+	}
+	var b strings.Builder
+	b.WriteString(home)
+	b.WriteString("/\n")
+	for _, e := range entries {
+		b.WriteString("  ")
+		b.WriteString(e.Name())
+		if e.IsDir() {
+			b.WriteString("/")
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
 func ExpandHome(path string) string {
 	trimmed := strings.TrimSpace(path)
 	if trimmed == "" {

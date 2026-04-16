@@ -8,8 +8,16 @@ import { Box, Text } from "ink";
 import { renderMarkdownLines } from "../utils/markdownRenderer.js";
 import { DOT } from "../utils/terminal.js";
 import type { TimelineEntry, ToolCallStatus } from "../types.js";
-import { formatToolInvocation, truncateText, wrapText, formatCollapsedLines, TOOL_OUTPUT_PREVIEW_LINES } from "../utils/format.js";
+import {
+  formatToolInvocation,
+  wrapText,
+  formatCollapsedLines,
+  TOOL_OUTPUT_PREVIEW_LINES,
+  formatToolExecutionOutput,
+  formatToolParamEntries,
+} from "../utils/format.js";
 import { GradientFlowText } from "./GradientFlowText.js";
+import { Spinner } from "./Spinner.js";
 
 interface TimelineProps {
   entries: TimelineEntry[];
@@ -54,21 +62,53 @@ function renderToolSuffix(status: ToolCallStatus): string {
   }
 }
 
+export function formatSubagentStreamLines(stream: string, maxWidth: number, expanded: boolean): string[] {
+  const { lines } = formatCollapsedLines(stream.trim(), TOOL_OUTPUT_PREVIEW_LINES, expanded);
+  const linePrefix = "   |> ";
+  const contentWidth = Math.max(1, maxWidth - linePrefix.length);
+  const out: string[] = [];
+  for (const line of lines) {
+    const wrapped = wrapText(line, contentWidth);
+    for (const sub of wrapped.split("\n")) {
+      out.push(`${linePrefix}${sub}`);
+    }
+  }
+  return out;
+}
+
 export function formatToolOutputLines(entry: TimelineEntry, maxWidth: number, expanded: boolean): string[] {
-  const outputPrefix = "   ⎿ ";
-  const continuationPrefix = "     ";
-  const prefixWidth = 5;
+  const outputPrefix = "   => ";
+  const continuationPrefix = "      ";
+  const prefixWidth = outputPrefix.length;
   const contentWidth = Math.max(1, maxWidth - prefixWidth);
   const raw = (entry.status === "error" || entry.status === "rejected")
     ? (entry.error || entry.content)
     : (entry.output || entry.content);
-  const { lines: rawLines } = formatCollapsedLines(raw || "", TOOL_OUTPUT_PREVIEW_LINES, expanded);
+  const formatted = formatToolExecutionOutput(entry.toolName || "", entry.command || "", raw || "");
+  const { lines: rawLines } = formatCollapsedLines(formatted, TOOL_OUTPUT_PREVIEW_LINES, expanded);
   const result: string[] = [];
   for (const line of rawLines) {
     const wrapped = wrapText(line, contentWidth);
     const subLines = wrapped.split("\n");
     for (const sub of subLines) {
       result.push(result.length === 0 ? `${outputPrefix}${sub}` : `${continuationPrefix}${sub}`);
+    }
+  }
+  return result;
+}
+
+export function formatToolParamLines(entry: TimelineEntry, maxWidth: number): string[] {
+  const paramPrefix = "   :: ";
+  const continuationPrefix = "      ";
+  const prefixWidth = paramPrefix.length;
+  const contentWidth = Math.max(1, maxWidth - prefixWidth);
+  const rawLines = formatToolParamEntries(entry.params);
+  const result: string[] = [];
+  for (const line of rawLines) {
+    const wrapped = wrapText(line, contentWidth);
+    const subLines = wrapped.split("\n");
+    for (const sub of subLines) {
+      result.push(result.length === 0 ? `${paramPrefix}${sub}` : `${continuationPrefix}${sub}`);
     }
   }
   return result;
@@ -107,18 +147,76 @@ function StreamingMarkdown({
   );
 }
 
+function parentToolEntryExists(entries: TimelineEntry[], parentId: string): boolean {
+  return entries.some((e) => e.kind === "tool" && e.toolCallId === parentId);
+}
+
+function buildChildrenByParent(entries: TimelineEntry[]): Map<string, TimelineEntry[]> {
+  const m = new Map<string, TimelineEntry[]>();
+  for (const e of entries) {
+    if (e.kind !== "tool" || !e.parentToolCallId) {
+      continue;
+    }
+    const id = e.parentToolCallId;
+    const list = m.get(id) ?? [];
+    list.push(e);
+    m.set(id, list);
+  }
+  return m;
+}
+
+function nestedToolCallIdsToSkip(entries: TimelineEntry[]): Set<string> {
+  const skip = new Set<string>();
+  for (const e of entries) {
+    if (e.kind !== "tool" || !e.toolCallId || !e.parentToolCallId) {
+      continue;
+    }
+    if (parentToolEntryExists(entries, e.parentToolCallId)) {
+      skip.add(e.toolCallId);
+    }
+  }
+  return skip;
+}
+
+type TimelineDisplayRow = {
+  entry: TimelineEntry;
+  nestedTools?: TimelineEntry[];
+};
+
+function buildTimelineDisplayRows(entries: TimelineEntry[]): TimelineDisplayRow[] {
+  const skip = nestedToolCallIdsToSkip(entries);
+  const childrenByParent = buildChildrenByParent(entries);
+  const rows: TimelineDisplayRow[] = [];
+  for (const e of entries) {
+    if (e.kind === "tool" && e.toolCallId && skip.has(e.toolCallId)) {
+      continue;
+    }
+    let nestedTools: TimelineEntry[] | undefined;
+    if (e.kind === "tool" && e.toolCallId) {
+      const list = childrenByParent.get(e.toolCallId);
+      if (list && list.length > 0) {
+        nestedTools = list;
+      }
+    }
+    rows.push({ entry: e, nestedTools });
+  }
+  return rows;
+}
+
 function TimelineBlock({
   entry,
   blinkOn,
   maxWidth,
   compact,
   toolOutputExpanded,
+  nestedUnderParent,
 }: {
   entry: TimelineEntry;
   blinkOn: boolean;
   maxWidth: number;
   compact: boolean;
   toolOutputExpanded: boolean;
+  nestedUnderParent?: boolean;
 }): React.ReactElement {
   if (entry.kind === "user") {
     const lines = entry.content.split("\n");
@@ -155,14 +253,26 @@ function TimelineBlock({
 
   const status = (entry.status || "completed") as ToolCallStatus;
   const dot = toolDotState(status);
-  const invocation = formatToolInvocation(
-    entry.toolName || "",
-    entry.command || "",
-    entry.params,
-  );
+  const nestPrefix =
+    entry.parentToolCallId !== undefined && entry.parentToolCallId !== ""
+      ? nestedUnderParent
+        ? "  "
+        : "> "
+      : "";
+  const invocation =
+    nestPrefix +
+    formatToolInvocation(
+      entry.toolName || "",
+      entry.command || "",
+    );
+  const paramLines = formatToolParamLines(entry, maxWidth);
   const resultLines = (status === "completed" || status === "error" || status === "rejected")
     ? formatToolOutputLines(entry, maxWidth, toolOutputExpanded)
     : [];
+  const subStreamLines =
+    entry.subagentStream && entry.subagentStream.trim() !== ""
+      ? formatSubagentStreamLines(entry.subagentStream, maxWidth, toolOutputExpanded)
+      : [];
 
   return (
     <Box flexDirection="column">
@@ -173,6 +283,16 @@ function TimelineBlock({
         <Text>{" "}</Text>
         <Text>{invocation}{renderToolSuffix(status)}</Text>
       </Text>
+      {paramLines.map((line, index) => (
+        <Text key={`${entry.toolCallId || invocation}-param-${index}`} color="gray">
+          {line}
+        </Text>
+      ))}
+      {subStreamLines.map((line, index) => (
+        <Text key={`${entry.toolCallId || invocation}-sub-${index}`} color="gray">
+          {line}
+        </Text>
+      ))}
       {resultLines.map((line, index) => (
         <Text key={`${entry.toolCallId || invocation}-result-${index}`}>{line}</Text>
       ))}
@@ -190,12 +310,37 @@ export function Timeline({
   compact,
   toolOutputExpanded,
 }: TimelineProps): React.ReactElement {
+  const displayRows = useMemo(() => buildTimelineDisplayRows(entries), [entries]);
+
   return (
     <Box flexDirection="column">
-      {entries.map((entry, index) => (
-        <React.Fragment key={`${entry.kind}-${entry.toolCallId || index}`}>
+      {displayRows.map((row, index) => (
+        <React.Fragment key={`${row.entry.kind}-${row.entry.toolCallId ?? `r-${index}`}`}>
           {index > 0 && <Text> </Text>}
-          <TimelineBlock entry={entry} blinkOn={blinkOn} maxWidth={maxWidth} compact={compact} toolOutputExpanded={toolOutputExpanded} />
+          <TimelineBlock
+            entry={row.entry}
+            blinkOn={blinkOn}
+            maxWidth={maxWidth}
+            compact={compact}
+            toolOutputExpanded={toolOutputExpanded}
+          />
+          {row.nestedTools && row.nestedTools.length > 0 ? (
+            <Box flexDirection="column" marginLeft={2}>
+              {row.nestedTools.map((child, ci) => (
+                <React.Fragment key={`nested-${child.toolCallId ?? ci}`}>
+                  {ci > 0 && <Text> </Text>}
+                  <TimelineBlock
+                    entry={child}
+                    blinkOn={blinkOn}
+                    maxWidth={Math.max(10, maxWidth - 2)}
+                    compact={compact}
+                    toolOutputExpanded={toolOutputExpanded}
+                    nestedUnderParent
+                  />
+                </React.Fragment>
+              ))}
+            </Box>
+          ) : null}
         </React.Fragment>
       ))}
 
@@ -203,10 +348,13 @@ export function Timeline({
         <>
           {entries.length > 0 && <Text> </Text>}
           {assistantWaiting ? (
-            <GradientFlowText
-              text={`${DOT} Waiting for response...`}
-              enabled={true}
-            />
+            <Box key="waiting">
+              <Spinner enabled={true} />
+              <GradientFlowText
+                text={` Waiting for response...`}
+                enabled={true}
+              />
+            </Box>
           ) : liveAssistant ? (
             <StreamingMarkdown content={liveAssistant} maxWidth={maxWidth} compact={compact} />
           ) : null}
@@ -215,4 +363,3 @@ export function Timeline({
     </Box>
   );
 }
-

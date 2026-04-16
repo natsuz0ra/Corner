@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// EnvInfo 描述运行服务的设备环境信息
+// EnvInfo describes the host environment for the running service.
 type EnvInfo struct {
 	OS             string `json:"os"`
 	Arch           string `json:"arch"`
@@ -26,7 +26,7 @@ var (
 	staticEnvInfoOnce sync.Once
 )
 
-// CollectEnvInfo 采集当前设备的环境信息
+// CollectEnvInfo gathers host environment info (cached once per process).
 func CollectEnvInfo() *EnvInfo {
 	staticEnvInfoOnce.Do(func() {
 		staticEnvInfo = EnvInfo{
@@ -54,7 +54,7 @@ func CollectEnvInfo() *EnvInfo {
 	return info
 }
 
-// FormatForPrompt 将环境信息格式化为可嵌入系统提示词的文本
+// FormatForPrompt formats env info as text for system prompts.
 func (e *EnvInfo) FormatForPrompt() string {
 	var b strings.Builder
 	if e.Timezone != "" {
@@ -91,7 +91,7 @@ func detectOSVersion() string {
 			return "macOS " + strings.TrimSpace(string(out))
 		}
 	default:
-		// Linux 及其他系统
+		// Linux and other Unix-like systems
 		if data, err := os.ReadFile("/etc/os-release"); err == nil {
 			for _, line := range strings.Split(string(data), "\n") {
 				if strings.HasPrefix(line, "PRETTY_NAME=") {

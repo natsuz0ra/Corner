@@ -1,5 +1,5 @@
 /**
- * CommandHints — 命令提示组件，在输入 / 时显示可用命令列表。
+ * CommandHints — shows available commands when input starts with /.
  */
 
 import React from "react";

@@ -12,8 +12,8 @@ import (
 	apierrors2 "slimebot/internal/server/apierrors"
 )
 
-// RequireJWT 校验请求中的 JWT，并把用户名写入请求上下文。
-// 如果提供了 cliToken 且请求来自 localhost，则用 X-CLI-Token header 旁路认证。
+// RequireJWT validates JWTs and stores the username on the request context.
+// If cliToken is set and the request is from localhost, X-CLI-Token may bypass JWT.
 func RequireJWT(tokenManager *auth.TokenManager, cliToken ...string) func(http.Handler) http.Handler {
 	ct := ""
 	if len(cliToken) > 0 {
@@ -66,7 +66,7 @@ func RequireJWT(tokenManager *auth.TokenManager, cliToken ...string) func(http.H
 	}
 }
 
-// extractToken 优先从 Authorization: Bearer 读取，失败时回退 query token。
+// extractToken reads Authorization: Bearer first, then falls back to ?token=.
 func extractToken(r *http.Request) string {
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 	if authHeader != "" {

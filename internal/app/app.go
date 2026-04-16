@@ -19,7 +19,7 @@ import (
 	"slimebot/web"
 )
 
-// App 聚合进程级依赖，负责 HTTP 服务、平台 worker 与后台资源的生命周期。
+// App holds process-level dependencies and manages the HTTP server, platform workers, and background resource lifecycle.
 type App struct {
 	httpServer     *http.Server
 	listener       net.Listener
@@ -30,7 +30,7 @@ type App struct {
 	startCancel    context.CancelFunc
 }
 
-// New 构建应用运行所需的仓储、服务、控制器与后台组件。
+// New builds repositories, services, controller, and background components needed to run the app.
 func New(cfg config.Config) (*App, error) {
 	core, err := NewCore(cfg)
 	if err != nil {
@@ -80,18 +80,20 @@ func New(cfg config.Config) (*App, error) {
 	}
 	core.WarmupInBackground(context.Background())
 
+	core.ChatService.SetRunContext(buildRunContext(false))
+
 	return app, nil
 }
 
-// NewHeadless 构建 CLI headless 模式的应用：无 Telegram、无 SPA，使用 CLI token 旁路认证。
-// 返回应用实例和生成的 CLI token。
+// NewHeadless builds a CLI headless app: no Telegram, no SPA; uses CLI token bypass auth.
+// Returns the app instance and the generated CLI token.
 func NewHeadless(cfg config.Config) (*App, error) {
 	core, err := NewCore(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	// CLI headless 模式自动生成 JWT secret（用户不需要配置）
+	// CLI headless mode auto-generates JWT secret (no user configuration required).
 	if cfg.JWTSecret == "" {
 		cfg.JWTSecret = auth.GenerateCLIToken()
 	}
@@ -115,7 +117,7 @@ func NewHeadless(cfg config.Config) (*App, error) {
 		tokenManager,
 	)
 	wsController := ws.NewController(core.ChatService)
-	subDist, _ := fs.Sub(web.DistFS, "dist") // 需要 fs 参数但不实际使用
+	subDist, _ := fs.Sub(web.DistFS, "dist") // fs required by router; unused in headless UI
 	engine := router.New(cfg, tokenManager, httpController, wsController, subDist,
 		router.RouterConfig{
 			CLIToken: cliToken,
@@ -136,15 +138,17 @@ func NewHeadless(cfg config.Config) (*App, error) {
 	}
 	core.WarmupInBackground(context.Background())
 
+	core.ChatService.SetRunContext(buildRunContext(true))
+
 	return app, nil
 }
 
-// CLIToken 返回 CLI 认证 token（仅 headless 模式有效）。
+// CLIToken returns the CLI auth token (headless mode only).
 func (a *App) CLIToken() string {
 	return a.cliToken
 }
 
-// Addr 返回 HTTP 服务器实际监听地址。必须在 Start 之后调用。
+// Addr returns the HTTP server's actual listen address. Call after Start.
 func (a *App) Addr() string {
 	if a.listener == nil {
 		return ""
@@ -152,7 +156,7 @@ func (a *App) Addr() string {
 	return a.listener.Addr().String()
 }
 
-// Run 启动平台 worker 与 HTTP 服务，并在退出时统一触发资源清理。
+// Run starts platform workers and the HTTP server, then cleans up resources on exit.
 func (a *App) Run(ctx context.Context) error {
 	if a.telegramWorker != nil {
 		a.telegramWorker.Start(ctx)
@@ -164,7 +168,7 @@ func (a *App) Run(ctx context.Context) error {
 	return err
 }
 
-// Start 启动 HTTP 服务器（不阻塞），返回后可通过 Addr() 获取监听地址。
+// Start starts the HTTP server without blocking; use Addr() for the listen address after return.
 func (a *App) Start(ctx context.Context) error {
 	ln, err := net.Listen("tcp", a.httpServer.Addr)
 	if err != nil {
@@ -188,7 +192,7 @@ func (a *App) Start(ctx context.Context) error {
 	return nil
 }
 
-// Close 主动关闭应用资源。
+// Close shuts down resources owned by the app.
 func (a *App) Close(ctx context.Context) {
 	a.startCancelMu.Lock()
 	cancel := a.startCancel
@@ -210,7 +214,7 @@ func (a *App) setStartCancel(cancel context.CancelFunc) {
 	a.startCancel = cancel
 }
 
-// startHTTPServer 启动 HTTP 服务并阻塞，直到上下文取消或服务出错。
+// startHTTPServer runs the HTTP server until the context is cancelled or the server errors.
 func (a *App) startHTTPServer(ctx context.Context) error {
 	ln, err := net.Listen("tcp", a.httpServer.Addr)
 	if err != nil {
@@ -241,7 +245,7 @@ func (a *App) startHTTPServer(ctx context.Context) error {
 	}
 }
 
-// cleanup 关闭内存、向量化与 MCP 等后台资源，避免进程退出时遗留句柄。
+// cleanup closes memory, MCP, and other background resources to avoid lingering handles on exit.
 func (a *App) cleanup(ctx context.Context) {
 	if a == nil || a.core == nil {
 		return

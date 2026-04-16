@@ -1,6 +1,6 @@
 /**
- * HTTP API 客户端：与 Go 后端 REST API 通信。
- * CLI 模式使用 X-CLI-Token header 旁路认证。
+ * HTTP API client for the Go backend REST API.
+ * CLI mode uses X-CLI-Token header for bypass auth.
  */
 
 import type {
@@ -95,6 +95,19 @@ export class APIClient {
 
   listLLMConfigs(): Promise<LLMConfig[]> {
     return this.request("/api/llm-configs");
+  }
+
+  createLLMConfig(data: {
+    name: string;
+    provider: string;
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+  }): Promise<LLMConfig> {
+    return this.request("/api/llm-configs", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   }
 
   // ===== MCP Configs =====

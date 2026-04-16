@@ -22,3 +22,6 @@ __pycache__/
 *.pyc
 .claude
 cli/dist
+CLAUDE.md
+.omx/
+.opencode/

@@ -12,7 +12,7 @@ type telegramAuthConfig struct {
 	BotToken string `json:"botToken"`
 }
 
-// ValidateAuthConfig 校验平台鉴权 JSON，避免保存后在运行期失败。
+// ValidateAuthConfig validates platform auth JSON before persistence.
 func ValidateAuthConfig(platform string, raw string) error {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -30,7 +30,7 @@ func ValidateAuthConfig(platform string, raw string) error {
 	return nil
 }
 
-// ParseTelegramBotToken 从 Telegram 平台配置中提取 botToken，失败时返回空串。
+// ParseTelegramBotToken reads the bot token from Telegram auth JSON; empty on failure.
 func ParseTelegramBotToken(raw string) string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {

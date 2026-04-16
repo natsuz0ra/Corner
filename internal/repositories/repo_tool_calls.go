@@ -34,6 +34,8 @@ func (r *Repository) UpsertToolCallStart(ctx context.Context, input domain.ToolC
 		ParamsJSON:       paramsJSON,
 		Status:           input.Status,
 		RequiresApproval: input.RequiresApproval,
+		ParentToolCallID: strings.TrimSpace(input.ParentToolCallID),
+		SubagentRunID:    strings.TrimSpace(input.SubagentRunID),
 		StartedAt:        startedAt,
 	}
 	return r.dbWithContext(ctx).Clauses(clause.OnConflict{
@@ -48,6 +50,8 @@ func (r *Repository) UpsertToolCallStart(ctx context.Context, input domain.ToolC
 			"params_json":          paramsJSON,
 			"status":               input.Status,
 			"requires_approval":    input.RequiresApproval,
+			"parent_tool_call_id":  record.ParentToolCallID,
+			"subagent_run_id":      record.SubagentRunID,
 			"started_at":           startedAt,
 			"finished_at":          nil,
 			"output":               "",

@@ -14,25 +14,25 @@ const (
 )
 
 type titleStreamParser struct {
-	// 是否启用协议解析；关闭时全部透传。
+	// When false, all chunks pass through unchanged.
 	enabled bool
-	// 最近一次成功解析出的标题。
+	// Last successfully parsed title.
 	title string
-	// 最近一次成功解析出的会话总结。
+	// Last successfully parsed memory JSON payload.
 	memory string
-	// 当前正在解析的协议标签：title / memory。
+	// Active protocol tag being parsed: title or memory.
 	activeTag string
-	// 普通文本阶段下，可能跨 chunk 的开标签探测缓存。
+	// Buffered bytes while detecting an opening tag across chunks.
 	openBuf []byte
-	// 标签内容阶段下，可能跨 chunk 的闭标签探测缓存。
+	// Buffered bytes while detecting a closing tag across chunks.
 	closeBuf []byte
-	// 当前标签内容缓存（不包含标签本身）。
+	// Accumulated inner tag content (excluding delimiters).
 	tagContent []byte
-	// 标记在移除协议标签后，下一段正文前缀空白应被裁剪。
+	// After removing protocol tags, trim leading whitespace on the next text segment once.
 	trimNextTextPrefix bool
 }
 
-// newTitleStreamParser 创建标题协议解析器；禁用时直接透传所有内容。
+// newTitleStreamParser creates the title/memory protocol parser; disabled mode passes through.
 func newTitleStreamParser(enabled bool) *titleStreamParser {
 	if !enabled {
 		return &titleStreamParser{enabled: false}
@@ -40,7 +40,7 @@ func newTitleStreamParser(enabled bool) *titleStreamParser {
 	return &titleStreamParser{enabled: true}
 }
 
-// Feed 增量接收模型流片段并返回可直接下发前端的正文部分。
+// Feed consumes one streamed chunk and returns visible body text for the client.
 func (p *titleStreamParser) Feed(chunk string) string {
 	if chunk == "" {
 		return ""
@@ -60,7 +60,7 @@ func (p *titleStreamParser) Feed(chunk string) string {
 	return out.String()
 }
 
-// Flush 在流结束时冲刷缓冲中的残留内容。
+// Flush flushes buffered partial tags at end of stream.
 func (p *titleStreamParser) Flush() string {
 	if !p.enabled {
 		return ""
@@ -68,14 +68,14 @@ func (p *titleStreamParser) Flush() string {
 
 	var out strings.Builder
 	if p.activeTag != "" {
-		// 标签未闭合，按正文透传，避免吞字。
+		// Unclosed tag: emit as plain text to avoid dropping characters.
 		out.WriteString("<")
 		out.WriteString(p.activeTag)
 		out.WriteString(">")
 		out.Write(p.tagContent)
 		out.Write(p.closeBuf)
 	} else if len(p.openBuf) > 0 {
-		// 开标签探测缓存残留，说明不是完整协议标签，按正文透传。
+		// Partial open-tag buffer: not a real tag; emit as text.
 		out.Write(p.openBuf)
 	}
 	p.resetStreamState()
@@ -90,12 +90,12 @@ func (p *titleStreamParser) Memory() string {
 	return p.memory
 }
 
-// BeginAssistantTurn 在工具调用切轮时重置探测状态，避免协议跨轮污染。
+// BeginAssistantTurn resets parser state when switching assistant turns after tools.
 func (p *titleStreamParser) BeginAssistantTurn() string {
 	if !p.enabled {
 		return ""
 	}
-	// 工具调用切轮时先冲刷残留，避免跨轮污染解析状态。
+	// Flush before a new assistant turn to avoid cross-turn tag leakage.
 	return p.Flush()
 }
 
@@ -104,8 +104,7 @@ func (p *titleStreamParser) consumeTextByte(b byte, out *strings.Builder) {
 		if isProtocolSeparatorByte(b) {
 			return
 		}
-		// 若后续直接进入下一个协议标签，继续保持裁剪标记；
-		// 若进入正文，则关闭裁剪标记。
+		// Keep trim flag if another tag follows immediately; clear once real text starts.
 		if b != '<' {
 			p.trimNextTextPrefix = false
 		}
@@ -204,7 +203,7 @@ func cleanProtocolMemory(input string) string {
 	return memory
 }
 
-// extractProtocolMetaAndBody 用于兜底提取协议元信息并剔除正文中的协议行。
+// extractProtocolMetaAndBody is a fallback that strips protocol lines from the final body.
 func extractProtocolMetaAndBody(input string) (string, string, string) {
 	if strings.TrimSpace(input) == "" {
 		return "", "", input
@@ -373,7 +372,7 @@ func countMaxNewlineRun(input string) int {
 	return maxRun
 }
 
-// truncateRunes 按 rune 截断，避免中文等多字节字符被破坏。
+// truncateRunes truncates by rune count to avoid splitting multibyte characters.
 func truncateRunes(input string, max int) string {
 	if max <= 0 {
 		return ""

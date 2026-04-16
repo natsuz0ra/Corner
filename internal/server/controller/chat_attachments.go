@@ -19,8 +19,8 @@ type attachmentUploadItem struct {
 	IconType  string `json:"iconType"`
 }
 
-// UploadSessionAttachments 上传聊天附件，返回临时附件标识供本次会话使用。
-// 该接口只负责“暂存并返回引用”，不直接参与模型推理。
+// UploadSessionAttachments stages chat files and returns temporary attachment IDs for the session.
+// This endpoint only stores refs; model inference consumes them via chat requests.
 func (h *HTTPController) UploadSessionAttachments(c WebContext) {
 	if h.chatUploads == nil {
 		jsonError(c, http.StatusInternalServerError, "Chat upload service is not initialized.")
@@ -40,7 +40,7 @@ func (h *HTTPController) UploadSessionAttachments(c WebContext) {
 	if len(files) == 0 {
 		files = form.File["files[]"]
 	}
-	// 兼容 files / files[] 两种前端字段命名。
+	// Accept both "files" and "files[]" form field names.
 	if len(files) == 0 {
 		jsonError(c, http.StatusBadRequest, "At least one file is required (field name: files or files[]).")
 		return
@@ -64,6 +64,6 @@ func (h *HTTPController) UploadSessionAttachments(c WebContext) {
 			IconType:  item.IconType,
 		})
 	}
-	// 返回的是“附件元信息 + 临时 ID”，后续由 chat 请求通过 attachmentIds 消费。
+	// Response is metadata plus temp IDs; chat requests consume them via attachmentIds.
 	c.JSON(http.StatusOK, resp)
 }

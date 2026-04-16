@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createInitialState, reducer } from "./reducer.ts";
+import { createInitialState, reducer } from "./reducer";
 
 function initState() {
   return createInitialState("http://127.0.0.1:8080", "token", "C:/repo", "1.0.0");

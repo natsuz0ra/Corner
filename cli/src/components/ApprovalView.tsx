@@ -1,6 +1,6 @@
 /**
- * ApprovalView — 工具审批对话框。
- * 显示工具名、命令和参数，让用户确认或拒绝。
+ * ApprovalView — tool approval dialog.
+ * Shows tool name, command, and args for user approval or denial.
  */
 
 import React from "react";

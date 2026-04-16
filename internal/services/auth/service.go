@@ -9,17 +9,17 @@ import (
 	"slimebot/internal/domain"
 )
 
-// AuthService 封装账号鉴权与账户设置相关逻辑。
+// AuthService handles login and account updates.
 type AuthService struct {
 	store domain.SettingsReaderWriter
 }
 
-// NewAuthService 创建认证服务。
+// NewAuthService constructs an AuthService.
 func NewAuthService(store domain.SettingsReaderWriter) *AuthService {
 	return &AuthService{store: store}
 }
 
-// VerifyLogin 校验用户名与密码是否匹配当前账户设置。
+// VerifyLogin checks username/password against stored credentials.
 func (s *AuthService) VerifyLogin(username, password string) (bool, error) {
 	storedUsername, err := s.store.GetSetting(context.Background(), constants.SettingAuthUsername)
 	if err != nil {
@@ -40,12 +40,12 @@ func (s *AuthService) VerifyLogin(username, password string) (bool, error) {
 	return coreauth.ComparePassword(storedHash, password), nil
 }
 
-// MustChangePassword 返回是否要求用户首次登录后修改密码。
+// MustChangePassword reports whether the user must change password after first login.
 func (s *AuthService) MustChangePassword() (bool, error) {
 	return s.store.GetSettingBool(constants.SettingAuthForcePasswordChange, false)
 }
 
-// UpdateAccount 更新用户名或密码；修改密码时必须校验旧密码。
+// UpdateAccount changes username or password; password changes require the old password.
 func (s *AuthService) UpdateAccount(username, oldPassword, newPassword string) error {
 	newUsername := strings.TrimSpace(username)
 	newPass := strings.TrimSpace(newPassword)
@@ -83,7 +83,7 @@ func (s *AuthService) UpdateAccount(username, oldPassword, newPassword string) e
 	return s.store.SetSetting(context.Background(), constants.SettingAuthForcePasswordChange, "false")
 }
 
-// EnsureDefaultAdmin 在未初始化时创建默认 admin 账号并要求首次改密。
+// EnsureDefaultAdmin seeds a default admin when no account exists and forces password change.
 func (s *AuthService) EnsureDefaultAdmin() error {
 	username, err := s.store.GetSetting(context.Background(), constants.SettingAuthUsername)
 	if err != nil {

@@ -2,7 +2,7 @@ package mcp
 
 import "strings"
 
-// parseTools 将 MCP tools/list 的原始结果映射为内部统一 Tool 结构。
+// parseTools maps tools/list JSON into internal Tool values.
 func parseTools(result map[string]any) []Tool {
 	toolItems, _ := result["tools"].([]any)
 	tools := make([]Tool, 0, len(toolItems))
@@ -26,7 +26,7 @@ func parseTools(result map[string]any) []Tool {
 	return tools
 }
 
-// parseCallResult 解析 MCP tools/call 的 result 字段并映射为统一返回结构。
+// parseCallResult maps tools/call result JSON into CallResult.
 func parseCallResult(result map[string]any) *CallResult {
 	var out strings.Builder
 	if contents, ok := result["content"].([]any); ok {

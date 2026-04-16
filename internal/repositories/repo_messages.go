@@ -47,55 +47,37 @@ func (r *Repository) ListSessionMessagesPage(sessionID string, limit int, before
 	fetchLimit := limit + 1
 
 	base := r.db.Where("session_id = ?", sessionID)
-	var (
-		messages []domain.Message
-		err      error
-		hasMore  bool
-	)
+	var messages []domain.Message
 
 	switch {
 	case after != nil:
-		q := base.Where("(created_at > ?) OR (created_at = ? AND seq > ?)", *after, *after, *afterSeq)
-		err = q.
+		if err := base.Where("(created_at > ?) OR (created_at = ? AND seq > ?)", *after, *after, *afterSeq).
 			Order("created_at asc, seq asc").
 			Limit(fetchLimit).
-			Find(&messages).
-			Error
-		if err != nil {
+			Find(&messages).Error; err != nil {
 			return nil, false, err
-		}
-		if len(messages) == 0 {
-			return messages, false, nil
-		}
-		if len(messages) > limit {
-			hasMore = true
-			messages = messages[:limit]
 		}
 	default:
 		query := base
 		if before != nil {
 			query = query.Where("(created_at < ?) OR (created_at = ? AND seq < ?)", *before, *before, *beforeSeq)
 		}
-		err = query.
+		if err := query.
 			Order("created_at desc, seq desc").
 			Limit(fetchLimit).
-			Find(&messages).
-			Error
-		if err != nil {
+			Find(&messages).Error; err != nil {
 			return nil, false, err
 		}
-		if len(messages) == 0 {
-			return messages, false, nil
-		}
-		if len(messages) > limit {
-			hasMore = true
-			messages = messages[:limit]
-		}
+		// Query newest-first; reverse to chronological order.
 		for left, right := 0, len(messages)-1; left < right; left, right = left+1, right-1 {
 			messages[left], messages[right] = messages[right], messages[left]
 		}
 	}
 
+	if len(messages) == 0 {
+		return messages, false, nil
+	}
+	messages, hasMore := FetchWindow(messages, limit)
 	normalizeMessages(messages)
 	return messages, hasMore, nil
 }

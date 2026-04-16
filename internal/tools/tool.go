@@ -2,7 +2,7 @@ package tools
 
 import "context"
 
-// CommandParam 描述工具命令的一个参数
+// CommandParam describes one parameter for a tool command.
 type CommandParam struct {
 	Name        string `json:"name"`
 	Required    bool   `json:"required"`
@@ -10,27 +10,27 @@ type CommandParam struct {
 	Example     string `json:"example,omitempty"`
 }
 
-// Command 描述工具支持的一条命令
+// Command describes one subcommand supported by a tool.
 type Command struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	Params      []CommandParam `json:"params,omitempty"`
 }
 
-// ExecuteResult 是工具命令的执行结果
+// ExecuteResult is the outcome of a tool command.
 type ExecuteResult struct {
 	Output string `json:"output,omitempty"`
 	Error  string `json:"error,omitempty"`
 }
 
-// Tool 是所有工具必须实现的接口。
-// 新增工具只需在 tools 包下新建文件，实现此接口并在 init() 中调用 Register 即可自动注册。
+// Tool is the interface every built-in tool implements.
+// Add a new tool by implementing it in this package and calling Register from init().
 type Tool interface {
-	// Name 返回工具的唯一标识名称，如 "exec"、"http_request"
+	// Name returns the stable tool id (e.g. "exec", "http_request").
 	Name() string
-	// Description 返回工具的简短功能描述
+	// Description returns a short capability summary.
 	Description() string
-	// Commands 返回工具支持的所有命令列表
+	// Commands lists supported subcommands.
 	Commands() []Command
 	Execute(ctx context.Context, command string, params map[string]string) (*ExecuteResult, error)
 }

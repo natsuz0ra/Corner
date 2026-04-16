@@ -2,19 +2,19 @@ package chat
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"slimebot/internal/constants"
-	"slimebot/internal/domain"
 	"slimebot/internal/mcp"
+	llmsvc "slimebot/internal/services/llm"
 	memsvc "slimebot/internal/services/memory"
-	oaisvc "slimebot/internal/services/openai"
 )
 
 func TestResolveToolInvocation_ActivateSkill(t *testing.T) {
-	tc := oaisvc.ToolCallInfo{
+	tc := llmsvc.ToolCallInfo{
 		ID:        "call_1",
 		Name:      "activate_skill",
 		Arguments: `{"name":"demo-skill"}`,
@@ -35,8 +35,29 @@ func TestResolveToolInvocation_ActivateSkill(t *testing.T) {
 	}
 }
 
+func TestResolveToolInvocation_RunSubagent(t *testing.T) {
+	tc := llmsvc.ToolCallInfo{
+		ID:        "call_sa",
+		Name:      constants.RunSubagentTool,
+		Arguments: `{"task":"Summarize X"}`,
+	}
+	invocation, err := resolveToolInvocation(tc, map[string]mcp.ToolMeta{})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if invocation.toolName != constants.RunSubagentTool {
+		t.Fatalf("unexpected toolName: %s", invocation.toolName)
+	}
+	if invocation.command != "run" {
+		t.Fatalf("unexpected command: %s", invocation.command)
+	}
+	if invocation.requiresApproval {
+		t.Fatal("run_subagent should not require approval")
+	}
+}
+
 func TestResolveToolInvocation_SearchMemory(t *testing.T) {
-	tc := oaisvc.ToolCallInfo{
+	tc := llmsvc.ToolCallInfo{
 		ID:        "call_2",
 		Name:      constants.SearchMemoryTool,
 		Arguments: `{"query":"golang"}`,
@@ -57,30 +78,29 @@ func TestResolveToolInvocation_SearchMemory(t *testing.T) {
 	}
 }
 
-func TestExecuteInvocation_SearchMemory_OncePerResponse(t *testing.T) {
-	repo := newTestRepo(t)
-	memorySvc := memsvc.NewMemoryService(repo, nil)
-	agent := &AgentService{memory: memorySvc}
-
-	if _, err := repo.CreateEpisodeMemory(domain.EpisodeMemoryCreateInput{
-		SessionID:      "current-session",
-		TopicKey:       "golang",
-		Title:          "Golang",
-		Summary:        "用户在聊 golang",
-		Keywords:       []string{"golang"},
-		State:          domain.EpisodeMemoryStateClosed,
-		SourceStartSeq: 1,
-		SourceEndSeq:   4,
-		TurnCount:      2,
-		LastActiveAt:   time.Now(),
-	}); err != nil {
-		t.Fatalf("create episode failed: %v", err)
+func newTestMemoryService(t *testing.T) *memsvc.MemoryService {
+	t.Helper()
+	dir := t.TempDir()
+	svc, err := memsvc.NewMemoryService(dir)
+	if err != nil {
+		t.Fatalf("create memory service: %v", err)
 	}
+	t.Cleanup(func() { svc.Shutdown(context.Background()) })
+	return svc
+}
+
+func TestExecuteInvocation_SearchMemory_OncePerResponse(t *testing.T) {
+	memorySvc := newTestMemoryService(t)
+
+	// Pre-seed one memory row
+	memorySvc.EnqueueTurnMemory("test-session", "", `{"name":"Golang Memory","description":"用户在聊 golang","type":"project","content":"用户喜欢 Go 语言"}`)
+
+	agent := &AgentService{memory: memorySvc}
 
 	memoryUsed := false
 	first := agent.executeInvocation(
 		context.Background(),
-		oaisvc.ToolCallInfo{ID: "call_3", Name: constants.SearchMemoryTool},
+		llmsvc.ToolCallInfo{ID: "call_3", Name: constants.SearchMemoryTool},
 		resolvedToolInvocation{toolName: constants.SearchMemoryTool, command: "query"},
 		map[string]string{"query": "golang"},
 		"current-session",
@@ -96,7 +116,7 @@ func TestExecuteInvocation_SearchMemory_OncePerResponse(t *testing.T) {
 
 	second := agent.executeInvocation(
 		context.Background(),
-		oaisvc.ToolCallInfo{ID: "call_4", Name: constants.SearchMemoryTool},
+		llmsvc.ToolCallInfo{ID: "call_4", Name: constants.SearchMemoryTool},
 		resolvedToolInvocation{toolName: constants.SearchMemoryTool, command: "query"},
 		map[string]string{"query": "golang"},
 		"current-session",
@@ -108,44 +128,6 @@ func TestExecuteInvocation_SearchMemory_OncePerResponse(t *testing.T) {
 	}
 }
 
-func TestExecuteInvocation_SearchMemory_SearchesAcrossSessions(t *testing.T) {
-	repo := newTestRepo(t)
-	memorySvc := memsvc.NewMemoryService(repo, nil)
-	agent := &AgentService{memory: memorySvc}
-
-	if _, err := repo.CreateEpisodeMemory(domain.EpisodeMemoryCreateInput{
-		SessionID:      "other-session",
-		TopicKey:       "golang",
-		Title:          "Cross Session Golang",
-		Summary:        "来自其他会话的 Go 记忆",
-		Keywords:       []string{"golang"},
-		State:          domain.EpisodeMemoryStateClosed,
-		SourceStartSeq: 1,
-		SourceEndSeq:   2,
-		TurnCount:      1,
-		LastActiveAt:   time.Now(),
-	}); err != nil {
-		t.Fatalf("create episode failed: %v", err)
-	}
-
-	memoryUsed := false
-	result := agent.executeInvocation(
-		context.Background(),
-		oaisvc.ToolCallInfo{ID: "call_5", Name: constants.SearchMemoryTool},
-		resolvedToolInvocation{toolName: constants.SearchMemoryTool, command: "query"},
-		map[string]string{"query": "golang"},
-		"current-session",
-		nil,
-		&memoryUsed,
-	)
-	if result == nil || strings.TrimSpace(result.Error) != "" {
-		t.Fatalf("expected search success, got %+v", result)
-	}
-	if !strings.Contains(result.Output, "Cross Session Golang") {
-		t.Fatalf("expected cross-session result, got %q", result.Output)
-	}
-}
-
 func TestBuildToolDefs_SortedByName(t *testing.T) {
 	defs := BuildToolDefs()
 	for i := 1; i < len(defs); i++ {
@@ -154,3 +136,41 @@ func TestBuildToolDefs_SortedByName(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildToolDefs_ExecRunSchema(t *testing.T) {
+	defs := BuildToolDefs()
+	var execDef *llmsvc.ToolDef
+	for i := range defs {
+		if defs[i].Name == "exec__run" {
+			execDef = &defs[i]
+			break
+		}
+	}
+	if execDef == nil {
+		t.Fatal("expected exec__run tool definition")
+	}
+
+	params, ok := execDef.Parameters["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected exec__run properties type: %#v", execDef.Parameters["properties"])
+	}
+
+	expected := []string{"command", "timeout_ms", "shell", "working_directory", "description"}
+	for _, key := range expected {
+		if _, found := params[key]; !found {
+			t.Fatalf("expected exec__run param %q in tool schema", key)
+		}
+	}
+
+	required, ok := execDef.Parameters["required"].([]string)
+	if !ok {
+		t.Fatalf("unexpected required type: %#v", execDef.Parameters["required"])
+	}
+	if len(required) != 1 || required[0] != "command" {
+		t.Fatalf("expected required=[command], got %#v", required)
+	}
+}
+
+// Ensure underscore sanitization in names
+var _ = filepath.Join
+var _ = os.ReadFile

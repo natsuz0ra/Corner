@@ -20,6 +20,7 @@ export interface Message {
 export interface LLMConfig {
   id: string;
   name: string;
+  provider: string;
   baseUrl: string;
   model: string;
   createdAt: string;
@@ -67,6 +68,8 @@ export interface ToolCallHistoryItem {
   params: Record<string, string>;
   status: string;
   requiresApproval: boolean;
+  parentToolCallId?: string;
+  subagentRunId?: string;
   output?: string;
   error?: string;
   startedAt: string;
@@ -89,6 +92,8 @@ export interface ToolCallStartData {
   params: Record<string, string>;
   requiresApproval: boolean;
   preamble?: string;
+  parentToolCallId?: string;
+  subagentRunId?: string;
 }
 
 export interface ToolCallResultData {
@@ -99,11 +104,19 @@ export interface ToolCallResultData {
   status: ToolCallStatus;
   output: string;
   error: string;
+  parentToolCallId?: string;
+  subagentRunId?: string;
+}
+
+export interface SubagentChunkData {
+  parentToolCallId: string;
+  subagentRunId: string;
+  content: string;
 }
 
 // ===== UI state types =====
 
-export type ViewMode = "chat" | "menu" | "mcp-editor" | "approval";
+export type ViewMode = "chat" | "menu" | "mcp-editor" | "mcp-template" | "model-editor" | "approval";
 
 export type MenuKind =
   | "session"
@@ -111,6 +124,42 @@ export type MenuKind =
   | "skills"
   | "mcp"
   | "help";
+
+// ===== MCP Template types =====
+
+export type MCPTransportKind = "stdio" | "sse" | "streamable_http";
+
+export interface MCPTemplate {
+  kind: MCPTransportKind;
+  label: string;
+  description: string;
+  template: string;
+}
+
+export const MCP_TEMPLATES: MCPTemplate[] = [
+  {
+    kind: "stdio",
+    label: "Stdio",
+    description: "Local process via stdin/stdout (e.g. Python, Node)",
+    template: '{\n  "command": "python",\n  "args": ["-m", "your_module"]\n}',
+  },
+  {
+    kind: "sse",
+    label: "SSE",
+    description: "Server-Sent Events HTTP transport",
+    template: '{\n  "transport": "sse",\n  "url": "https://your-mcp-server-url",\n  "headers": {},\n  "timeout": 5,\n  "sse_read_timeout": 300\n}',
+  },
+  {
+    kind: "streamable_http",
+    label: "Streamable HTTP",
+    description: "Streamable HTTP transport (newest MCP protocol)",
+    template: '{\n  "transport": "streamable_http",\n  "url": "https://your-mcp-server-url",\n  "headers": {},\n  "timeout": 5,\n  "sse_read_timeout": 300\n}',
+  },
+];
+
+// ===== Model provider types =====
+
+export type ModelProvider = "openai" | "anthropic";
 
 export interface TimelineEntry {
   kind: "user" | "assistant" | "system" | "tool";
@@ -122,6 +171,10 @@ export interface TimelineEntry {
   status?: ToolCallStatus;
   output?: string;
   error?: string;
+  parentToolCallId?: string;
+  subagentRunId?: string;
+  /** Accumulated nested agent stream (parent run_subagent only). */
+  subagentStream?: string;
 }
 
 export interface MenuItem {
@@ -189,6 +242,18 @@ export interface AppState {
   mcpEditorEnabled: boolean;
   mcpEditorFocusName: boolean;
 
+  // MCP Template Picker
+  mcpTemplateCursor: number;
+
+  // Model Editor
+  modelEditorName: string;
+  modelEditorProvider: ModelProvider;
+  modelEditorBaseUrl: string;
+  modelEditorApiKey: string;
+  modelEditorModel: string;
+  modelEditorFocusIndex: number;
+  modelEditorProviderSelect: boolean;
+
   // Approval
   approvalToolCallId: string;
   approvalToolName: string;
@@ -216,6 +281,7 @@ export type AppAction =
   | { type: "TOGGLE_COMPACT" }
   | { type: "TOGGLE_TOOL_OUTPUT" }
   | { type: "UPSERT_TOOL_ENTRY"; entry: TimelineEntry }
+  | { type: "APPEND_SUBAGENT_STREAM"; parentToolCallId: string; content: string }
   | { type: "APPEND_ENTRY"; entry: TimelineEntry }
   | { type: "RESET_SESSION" }
   | { type: "BLINK_TOGGLE" }
@@ -228,6 +294,17 @@ export type AppAction =
   | { type: "SET_MCP_EDITOR_CONFIG"; config: string }
   | { type: "TOGGLE_MCP_EDITOR_ENABLED" }
   | { type: "TOGGLE_MCP_EDITOR_FOCUS" }
+  | { type: "SET_MCP_TEMPLATE_VIEW" }
+  | { type: "MCP_TEMPLATE_NAV"; delta: number }
+  | { type: "SET_MODEL_EDITOR_VIEW" }
+  | { type: "SET_MODEL_EDITOR_NAME"; name: string }
+  | { type: "SET_MODEL_EDITOR_PROVIDER"; provider: ModelProvider }
+  | { type: "SET_MODEL_EDITOR_BASE_URL"; baseUrl: string }
+  | { type: "SET_MODEL_EDITOR_API_KEY"; apiKey: string }
+  | { type: "SET_MODEL_EDITOR_MODEL"; model: string }
+  | { type: "MODEL_EDITOR_NEXT_FIELD" }
+  | { type: "MODEL_EDITOR_PREV_FIELD" }
+  | { type: "TOGGLE_MODEL_EDITOR_PROVIDER_SELECT" }
   | { type: "SET_APPROVAL"; toolCallId: string; toolName: string; command: string; params: Record<string, string>; replyCh: (approved: boolean) => void }
   | { type: "CLEAR_APPROVAL" }
   | { type: "LOAD_HISTORY"; entries: TimelineEntry[] };

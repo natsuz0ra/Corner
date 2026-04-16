@@ -11,8 +11,8 @@ func TestChatUploadService_SaveConsumeCleanup(t *testing.T) {
 	root := t.TempDir()
 	svc := NewChatUploadService(root)
 
-	// multipart.FileHeader.Open 依赖内部字段，直接通过 SaveFiles 不便构造，这里只验证 Consume/Cleanup 核心链路。
-	// 用手动注入模拟已保存的附件。
+	// multipart.FileHeader is awkward to construct for SaveFiles; test Consume/Cleanup only.
+	// Manually inject attachments as if SaveFiles had run.
 	path := filepath.Join(root, "a.txt")
 	if err := os.WriteFile(path, []byte("hello"), 0o644); err != nil {
 		t.Fatalf("write fixture failed: %v", err)
