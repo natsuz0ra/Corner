@@ -15,6 +15,7 @@ import (
 // ChatService orchestrates the chat flow: context, agent, uploads, and per-session skills.
 type ChatService struct {
 	store          domain.ChatStore
+	settingsStore  domain.SettingsStore
 	agent          *AgentService
 	skillRuntime   *skillsvc.SkillRuntimeService
 	memory         *memsvc.MemoryService
@@ -53,9 +54,10 @@ type ChatStreamResult struct {
 }
 
 // NewChatService constructs ChatService with per-session skill activation maps.
-func NewChatService(store domain.ChatStore, providerFactory *llmsvc.Factory, mcpManager *mcp.Manager, skillRuntime *skillsvc.SkillRuntimeService, memory *memsvc.MemoryService) *ChatService {
+func NewChatService(store domain.ChatStore, settingsStore domain.SettingsStore, providerFactory *llmsvc.Factory, mcpManager *mcp.Manager, skillRuntime *skillsvc.SkillRuntimeService, memory *memsvc.MemoryService) *ChatService {
 	s := &ChatService{
 		store:          store,
+		settingsStore:  settingsStore,
 		skillRuntime:   skillRuntime,
 		memory:         memory,
 		skillsBySess:   make(map[string]map[string]struct{}),

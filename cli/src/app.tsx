@@ -184,6 +184,30 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     }
   }, []);
 
+  const loadApprovalMode = useCallback(async () => {
+    try {
+      const settings = await apiRef.current.getSettings();
+      const mode = settings.approvalMode || "standard";
+      dispatch({ type: "SET_APPROVAL_MODE", mode } as AppAction);
+    } catch {
+      // Ignore
+    }
+  }, []);
+
+  const toggleApprovalMode = useCallback(async () => {
+    try {
+      const settings = await apiRef.current.getSettings();
+      const current = settings.approvalMode || "standard";
+      const next = current === "auto" ? "standard" : "auto";
+      await apiRef.current.updateSettings({ approvalMode: next });
+      dispatch({ type: "SET_APPROVAL_MODE", mode: next } as AppAction);
+      const label = next === "auto" ? "Auto Execute" : "Standard";
+      appendSystem(`Approval mode switched to: ${label}`);
+    } catch (error) {
+      appendSystem(`Failed to switch approval mode: ${(error as Error).message}`);
+    }
+  }, [appendSystem]);
+
   const loadSessions = useCallback(async () => {
     try {
       const resp = await apiRef.current.listSessions(200, 0);
@@ -521,6 +545,10 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       await loadModels();
       return;
     }
+    if (cmd === "/mode") {
+      await toggleApprovalMode();
+      return;
+    }
     if (cmd === "/skills") {
       await loadSkills();
       return;
@@ -541,7 +569,8 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     clearScreen();
     applyTerminalTitle("");
     void loadDefaultModel();
-  }, [applyTerminalTitle, loadDefaultModel]);
+    void loadApprovalMode();
+  }, [applyTerminalTitle, loadDefaultModel, loadApprovalMode]);
 
   // Blink timer.
   useEffect(() => {
@@ -813,7 +842,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
   return (
     <Box flexDirection="column">
-      <Banner version={state.version} modelName={state.modelName} cwd={state.cwd} />
+      <Banner version={state.version} modelName={state.modelName} cwd={state.cwd} approvalMode={state.approvalMode} />
       <Text> </Text>
       {(state.timeline.length > 0 || state.streaming) && (
         <>
@@ -959,9 +988,15 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       )}
 
       {state.view === "chat" && !state.streaming && !state.inputValue.startsWith("/") && (
-        <Text color="gray" dimColor>
-          Enter to send | / for commands | Tab to autocomplete | Ctrl+K compact | Ctrl+O expand output | Esc to cancel
-        </Text>
+        state.approvalMode === "auto" ? (
+          <Text color="yellow" bold>
+{"\u00A0"}{"\u00A0"}Auto execute mode enabled — commands run without approval
+          </Text>
+        ) : (
+          <Text color="gray" dimColor>
+            Enter to send | / for commands | Tab to autocomplete | Ctrl+K compact | Ctrl+O expand output | Esc to cancel
+          </Text>
+        )
       )}
 
       {state.view === "approval" && (

@@ -162,9 +162,8 @@ function onOutputToggle(event: Event) {
               <div class="tool-kv-pill">timed_out: {{ resultDisplay.exec.timed_out }}</div>
               <div class="tool-kv-pill">truncated: {{ resultDisplay.exec.truncated }}</div>
               <div class="tool-kv-pill">duration_ms: {{ resultDisplay.exec.duration_ms }}</div>
+              <div class="tool-kv-pill">shell: {{ resultDisplay.exec.shell }}</div>
             </div>
-            <div class="tool-exec-line">shell: {{ resultDisplay.exec.shell }}</div>
-            <div class="tool-exec-line">working_directory: {{ resultDisplay.exec.working_directory }}</div>
             <div v-if="resultDisplay.exec.stdout.trim() !== ''" class="tool-exec-block tool-exec-block--stdout">
               <p class="tool-exec-label">stdout</p>
               <pre class="tool-exec-pre">{{ formatDisplayText(resultDisplay.exec.stdout) }}</pre>
@@ -232,9 +231,8 @@ function onOutputToggle(event: Event) {
               <div class="tool-kv-pill">timed_out: {{ resultDisplay.exec.timed_out }}</div>
               <div class="tool-kv-pill">truncated: {{ resultDisplay.exec.truncated }}</div>
               <div class="tool-kv-pill">duration_ms: {{ resultDisplay.exec.duration_ms }}</div>
+              <div class="tool-kv-pill">shell: {{ resultDisplay.exec.shell }}</div>
             </div>
-            <div class="tool-exec-line">shell: {{ resultDisplay.exec.shell }}</div>
-            <div class="tool-exec-line">working_directory: {{ resultDisplay.exec.working_directory }}</div>
             <div v-if="resultDisplay.exec.stdout.trim() !== ''" class="tool-exec-block tool-exec-block--stdout">
               <p class="tool-exec-label">stdout</p>
               <pre class="tool-exec-pre">{{ formatDisplayText(resultDisplay.exec.stdout) }}</pre>
@@ -664,27 +662,6 @@ details[open] > .tool-result-summary .tool-result-arrow {
   padding: 2px 8px;
   font-size: 11px;
   transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
-}
-
-.tool-kv-pill--ok {
-  color: var(--tool-success-text);
-  border-color: var(--tool-success-border);
-  background: var(--tool-success-bg);
-}
-
-.tool-kv-pill--err {
-  color: var(--tool-error-text);
-  border-color: var(--tool-error-border);
-  background: var(--tool-error-bg);
-}
-
-.tool-exec-line {
-  margin-top: 6px;
-  color: var(--tool-detail-body-text);
-  font-size: 12px;
-  line-height: 1.45;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .tool-exec-block {

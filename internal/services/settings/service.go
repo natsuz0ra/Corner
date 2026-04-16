@@ -15,6 +15,7 @@ type AppSettings struct {
 	DefaultModel                string
 	MessagePlatformDefaultModel string
 	WebSearchAPIKey             string
+	ApprovalMode                string
 }
 
 // UpdateSettingsInput is the domain input for partial settings updates.
@@ -23,6 +24,7 @@ type UpdateSettingsInput struct {
 	DefaultModel                string
 	MessagePlatformDefaultModel string
 	WebSearchAPIKey             string
+	ApprovalMode                string
 }
 
 type SettingsService struct {
@@ -54,11 +56,19 @@ func (s *SettingsService) Get() (*AppSettings, error) {
 	if err != nil {
 		return nil, err
 	}
+	approvalMode, err := s.store.GetSetting(context.Background(), constants.SettingApprovalMode)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(approvalMode) == "" {
+		approvalMode = constants.ApprovalModeStandard
+	}
 	return &AppSettings{
 		Language:                    language,
 		DefaultModel:                defaultModel,
 		MessagePlatformDefaultModel: messagePlatformDefaultModel,
 		WebSearchAPIKey:             webSearchAPIKey,
+		ApprovalMode:                approvalMode,
 	}, nil
 }
 
@@ -84,6 +94,11 @@ func (s *SettingsService) Update(input UpdateSettingsInput) error {
 			return err
 		}
 		if err := os.Setenv(constants.SettingWebSearchAPIKey, input.WebSearchAPIKey); err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(input.ApprovalMode) != "" {
+		if err := s.store.SetSetting(context.Background(), constants.SettingApprovalMode, input.ApprovalMode); err != nil {
 			return err
 		}
 	}

@@ -63,6 +63,8 @@ const messagePlatformSubmitting = ref(false)
 const messagePlatformDefaultModel = ref('')
 const webSearchKey = ref('')
 const savingWebSearch = ref(false)
+const approvalMode = ref<'standard' | 'auto'>('standard')
+const savingApprovalMode = ref(false)
 
 const confirmDialogVisible = ref(false)
 const confirmDialogCallback = ref<(() => Promise<void>) | null>(null)
@@ -154,6 +156,7 @@ async function loadData() {
     const appSettings: AppSettings = await settingAPI.get()
     messagePlatformDefaultModel.value = appSettings.messagePlatformDefaultModel || ''
     webSearchKey.value = appSettings.webSearchKey || ''
+    approvalMode.value = appSettings.approvalMode || 'standard'
     llmList.value = await llmAPI.list()
     mcpList.value = await mcpAPI.list()
     skillsList.value = await skillsAPI.list()
@@ -185,6 +188,20 @@ async function saveWebSearch() {
     toast.error(err?.response?.data?.error || t('webSearchSaveFailed'))
   } finally {
     savingWebSearch.value = false
+  }
+}
+
+async function onApprovalModeChange(mode: 'standard' | 'auto') {
+  approvalMode.value = mode
+  savingApprovalMode.value = true
+  try {
+    await settingAPI.update({ approvalMode: mode })
+    toast.success(t('saveSuccess'))
+  } catch {
+    approvalMode.value = approvalMode.value === 'auto' ? 'standard' : 'auto'
+    toast.error(t('approvalModeSaveFailed'))
+  } finally {
+    savingApprovalMode.value = false
   }
 }
 
@@ -290,10 +307,12 @@ onMounted(loadData)
           :language="language"
           :language-select-options="languageSelectOptions"
           :saving-language="savingLanguage"
+          :approval-mode="approvalMode"
           @open-account="openAccountDialog"
           @open-web-search="openWebSearchDialog"
           @logout="logout"
           @language-change="onLanguageChange"
+          @approval-mode-change="onApprovalModeChange"
         />
 
         <SettingsLLMTab v-if="tab === 'llm'" :llm-rows="llmRows" @add="openLLMDialog" @delete="deleteLLM" />

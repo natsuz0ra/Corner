@@ -20,7 +20,7 @@ func TestResolveToolInvocation_ActivateSkill(t *testing.T) {
 		Arguments: `{"name":"demo-skill"}`,
 	}
 
-	invocation, err := resolveToolInvocation(tc, map[string]mcp.ToolMeta{})
+	invocation, err := resolveToolInvocation(tc, map[string]mcp.ToolMeta{}, constants.ApprovalModeStandard)
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
@@ -41,7 +41,7 @@ func TestResolveToolInvocation_RunSubagent(t *testing.T) {
 		Name:      constants.RunSubagentTool,
 		Arguments: `{"task":"Summarize X"}`,
 	}
-	invocation, err := resolveToolInvocation(tc, map[string]mcp.ToolMeta{})
+	invocation, err := resolveToolInvocation(tc, map[string]mcp.ToolMeta{}, constants.ApprovalModeStandard)
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
@@ -63,7 +63,7 @@ func TestResolveToolInvocation_SearchMemory(t *testing.T) {
 		Arguments: `{"query":"golang"}`,
 	}
 
-	invocation, err := resolveToolInvocation(tc, map[string]mcp.ToolMeta{})
+	invocation, err := resolveToolInvocation(tc, map[string]mcp.ToolMeta{}, constants.ApprovalModeStandard)
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}

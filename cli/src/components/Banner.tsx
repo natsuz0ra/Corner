@@ -9,9 +9,10 @@ interface BannerProps {
   version: string;
   modelName: string;
   cwd: string;
+  approvalMode?: string;
 }
 
-export function Banner({ version, modelName, cwd }: BannerProps): React.ReactElement {
+export function Banner({ version, modelName, cwd, approvalMode }: BannerProps): React.ReactElement {
   const logoLines = [
     "██████████",
     "███ ██ ███",
@@ -34,6 +35,9 @@ export function Banner({ version, modelName, cwd }: BannerProps): React.ReactEle
             SlimeBot CLI{" "}
           </Text>
           <Text color="#94a3b8">v{version}</Text>
+          {approvalMode === "auto" && (
+            <Text color="#eab308"> [auto]</Text>
+          )}
         </Text>
         <Text color="#9ca3af">{modelName || "(none)"}</Text>
         <Text color="#9ca3af">{cwd}</Text>

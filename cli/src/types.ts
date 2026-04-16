@@ -45,6 +45,7 @@ export interface Skill {
 
 export interface Settings {
   defaultModel: string;
+  approvalMode?: string;
   [key: string]: unknown;
 }
 
@@ -201,6 +202,7 @@ export const SUPPORTED_COMMANDS: CommandMeta[] = [
   { command: "/new", description: "Create a new chat session" },
   { command: "/session", description: "Open session menu to switch or delete" },
   { command: "/model", description: "Choose the default model" },
+  { command: "/mode", description: "Toggle approval mode (standard/auto)" },
   { command: "/skills", description: "View and manage installed skills" },
   { command: "/mcp", description: "Manage MCP configurations" },
   { command: "/help", description: "Show available commands" },
@@ -216,6 +218,7 @@ export interface AppState {
   sessionName: string;
   modelId: string;
   modelName: string;
+  approvalMode: string;
   timeline: TimelineEntry[];
   streaming: boolean;
   assistantWaiting: boolean;
@@ -307,4 +310,5 @@ export type AppAction =
   | { type: "TOGGLE_MODEL_EDITOR_PROVIDER_SELECT" }
   | { type: "SET_APPROVAL"; toolCallId: string; toolName: string; command: string; params: Record<string, string>; replyCh: (approved: boolean) => void }
   | { type: "CLEAR_APPROVAL" }
+  | { type: "SET_APPROVAL_MODE"; mode: string }
   | { type: "LOAD_HISTORY"; entries: TimelineEntry[] };
