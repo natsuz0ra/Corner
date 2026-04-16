@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mapHistoryMessages } from "./app";
+import type { Key } from "ink";
+import { handleChatShortcut, mapHistoryMessages } from "./app";
 import type { Message, ToolCallHistoryItem } from "./types";
 
 test("mapHistoryMessages inserts tool calls after assistant messages in timeline order", () => {
@@ -109,5 +110,42 @@ test("mapHistoryMessages preserves parentToolCallId for nested tool calls", () =
   assert.ok(child && child.kind === "tool");
   assert.equal(child.parentToolCallId, "parent");
   assert.equal(child.subagentRunId, "run-1");
+});
+
+function key(overrides: Partial<Key> = {}): Key {
+  return {
+    upArrow: false,
+    downArrow: false,
+    leftArrow: false,
+    rightArrow: false,
+    pageDown: false,
+    pageUp: false,
+    home: false,
+    end: false,
+    return: false,
+    escape: false,
+    ctrl: false,
+    shift: false,
+    tab: false,
+    backspace: false,
+    delete: false,
+    meta: false,
+    ...overrides,
+  } as Key;
+}
+
+test("handleChatShortcut handles Ctrl+O and raw Ctrl+O", () => {
+  const actions: string[] = [];
+  const dispatch = (action: { type: string }) => {
+    actions.push(action.type);
+    return action as any;
+  };
+
+  const handledNormal = handleChatShortcut("o", key({ ctrl: true }), dispatch as any);
+  const handledRaw = handleChatShortcut(String.fromCharCode(15), key(), dispatch as any);
+
+  assert.equal(handledNormal, true);
+  assert.equal(handledRaw, true);
+  assert.equal(actions.filter((x) => x === "TOGGLE_TOOL_OUTPUT").length, 2);
 });
 

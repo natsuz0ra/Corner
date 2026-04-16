@@ -49,6 +49,18 @@ function isCtrlKey(input: string, key: Key, letter: string): boolean {
   return input.charCodeAt(0) === expected;
 }
 
+export function handleChatShortcut(input: string, key: Key, dispatch: React.Dispatch<AppAction>): boolean {
+  if (isCtrlKey(input, key, "k")) {
+    dispatch({ type: "TOGGLE_COMPACT" } as AppAction);
+    return true;
+  }
+  if (isCtrlKey(input, key, "o")) {
+    dispatch({ type: "TOGGLE_TOOL_OUTPUT" } as AppAction);
+    return true;
+  }
+  return false;
+}
+
 function formatModelLine(model?: Pick<LLMConfig, "name" | "model">, fallback = "(none)"): string {
   if (!model) return fallback;
   const name = model.name?.trim() || "";
@@ -796,16 +808,6 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
     if (state.view !== "chat") return;
 
-    if (isCtrlKey(input, key, "k")) {
-      dispatch({ type: "TOGGLE_COMPACT" } as AppAction);
-      return;
-    }
-
-    if (isCtrlKey(input, key, "o")) {
-      dispatch({ type: "TOGGLE_TOOL_OUTPUT" } as AppAction);
-      return;
-    }
-
     if (state.streaming) return;
   });
 
@@ -863,6 +865,10 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
               if (state.inputValue) {
                 dispatch({ type: "SET_INPUT", value: "" } as AppAction);
               }
+            }}
+            onUnhandledInput={(input, key) => {
+              if (state.view !== "chat" || state.streaming) return;
+              handleChatShortcut(input, key, dispatch);
             }}
             focus={state.view === "chat" && !state.streaming}
             columns={Math.max(20, width - 3)}

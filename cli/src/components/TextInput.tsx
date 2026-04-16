@@ -1,5 +1,6 @@
-﻿import React from "react";
+import React from "react";
 import { Box, Text, useInput } from "ink";
+import type { Key } from "ink";
 import chalk from "chalk";
 import { useTextInput } from "../hooks/useTextInput.js";
 
@@ -15,6 +16,7 @@ export interface TextInputProps {
   multiline?: boolean;
   enableCtrlShortcuts?: boolean;
   mask?: string;
+  onUnhandledInput?: (input: string, key: Key) => void;
 }
 
 export function TextInput({
@@ -28,6 +30,7 @@ export function TextInput({
   multiline = true,
   enableCtrlShortcuts = true,
   mask,
+  onUnhandledInput,
 }: TextInputProps): React.ReactElement {
   const inputState = useTextInput({
     value,
@@ -41,9 +44,12 @@ export function TextInput({
     cursorChar: focus ? " " : "",
     invert: chalk.inverse,
     columns,
+    onUnhandledInput,
   });
 
-  useInput(inputState.onInput, { isActive: focus });
+  useInput((input, key) => {
+    inputState.onInput(input, key);
+  }, { isActive: focus });
 
   return (
     <Box flexDirection="column">
