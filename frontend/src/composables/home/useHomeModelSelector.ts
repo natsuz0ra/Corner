@@ -1,15 +1,25 @@
 import { computed, ref } from 'vue'
 import { llmAPI } from '@/api/llm'
 import type { LLMConfig } from '@/types/settings'
+import { useI18n } from 'vue-i18n'
 
 const MODEL_STORAGE_KEY = 'slimebot:selectedModelId'
+const THINKING_STORAGE_KEY = 'slimebot:thinkingLevel'
 
 export function useHomeModelSelector() {
+  const { t } = useI18n()
   const modelOptions = ref<LLMConfig[]>([])
   const selectedModelId = ref('')
+  const thinkingLevel = ref(localStorage.getItem(THINKING_STORAGE_KEY) || 'off')
 
   const modelSelectOptions = computed(() => modelOptions.value.map((m) => ({ value: m.id, label: m.name })))
   const hasModel = computed(() => modelOptions.value.length > 0)
+  const thinkingSelectOptions = computed(() => [
+    { value: 'off', label: t('thinkingOff') as string },
+    { value: 'low', label: t('thinkingLow') as string },
+    { value: 'medium', label: t('thinkingMedium') as string },
+    { value: 'high', label: t('thinkingHigh') as string },
+  ])
 
   function syncModelToLocal(modelId: string) {
     if (!modelId) {
@@ -53,6 +63,11 @@ export function useHomeModelSelector() {
     syncModelToLocal(modelId)
   }
 
+  function onThinkingLevelChange(level: string) {
+    thinkingLevel.value = level
+    localStorage.setItem(THINKING_STORAGE_KEY, level)
+  }
+
   return {
     modelOptions,
     selectedModelId,
@@ -60,5 +75,8 @@ export function useHomeModelSelector() {
     hasModel,
     refreshModelOptions,
     onModelChange,
+    thinkingLevel,
+    thinkingSelectOptions,
+    onThinkingLevelChange,
   }
 }

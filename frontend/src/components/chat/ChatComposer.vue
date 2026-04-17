@@ -11,6 +11,8 @@ const props = defineProps<{
   modelValue: string
   selectedModelId: string
   modelSelectOptions: SelectOption[]
+  selectedThinkingLevel: string
+  thinkingSelectOptions: SelectOption[]
   modelOptionsCount: number
   sendDisabled: boolean
   stopDisabled: boolean
@@ -26,6 +28,7 @@ const emit = defineEmits<{
   filesChange: [files: File[]]
   removeFile: [index: number]
   modelChange: [modelId: string]
+  thinkingChange: [level: string]
 }>()
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -122,14 +125,23 @@ watch(
       @input="onTextareaInput"
     />
     <div class="absolute bottom-2 left-3 right-3 flex items-center justify-between gap-2">
-      <AppSelect
-        :model-value="selectedModelId"
-        :options="modelSelectOptions"
-        :disabled="modelOptionsCount === 0"
-        variant="ghost"
-        size="xs"
-        @update:model-value="emit('modelChange', $event)"
-      />
+      <div class="flex items-center gap-2">
+        <AppSelect
+          :model-value="selectedModelId"
+          :options="modelSelectOptions"
+          :disabled="modelOptionsCount === 0"
+          variant="ghost"
+          size="xs"
+          @update:model-value="emit('modelChange', $event)"
+        />
+        <AppSelect
+          :model-value="selectedThinkingLevel"
+          :options="thinkingSelectOptions"
+          variant="ghost"
+          size="xs"
+          @update:model-value="emit('thinkingChange', $event)"
+        />
+      </div>
       <div class="flex items-center gap-2">
         <div class="relative z-[120] group/upload-tip">
           <button

@@ -18,6 +18,8 @@ type ModelRuntimeConfig struct {
 	Model string
 	// Sampling temperature.
 	Temperature float64
+	// Thinking level: off, low, medium, high. Empty or "off" = no extended thinking.
+	ThinkingLevel string
 }
 
 // ChatMessage is the provider-agnostic message shape.
@@ -60,6 +62,37 @@ type ToolCallInfo struct {
 }
 
 // ToolDef is passed to the LLM tools API.
+
+// ThinkingBudgetTokens maps a thinking level to Anthropic budget_tokens.
+// Returns 0 for off/empty, meaning extended thinking is disabled.
+func ThinkingBudgetTokens(level string) int {
+	switch level {
+	case "low":
+		return 8192
+	case "medium":
+		return 16384
+	case "high":
+		return 32768
+	default:
+		return 0
+	}
+}
+
+// ThinkingReasoningEffort maps a thinking level to OpenAI reasoning_effort.
+// Returns empty string for off/empty, meaning reasoning is disabled.
+func ThinkingReasoningEffort(level string) string {
+	switch level {
+	case "low":
+		return "low"
+	case "medium":
+		return "medium"
+	case "high":
+		return "high"
+	default:
+		return ""
+	}
+}
+
 type ToolDef struct {
 	Name        string
 	Description string

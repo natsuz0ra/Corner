@@ -20,6 +20,7 @@ type UiState = {
 
 type ModelState = {
   selectedModelId: Ref<string>
+  thinkingLevel: Ref<string>
   refreshModelOptions: (useRemembered?: boolean) => Promise<void>
 }
 
@@ -186,7 +187,7 @@ export function useHomeSessionActions(options: {
     if (sendDisabled.value) return
     scrollState.autoStickToBottom.value = true
     scrollState.queueScrollMessagesToBottom(true)
-    const sent = await store.sendMessage(uiState.inputValue.value.trim(), modelState.selectedModelId.value, uiState.pendingFiles.value)
+    const sent = await store.sendMessage(uiState.inputValue.value.trim(), modelState.selectedModelId.value, uiState.pendingFiles.value, modelState.thinkingLevel.value)
     if (!sent) {
       showWarning(t('sendBlockedOffline'))
       return

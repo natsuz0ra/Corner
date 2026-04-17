@@ -24,6 +24,7 @@ export function createInitialState(
     sessionName: "",
     modelId: "",
     modelName: "(none)",
+    thinkingLevel: "off",
     approvalMode: "standard",
     timeline: [],
     streaming: false,
@@ -342,6 +343,9 @@ export function reducer(state: AppState, action: AppAction): AppState {
 
     case "SET_APPROVAL_MODE":
       return { ...state, approvalMode: action.mode };
+
+    case "SET_THINKING_LEVEL":
+      return { ...state, thinkingLevel: action.level };
 
     case "LOAD_HISTORY":
       return {

@@ -52,6 +52,7 @@ export function useHomeChatPage() {
     },
     modelState: {
       selectedModelId: modelState.selectedModelId,
+      thinkingLevel: modelState.thinkingLevel,
       refreshModelOptions: modelState.refreshModelOptions,
     },
     scrollState: {
@@ -97,6 +98,9 @@ export function useHomeChatPage() {
     topMenuVisible: uiState.topMenuVisible,
     modelOptions: modelState.modelOptions,
     selectedModelId: modelState.selectedModelId,
+    thinkingLevel: modelState.thinkingLevel,
+    thinkingSelectOptions: modelState.thinkingSelectOptions,
+    onThinkingLevelChange: modelState.onThinkingLevelChange,
     setMessagesRef: scrollState.setMessagesRef,
     currentSession: sessionActions.currentSession,
     sendDisabled,

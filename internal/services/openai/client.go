@@ -12,6 +12,7 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
+	"github.com/openai/openai-go/v3/shared"
 )
 
 // OpenAIClient wraps an OpenAI-compatible HTTP API client and implements llmsvc.Provider.
@@ -68,6 +69,10 @@ func (c *OpenAIClient) StreamChatWithTools(
 		Messages:    requestMessages,
 		Model:       openai.ChatModel(model),
 		Temperature: openai.Float(modelConfig.Temperature),
+	}
+
+	if effort := llmsvc.ThinkingReasoningEffort(modelConfig.ThinkingLevel); effort != "" {
+		params.ReasoningEffort = shared.ReasoningEffort(effort)
 	}
 
 	if len(toolDefs) > 0 {

@@ -33,6 +33,7 @@ type chatIncoming struct {
 	AttachmentIDs []string `json:"attachmentIds"` // Attachment IDs
 	ToolCallID    string   `json:"toolCallId"`    // Tool call ID (for approval flow)
 	Approved      *bool    `json:"approved"`      // Approval outcome
+	ThinkingLevel string   `json:"thinkingLevel"` // Thinking level: off, low, medium, high
 }
 
 type wsOutChunk struct {
@@ -313,6 +314,7 @@ func (w *Controller) handleChatIncoming(
 		incoming.Content,
 		incoming.ModelID,
 		incoming.AttachmentIDs,
+		incoming.ThinkingLevel,
 		callbacks,
 	)
 	cancel()

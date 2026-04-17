@@ -38,7 +38,7 @@ import type {
   ToolCallStartData,
   ToolCallStatus,
 } from "./types.js";
-import { MCP_TEMPLATES } from "./types.js";
+import { MCP_TEMPLATES, THINKING_LEVELS } from "./types.js";
 
 /** Detects ctrl+letter keypresses, with a fallback for terminals/OS
  *  combos where Ink's `key.ctrl` flag is not set (e.g. Windows).
@@ -194,6 +194,18 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     }
   }, []);
 
+  const loadThinkingLevel = useCallback(async () => {
+    try {
+      const settings = await apiRef.current.getSettings();
+      const level = (settings as Record<string, unknown>).thinkingLevel as string || "off";
+      if ((THINKING_LEVELS as readonly string[]).includes(level)) {
+        dispatch({ type: "SET_THINKING_LEVEL", level } as AppAction);
+      }
+    } catch {
+      // Ignore
+    }
+  }, []);
+
   const toggleApprovalMode = useCallback(async () => {
     try {
       const settings = await apiRef.current.getSettings();
@@ -205,6 +217,43 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       appendSystem(`Approval mode switched to: ${label}`);
     } catch (error) {
       appendSystem(`Failed to switch approval mode: ${(error as Error).message}`);
+    }
+  }, [appendSystem]);
+
+  const THINGKING_LEVEL_DESC: Record<string, string> = {
+    off: "No extended thinking",
+    low: "Light reasoning (8K budget)",
+    medium: "Moderate reasoning (16K budget)",
+    high: "Deep reasoning (32K budget)",
+  };
+
+  const toggleThinkingLevel = useCallback(() => {
+    const items: MenuItem[] = THINKING_LEVELS.map((level) => ({
+      title: level,
+      desc: (level === state.thinkingLevel ? "current · " : "") + (THINGKING_LEVEL_DESC[level] || ""),
+      data: level,
+    }));
+    dispatch({
+      type: "SET_MENU",
+      kind: "effort",
+      title: "Thinking Level",
+      items,
+      hint: "Arrow keys to navigate, Enter to select, Esc to cancel",
+    } as AppAction);
+  }, [state.thinkingLevel]);
+
+  const setThinkingLevel = useCallback(async (level: string) => {
+    const normalized = level.toLowerCase().trim();
+    if (!(THINKING_LEVELS as readonly string[]).includes(normalized)) {
+      appendSystem(`Invalid thinking level: ${level}. Use: ${THINKING_LEVELS.join(", ")}`);
+      return;
+    }
+    dispatch({ type: "SET_THINKING_LEVEL", level: normalized } as AppAction);
+    appendSystem(`Thinking level set to: ${normalized}`);
+    try {
+      await apiRef.current.updateSettings({ thinkingLevel: normalized });
+    } catch {
+      // Silently ignore persistence failures.
     }
   }, [appendSystem]);
 
@@ -295,6 +344,8 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       { title: "/new", desc: "Create a new chat (lazy session creation)", data: null },
       { title: "/session", desc: "Browse, switch, or delete sessions", data: null },
       { title: "/model", desc: "Switch default model", data: null },
+      { title: "/mode", desc: "Toggle approval mode (standard/auto)", data: null },
+      { title: "/effort", desc: "Toggle thinking level (off/low/medium/high)", data: null },
       { title: "/skills", desc: "Browse and delete installed skills", data: null },
       { title: "/mcp", desc: "Manage MCP configs", data: null },
       { title: "/help", desc: "Show available commands", data: null },
@@ -345,6 +396,18 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         } as AppAction);
         dispatch({ type: "CLOSE_MENU" } as AppAction);
         appendSystem(`Model switched to ${model.name}.`);
+        return;
+      }
+      if (state.menuKind === "effort") {
+        const level = item.data as string;
+        dispatch({ type: "SET_THINKING_LEVEL", level } as AppAction);
+        dispatch({ type: "CLOSE_MENU" } as AppAction);
+        appendSystem(`Thinking level set to: ${level}`);
+        try {
+          await apiRef.current.updateSettings({ thinkingLevel: level });
+        } catch {
+          // Silently ignore persistence failures.
+        }
         return;
       }
       if (state.menuKind === "mcp") {
@@ -504,7 +567,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     dispatch({ type: "STREAM_START" } as AppAction);
 
     const sendToSocket = (sid: string): boolean => {
-      return socketRef.current?.send(content, sid, state.modelId) || false;
+      return socketRef.current?.send(content, sid, state.modelId, state.thinkingLevel) || false;
     };
 
     if (!state.sessionId) {
@@ -549,6 +612,15 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       await toggleApprovalMode();
       return;
     }
+    if (cmd === "/effort") {
+      toggleThinkingLevel();
+      return;
+    }
+    if (cmd.startsWith("/effort ")) {
+      const level = cmd.slice(8).trim();
+      setThinkingLevel(level);
+      return;
+    }
     if (cmd === "/skills") {
       await loadSkills();
       return;
@@ -570,6 +642,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     applyTerminalTitle("");
     void loadDefaultModel();
     void loadApprovalMode();
+    void loadThinkingLevel();
   }, [applyTerminalTitle, loadDefaultModel, loadApprovalMode]);
 
   // Terminal resize.
@@ -849,7 +922,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
   return (
     <Box flexDirection="column">
-      <Banner version={state.version} modelName={state.modelName} cwd={state.cwd} approvalMode={state.approvalMode} />
+      <Banner version={state.version} modelName={state.modelName} cwd={state.cwd} approvalMode={state.approvalMode} thinkingLevel={state.thinkingLevel} />
       <Text> </Text>
       {(state.timeline.length > 0 || state.streaming) && (
         <>
