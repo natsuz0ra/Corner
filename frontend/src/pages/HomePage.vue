@@ -75,6 +75,9 @@ const {
   renameFromFloatingMenu,
   deleteFromFloatingMenu,
   onModelChange,
+  thinkingLevel,
+  thinkingSelectOptions,
+  onThinkingLevelChange,
 } = useHomeChatPage()
 
 const { isDark, toggleTheme } = useTheme()
@@ -216,6 +219,8 @@ provideChatContext({
                   v-model="inputValue"
                   :selected-model-id="selectedModelId"
                   :model-select-options="modelSelectOptions"
+                  :selected-thinking-level="thinkingLevel"
+                  :thinking-select-options="thinkingSelectOptions"
                   :model-options-count="modelOptions.length"
                   :send-disabled="sendDisabled"
                   :stop-disabled="stopDisabled"
@@ -227,6 +232,7 @@ provideChatContext({
                   @files-change="onSelectFiles"
                   @remove-file="removePendingFile"
                   @model-change="onModelChange"
+                @thinking-change="onThinkingLevelChange"
                 />
               </div>
             </template>
@@ -255,6 +261,8 @@ provideChatContext({
                 v-model="inputValue"
                 :selected-model-id="selectedModelId"
                 :model-select-options="modelSelectOptions"
+                :selected-thinking-level="thinkingLevel"
+                :thinking-select-options="thinkingSelectOptions"
                 :model-options-count="modelOptions.length"
                 :send-disabled="sendDisabled"
                 :stop-disabled="stopDisabled"
@@ -266,6 +274,7 @@ provideChatContext({
                 @files-change="onSelectFiles"
                 @remove-file="removePendingFile"
                 @model-change="onModelChange"
+              @thinking-change="onThinkingLevelChange"
               />
             </div>
           </footer>

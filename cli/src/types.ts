@@ -49,6 +49,10 @@ export interface Settings {
   [key: string]: unknown;
 }
 
+// Thinking level cycle order
+export const THINKING_LEVELS = ["off", "low", "medium", "high"] as const;
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+
 // ===== API response types =====
 
 export interface SessionListResponse {
@@ -124,6 +128,7 @@ export type MenuKind =
   | "model"
   | "skills"
   | "mcp"
+  | "effort"
   | "help";
 
 // ===== MCP Template types =====
@@ -203,6 +208,7 @@ export const SUPPORTED_COMMANDS: CommandMeta[] = [
   { command: "/session", description: "Open session menu to switch or delete" },
   { command: "/model", description: "Choose the default model" },
   { command: "/mode", description: "Toggle approval mode (standard/auto)" },
+  { command: "/effort", description: "Toggle thinking level (off/low/medium/high)" },
   { command: "/skills", description: "View and manage installed skills" },
   { command: "/mcp", description: "Manage MCP configurations" },
   { command: "/help", description: "Show available commands" },
@@ -218,6 +224,7 @@ export interface AppState {
   sessionName: string;
   modelId: string;
   modelName: string;
+  thinkingLevel: string;
   approvalMode: string;
   timeline: TimelineEntry[];
   streaming: boolean;
@@ -311,4 +318,5 @@ export type AppAction =
   | { type: "SET_APPROVAL"; toolCallId: string; toolName: string; command: string; params: Record<string, string>; replyCh: (approved: boolean) => void }
   | { type: "CLEAR_APPROVAL" }
   | { type: "SET_APPROVAL_MODE"; mode: string }
+  | { type: "SET_THINKING_LEVEL"; level: string }
   | { type: "LOAD_HISTORY"; entries: TimelineEntry[] };

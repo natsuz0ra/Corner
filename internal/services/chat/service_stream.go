@@ -41,13 +41,14 @@ func (s *ChatService) HandleChatStream(
 	content string,
 	modelID string,
 	attachmentIDs []string,
+	thinkingLevel string,
 	callbacks AgentCallbacks,
 ) (*ChatStreamResult, error) {
 	if strings.TrimSpace(content) == "" && len(attachmentIDs) == 0 {
 		return nil, fmt.Errorf("Message cannot be empty.")
 	}
 
-	state, err := s.prepareChatTurn(ctx, sessionID, content, modelID, attachmentIDs)
+	state, err := s.prepareChatTurn(ctx, sessionID, content, modelID, attachmentIDs, thinkingLevel)
 	if err != nil {
 		return nil, err
 	}
@@ -68,16 +69,18 @@ func (s *ChatService) prepareChatTurn(
 	content string,
 	modelID string,
 	attachmentIDs []string,
+	thinkingLevel string,
 ) (*chatTurnState, error) {
 	llmConfig, err := s.ResolveLLMConfig(ctx, modelID)
 	if err != nil {
 		return nil, err
 	}
 	modelConfig := llmsvc.ModelRuntimeConfig{
-		Provider: llmConfig.Provider,
-		BaseURL:  llmConfig.BaseURL,
-		APIKey:   llmConfig.APIKey,
-		Model:    llmConfig.Model,
+		Provider:      llmConfig.Provider,
+		BaseURL:       llmConfig.BaseURL,
+		APIKey:        llmConfig.APIKey,
+		Model:         llmConfig.Model,
+		ThinkingLevel: thinkingLevel,
 	}
 
 	session, err := s.store.GetSessionByID(ctx, sessionID)

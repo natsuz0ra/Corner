@@ -62,6 +62,8 @@ const (
 	ApprovalModeStandard = "standard"
 	ApprovalModeAuto     = "auto"
 
+	SettingThinkingLevel = "thinkingLevel"
+
 	// WebSocket
 	WSChatTimeout     = 600 * time.Second
 	WSWriteChannelBuf = 128

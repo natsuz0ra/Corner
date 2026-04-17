@@ -10,9 +10,10 @@ interface BannerProps {
   modelName: string;
   cwd: string;
   approvalMode?: string;
+  thinkingLevel?: string;
 }
 
-export function Banner({ version, modelName, cwd, approvalMode }: BannerProps): React.ReactElement {
+export function Banner({ version, modelName, cwd, approvalMode, thinkingLevel }: BannerProps): React.ReactElement {
   const logoLines = [
     "██████████",
     "███ ██ ███",
@@ -39,7 +40,7 @@ export function Banner({ version, modelName, cwd, approvalMode }: BannerProps): 
             <Text color="#eab308"> [auto]</Text>
           )}
         </Text>
-        <Text color="#9ca3af">{modelName || "(none)"}</Text>
+        <Text color="#9ca3af">{modelName || "(none)"}{thinkingLevel && thinkingLevel !== "off" ? <Text color="#a78bfa"> [think:{thinkingLevel}]</Text> : ""}</Text>
         <Text color="#9ca3af">{cwd}</Text>
       </Box>
     </Box>
