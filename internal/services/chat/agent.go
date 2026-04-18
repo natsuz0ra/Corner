@@ -61,6 +61,9 @@ type AgentCallbacks struct {
 	OnSubagentStart  func(parentToolCallID, runID, task string) error
 	OnSubagentChunk  func(parentToolCallID, runID, chunk string) error
 	OnSubagentDone   func(parentToolCallID, runID string, runErr error) error
+	OnThinkingStart  func() error
+	OnThinkingChunk  func(chunk string) error
+	OnThinkingDone   func() error
 }
 
 // AgentLoopOptions configures nested agent execution.
@@ -345,12 +348,20 @@ func (a *AgentService) RunAgentLoop(
 		logging.Info("agent_iteration", "iteration", i+1, "messages", len(messages), "agent_depth", opts.Depth)
 
 		var chunkBuf strings.Builder
-		result, err := provider.StreamChatWithTools(ctx, modelConfig, messages, toolDefs, func(chunk string) error {
-			chunkBuf.WriteString(chunk)
-			if callbacks.OnChunk == nil {
-				return nil
-			}
-			return callbacks.OnChunk(chunk)
+		result, err := provider.StreamChatWithTools(ctx, modelConfig, messages, toolDefs, llmsvc.StreamCallbacks{
+			OnChunk: func(chunk string) error {
+				chunkBuf.WriteString(chunk)
+				if callbacks.OnChunk == nil {
+					return nil
+				}
+				return callbacks.OnChunk(chunk)
+			},
+			OnThinkingChunk: func(thinkingChunk string) error {
+				if callbacks.OnThinkingChunk == nil {
+					return nil
+				}
+				return callbacks.OnThinkingChunk(thinkingChunk)
+			},
 		})
 		if err != nil {
 			return "", fmt.Errorf("agent LLM call failed at iteration %d: %w", i+1, err)

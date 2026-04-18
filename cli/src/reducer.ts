@@ -33,6 +33,7 @@ export function createInitialState(
     blinkOn: true,
     compact: true,
     toolOutputExpanded: false,
+    thinkingDetailContent: "",
     inputValue: "",
     inputKey: 0,
     menuKind: null,
@@ -198,6 +199,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
         streaming: false,
         assistantWaiting: false,
         toolOutputExpanded: false,
+        thinkingDetailContent: "",
         view: "chat",
         menuKind: null,
         menuTitle: "",
@@ -354,6 +356,44 @@ export function reducer(state: AppState, action: AppAction): AppState {
         streaming: false,
         assistantWaiting: false,
         liveAssistant: "",
+      };
+
+    case "THINKING_START":
+      return {
+        ...state,
+        timeline: [
+          ...state.timeline,
+          { kind: "thinking", content: "", thinkingDone: false, thinkingStartedAt: Date.now() },
+        ],
+      };
+
+    case "THINKING_CHUNK": {
+      const entries = [...state.timeline];
+      for (let i = entries.length - 1; i >= 0; i--) {
+        if (entries[i].kind === "thinking" && !entries[i].thinkingDone) {
+          entries[i] = { ...entries[i], content: entries[i].content + action.chunk };
+          break;
+        }
+      }
+      return { ...state, timeline: entries };
+    }
+
+    case "THINKING_DONE": {
+      const entries = [...state.timeline];
+      for (let i = entries.length - 1; i >= 0; i--) {
+        if (entries[i].kind === "thinking" && !entries[i].thinkingDone) {
+          entries[i] = { ...entries[i], thinkingDone: true };
+          break;
+        }
+      }
+      return { ...state, timeline: entries };
+    }
+
+    case "VIEW_THINKING_DETAIL":
+      return {
+        ...state,
+        view: "thinking-detail",
+        thinkingDetailContent: action.content,
       };
 
     default:

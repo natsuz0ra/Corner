@@ -121,7 +121,7 @@ export interface SubagentChunkData {
 
 // ===== UI state types =====
 
-export type ViewMode = "chat" | "menu" | "mcp-editor" | "mcp-template" | "model-editor" | "approval";
+export type ViewMode = "chat" | "menu" | "mcp-editor" | "mcp-template" | "model-editor" | "approval" | "thinking-detail";
 
 export type MenuKind =
   | "session"
@@ -168,7 +168,7 @@ export const MCP_TEMPLATES: MCPTemplate[] = [
 export type ModelProvider = "openai" | "anthropic";
 
 export interface TimelineEntry {
-  kind: "user" | "assistant" | "system" | "tool";
+  kind: "user" | "assistant" | "system" | "tool" | "thinking";
   content: string;
   toolCallId?: string;
   toolName?: string;
@@ -181,6 +181,10 @@ export interface TimelineEntry {
   subagentRunId?: string;
   /** Accumulated nested agent stream (parent run_subagent only). */
   subagentStream?: string;
+  /** Thinking entry: whether thinking is complete. */
+  thinkingDone?: boolean;
+  /** Thinking entry: started timestamp (ms since epoch). */
+  thinkingStartedAt?: number;
 }
 
 export interface MenuItem {
@@ -233,6 +237,9 @@ export interface AppState {
   blinkOn: boolean;
   compact: boolean;
   toolOutputExpanded: boolean;
+
+  // Thinking detail view
+  thinkingDetailContent: string;
 
   // Input
   inputValue: string;
@@ -319,4 +326,8 @@ export type AppAction =
   | { type: "CLEAR_APPROVAL" }
   | { type: "SET_APPROVAL_MODE"; mode: string }
   | { type: "SET_THINKING_LEVEL"; level: string }
-  | { type: "LOAD_HISTORY"; entries: TimelineEntry[] };
+  | { type: "LOAD_HISTORY"; entries: TimelineEntry[] }
+  | { type: "THINKING_START" }
+  | { type: "THINKING_CHUNK"; chunk: string }
+  | { type: "THINKING_DONE" }
+  | { type: "VIEW_THINKING_DETAIL"; content: string };

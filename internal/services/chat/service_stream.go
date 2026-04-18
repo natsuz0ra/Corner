@@ -241,6 +241,24 @@ func (s *ChatService) executeChatTurn(
 			}
 			return nil
 		},
+		OnThinkingStart: func() error {
+			if callbacks.OnThinkingStart == nil {
+				return nil
+			}
+			return callbacks.OnThinkingStart()
+		},
+		OnThinkingChunk: func(chunk string) error {
+			if callbacks.OnThinkingChunk == nil {
+				return nil
+			}
+			return callbacks.OnThinkingChunk(chunk)
+		},
+		OnThinkingDone: func() error {
+			if callbacks.OnThinkingDone == nil {
+				return nil
+			}
+			return callbacks.OnThinkingDone()
+		},
 	}
 
 	activatedSkills := s.getSessionActivatedSkills(sessionID)

@@ -93,6 +93,12 @@ func ThinkingReasoningEffort(level string) string {
 	}
 }
 
+// StreamCallbacks groups streaming output callbacks for Provider implementations.
+type StreamCallbacks struct {
+	OnChunk         func(string) error // text content chunks
+	OnThinkingChunk func(string) error // thinking content chunks (nil = skip)
+}
+
 type ToolDef struct {
 	Name        string
 	Description string

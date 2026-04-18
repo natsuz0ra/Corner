@@ -34,7 +34,7 @@ func (c *AnthropicClient) StreamChatWithTools(
 	modelConfig llmsvc.ModelRuntimeConfig,
 	messages []llmsvc.ChatMessage,
 	toolDefs []llmsvc.ToolDef,
-	onChunk func(string) error,
+	callbacks llmsvc.StreamCallbacks,
 ) (*llmsvc.StreamResult, error) {
 	baseURL := strings.TrimRight(strings.TrimSpace(modelConfig.BaseURL), "/")
 	apiKey := strings.TrimSpace(modelConfig.APIKey)
@@ -112,9 +112,16 @@ func (c *AnthropicClient) StreamChatWithTools(
 			}
 
 		case "content_block_delta":
+			if inThinkingBlock && event.Delta.Type == "thinking_delta" && event.Delta.Text != "" {
+				if callbacks.OnThinkingChunk != nil {
+					if err := callbacks.OnThinkingChunk(event.Delta.Text); err != nil {
+						return nil, err
+					}
+				}
+			}
 			if !inThinkingBlock && event.Delta.Type == "text_delta" && event.Delta.Text != "" {
 				textBuilder.WriteString(event.Delta.Text)
-				if err := onChunk(event.Delta.Text); err != nil {
+				if err := callbacks.OnChunk(event.Delta.Text); err != nil {
 					return nil, err
 				}
 			}

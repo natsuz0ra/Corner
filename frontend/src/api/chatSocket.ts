@@ -13,6 +13,9 @@ type Handlers = {
   onSubagentStart?: (data: SubagentStartData, sessionId?: string) => void
   onSubagentChunk?: (data: SubagentChunkData, sessionId?: string) => void
   onSubagentDone?: (data: SubagentDoneData, sessionId?: string) => void
+  onThinkingStart?: (sessionId?: string) => void
+  onThinkingChunk?: (chunk: string, sessionId?: string) => void
+  onThinkingDone?: (sessionId?: string) => void
   onOpen?: () => void
   onClose?: () => void
   onSocketError?: (error: string) => void
@@ -245,6 +248,10 @@ export class ChatSocket {
           error: data.error,
         }, data.sessionId)
       }
+
+      if (data.type === 'thinking_start') this.handlers?.onThinkingStart?.(data.sessionId)
+      if (data.type === 'thinking_chunk') this.handlers?.onThinkingChunk?.(data.content || '', data.sessionId)
+      if (data.type === 'thinking_done') this.handlers?.onThinkingDone?.(data.sessionId)
     }
 
     this.ws.onerror = () => {

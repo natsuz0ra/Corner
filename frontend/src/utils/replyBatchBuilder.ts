@@ -17,6 +17,7 @@ export type AssistantReplyTimelineItem =
       kind: 'text'
       content: string
     }
+  | { id: string; kind: 'thinking'; content: string; done: boolean; durationMs?: number; startedAt?: number }
 
 export interface AssistantReplyBatch {
   id: string
@@ -39,7 +40,6 @@ export function buildReplyBatchesFromHistory(sessionId: string, history: Session
   for (const message of history.messages) {
     if (message.role !== 'assistant') continue
     const historyToolCalls = history.toolCallsByAssistantMessageId[message.id] || []
-    if (historyToolCalls.length === 0) continue
 
     const sortedCalls = [...historyToolCalls].sort((left, right) => {
       const leftAt = new Date(left.startedAt || 0).getTime()

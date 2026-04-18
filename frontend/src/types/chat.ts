@@ -4,9 +4,9 @@ export type ReplyTimelineEntry =
   | { id: string; kind: 'text'; content: string }
   | { id: string; kind: 'tool_start'; toolCallId: string }
   | { id: string; kind: 'tool_result'; toolCallId: string }
+  | { id: string; kind: 'thinking'; content: string; done: boolean; durationMs?: number; startedAt?: number }
 
-export type ToolTimelineEntry = {
-  id: string
-  kind: 'tool_start' | 'tool_result'
-  toolCallId: string
-}
+export type ToolTimelineEntry =
+  | { id: string; kind: 'tool_start'; toolCallId: string }
+  | { id: string; kind: 'tool_result'; toolCallId: string }
+  | { id: string; kind: 'thinking'; content: string; done: boolean; durationMs?: number; startedAt?: number }

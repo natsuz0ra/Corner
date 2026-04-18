@@ -389,6 +389,24 @@ func (w *Controller) buildCallbacks(
 			}
 			return nil
 		},
+		OnThinkingStart: func() error {
+			if !enqueue(map[string]any{"type": "thinking_start", "sessionId": sessionID}) {
+				return context.Canceled
+			}
+			return nil
+		},
+		OnThinkingChunk: func(chunk string) error {
+			if !enqueue(map[string]any{"type": "thinking_chunk", "sessionId": sessionID, "content": chunk}) {
+				return context.Canceled
+			}
+			return nil
+		},
+		OnThinkingDone: func() error {
+			if !enqueue(map[string]any{"type": "thinking_done", "sessionId": sessionID}) {
+				return context.Canceled
+			}
+			return nil
+		},
 		OnToolCallStart: func(req chatsvc.ApprovalRequest) error {
 			payload := map[string]any{
 				"type":             "tool_call_start",

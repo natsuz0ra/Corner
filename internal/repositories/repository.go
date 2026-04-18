@@ -33,3 +33,12 @@ func (r *Repository) dbWithContext(ctx context.Context) *gorm.DB {
 	}
 	return r.db.WithContext(ctx)
 }
+
+// Close releases the underlying database connection.
+func (r *Repository) Close() error {
+	sqlDB, err := r.db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.Close()
+}
