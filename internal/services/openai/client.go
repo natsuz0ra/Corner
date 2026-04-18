@@ -2,6 +2,7 @@ package openai
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -28,7 +29,7 @@ func NewOpenAIClient() *OpenAIClient {
 
 // StreamChat starts a streaming chat request without tools (legacy compatibility).
 func (c *OpenAIClient) StreamChat(ctx context.Context, modelConfig llmsvc.ModelRuntimeConfig, messages []llmsvc.ChatMessage, onChunk func(string) error) error {
-	result, err := c.StreamChatWithTools(ctx, modelConfig, messages, nil, onChunk)
+	result, err := c.StreamChatWithTools(ctx, modelConfig, messages, nil, llmsvc.StreamCallbacks{OnChunk: onChunk})
 	if err != nil {
 		return err
 	}
@@ -44,7 +45,7 @@ func (c *OpenAIClient) StreamChatWithTools(
 	modelConfig llmsvc.ModelRuntimeConfig,
 	messages []llmsvc.ChatMessage,
 	toolDefs []llmsvc.ToolDef,
-	onChunk func(string) error,
+	callbacks llmsvc.StreamCallbacks,
 ) (*llmsvc.StreamResult, error) {
 	baseURL := strings.TrimRight(strings.TrimSpace(modelConfig.BaseURL), "/")
 	apiKey := strings.TrimSpace(modelConfig.APIKey)
@@ -87,9 +88,19 @@ func (c *OpenAIClient) StreamChatWithTools(
 		acc.AddChunk(chunk)
 
 		if len(chunk.Choices) > 0 {
-			content := chunk.Choices[0].Delta.Content
-			if content != "" {
-				if err := onChunk(content); err != nil {
+			delta := chunk.Choices[0].Delta
+
+			// Handle reasoning_content from Volcengine/DeepSeek compatible APIs.
+			if reasoning := extractReasoningContent(delta); reasoning != "" {
+				if callbacks.OnThinkingChunk != nil {
+					if err := callbacks.OnThinkingChunk(reasoning); err != nil {
+						return nil, err
+					}
+				}
+			}
+
+			if delta.Content != "" {
+				if err := callbacks.OnChunk(delta.Content); err != nil {
 					return nil, err
 				}
 			}
@@ -125,6 +136,26 @@ func (c *OpenAIClient) StreamChatWithTools(
 	}
 
 	return &llmsvc.StreamResult{Type: llmsvc.StreamResultText}, nil
+}
+
+// extractReasoningContent extracts reasoning_content from a streaming delta.
+// Volcengine and DeepSeek return thinking content via this non-standard field.
+func extractReasoningContent(delta openai.ChatCompletionChunkChoiceDelta) string {
+	f, ok := delta.JSON.ExtraFields["reasoning_content"]
+	if !ok || !f.Valid() {
+		return ""
+	}
+	raw := delta.RawJSON()
+	if raw == "" {
+		return ""
+	}
+	var data struct {
+		ReasoningContent string `json:"reasoning_content"`
+	}
+	if err := json.Unmarshal([]byte(raw), &data); err != nil {
+		return ""
+	}
+	return data.ReasoningContent
 }
 
 // supportsDeveloperRole: some compatible endpoints (e.g. Alibaba Cloud) omit developer role; fall back to system.

@@ -55,6 +55,11 @@ test("formatToolTextValue decodes escaped newlines", () => {
   assert.equal(result, "line1\nline2");
 });
 
+test("formatToolTextValue trims leading and trailing blank lines", () => {
+  const result = formatToolTextValue("\n\nline1\\n\\nline2\n\n");
+  assert.equal(result, "line1\nline2");
+});
+
 test("formatToolParamEntries formats multiline JSON values", () => {
   const entries = formatToolParamEntries({
     a: "plain",

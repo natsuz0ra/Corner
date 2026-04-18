@@ -58,7 +58,9 @@ export function formatToolTextValue(raw: string): string {
       return raw;
     }
   }
-  return decodeCommonEscapes(raw);
+  const decoded = decodeCommonEscapes(raw);
+  // Filter consecutive empty lines in display only
+  return decoded.replace(/\n{2,}/g, "\n").trim();
 }
 
 /** Formats params into readable key/value lines. */

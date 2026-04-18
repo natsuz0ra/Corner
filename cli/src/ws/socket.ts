@@ -18,6 +18,9 @@ export interface WSHandlers {
   onToolCallStart?: (data: ToolCallStartData, sessionId?: string) => void;
   onToolCallResult?: (data: ToolCallResultData, sessionId?: string) => void;
   onSubagentChunk?: (data: SubagentChunkData, sessionId?: string) => void;
+  onThinkingStart?: () => void;
+  onThinkingChunk?: (chunk: string) => void;
+  onThinkingDone?: () => void;
 }
 
 interface WSIncoming {
@@ -39,7 +42,6 @@ interface WSIncoming {
   isStopPlaceholder?: boolean;
   parentToolCallId?: string;
   subagentRunId?: string;
-  content?: string;
 }
 
 export class CLISocket {
@@ -134,6 +136,16 @@ export class CLISocket {
           },
           msg.sessionId,
         );
+      }
+
+      if (msg.type === "thinking_start") {
+        this.handlers?.onThinkingStart?.();
+      }
+      if (msg.type === "thinking_chunk") {
+        this.handlers?.onThinkingChunk?.(msg.content || "");
+      }
+      if (msg.type === "thinking_done") {
+        this.handlers?.onThinkingDone?.();
       }
     });
 

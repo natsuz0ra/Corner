@@ -166,6 +166,11 @@ func (c *Core) Close(ctx context.Context) {
 	if c.MCPManager != nil {
 		c.MCPManager.CloseAll()
 	}
+	if c.Repo != nil {
+		if err := c.Repo.Close(); err != nil {
+			logging.Warn("db_close", "err", err)
+		}
+	}
 }
 
 // buildRunContext builds ChatService RunContext for CLI vs server.

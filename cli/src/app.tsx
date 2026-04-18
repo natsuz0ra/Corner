@@ -760,6 +760,15 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           content: data.content,
         } as AppAction);
       },
+      onThinkingStart: () => {
+        dispatch({ type: "THINKING_START" } as AppAction);
+      },
+      onThinkingChunk: (chunk) => {
+        dispatch({ type: "THINKING_CHUNK", chunk } as AppAction);
+      },
+      onThinkingDone: () => {
+        dispatch({ type: "THINKING_DONE" } as AppAction);
+      },
     });
 
     return () => {
@@ -802,6 +811,13 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           },
         } as AppAction);
         dispatch({ type: "CLEAR_APPROVAL" } as AppAction);
+      }
+      return;
+    }
+
+    if (state.view === "thinking-detail") {
+      if (key.escape) {
+        dispatch({ type: "SET_VIEW", view: "chat" } as AppAction);
       }
       return;
     }
@@ -935,6 +951,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
             maxWidth={width}
             compact={state.compact}
             toolOutputExpanded={state.toolOutputExpanded}
+            thinkingEntryIndex={state.timeline.filter((e) => e.kind === "thinking").length}
           />
           <Text> </Text>
         </>
@@ -954,6 +971,20 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
               const value = rawValue.trim();
               if (!value) return;
               dispatch({ type: "SET_INPUT", value: "" } as AppAction);
+
+              // Check if input is a number → view thinking detail
+              const num = parseInt(value, 10);
+              if (!isNaN(num) && String(num) === value && num > 0) {
+                const thinkingEntries = state.timeline.filter((e) => e.kind === "thinking");
+                if (num <= thinkingEntries.length) {
+                  dispatch({
+                    type: "VIEW_THINKING_DETAIL",
+                    content: thinkingEntries[num - 1].content || "(empty)",
+                  } as AppAction);
+                  return;
+                }
+              }
+
               if (isCommand(value)) {
                 void handleCommand(value);
               } else {
@@ -1003,6 +1034,19 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           command={state.approvalCommand}
           params={state.approvalParams}
         />
+      )}
+
+      {state.view === "thinking-detail" && (
+        <Box flexDirection="column">
+          <Text bold color="magenta">{"Thinking Detail"}</Text>
+          <Text color="gray">Press Esc to return</Text>
+          <Text> </Text>
+          <Box flexDirection="column">
+            {state.thinkingDetailContent.split("\n").map((line, i) => (
+              <Text key={i} dimColor>{line}</Text>
+            ))}
+          </Box>
+        </Box>
       )}
 
       {state.view === "mcp-editor" && (

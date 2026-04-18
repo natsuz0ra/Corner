@@ -28,6 +28,7 @@ interface TimelineProps {
   maxWidth: number;
   compact: boolean;
   toolOutputExpanded: boolean;
+  thinkingEntryIndex: number;
 }
 
 function toolDotState(status: ToolCallStatus): { color: string; blink: boolean } {
@@ -210,6 +211,7 @@ function TimelineBlock({
   compact,
   toolOutputExpanded,
   nestedUnderParent,
+  thinkingNumber,
 }: {
   entry: TimelineEntry;
   blinkOn: boolean;
@@ -217,6 +219,7 @@ function TimelineBlock({
   compact: boolean;
   toolOutputExpanded: boolean;
   nestedUnderParent?: boolean;
+  thinkingNumber?: number;
 }): React.ReactElement {
   if (entry.kind === "user") {
     const lines = entry.content.split("\n");
@@ -247,6 +250,27 @@ function TimelineBlock({
           {DOT}{" "}
         </Text>
         <Text>{entry.content}</Text>
+      </Text>
+    );
+  }
+
+  if (entry.kind === "thinking") {
+    const done = entry.thinkingDone;
+    const duration = done && entry.thinkingStartedAt
+      ? ((Date.now() - entry.thinkingStartedAt) / 1000).toFixed(1) + "s"
+      : "";
+    const label = done
+      ? `Thought for ${duration}`
+      : "Thinking...";
+    const numPrefix = thinkingNumber !== undefined ? `[${thinkingNumber}] ` : "";
+    return (
+      <Text>
+        <Text bold color="#9C27B0">
+          {!done && !blinkOn ? " " : DOT}
+        </Text>
+        <Text>{" "}</Text>
+        <Text color="gray">{numPrefix}</Text>
+        <Text dimColor>{label}</Text>
       </Text>
     );
   }
@@ -309,8 +333,10 @@ export function Timeline({
   maxWidth,
   compact,
   toolOutputExpanded,
+  thinkingEntryIndex,
 }: TimelineProps): React.ReactElement {
   const displayRows = useMemo(() => buildTimelineDisplayRows(entries), [entries]);
+  let thinkingCounter = 0;
 
   return (
     <Box flexDirection="column">
@@ -323,6 +349,7 @@ export function Timeline({
             maxWidth={maxWidth}
             compact={compact}
             toolOutputExpanded={toolOutputExpanded}
+            thinkingNumber={row.entry.kind === "thinking" ? ++thinkingCounter : undefined}
           />
           {row.nestedTools && row.nestedTools.length > 0 ? (
             <Box flexDirection="column" marginLeft={2}>

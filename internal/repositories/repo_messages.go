@@ -48,6 +48,7 @@ func (r *Repository) ListSessionMessagesPage(sessionID string, limit int, before
 
 	base := r.db.Where("session_id = ?", sessionID)
 	var messages []domain.Message
+	var hasMore bool
 
 	switch {
 	case after != nil:
@@ -57,6 +58,7 @@ func (r *Repository) ListSessionMessagesPage(sessionID string, limit int, before
 			Find(&messages).Error; err != nil {
 			return nil, false, err
 		}
+		messages, hasMore = FetchWindow(messages, limit)
 	default:
 		query := base
 		if before != nil {
@@ -68,7 +70,8 @@ func (r *Repository) ListSessionMessagesPage(sessionID string, limit int, before
 			Find(&messages).Error; err != nil {
 			return nil, false, err
 		}
-		// Query newest-first; reverse to chronological order.
+		// Trim oldest from the tail of the newest-first list, then reverse to chronological order.
+		messages, hasMore = FetchWindow(messages, limit)
 		for left, right := 0, len(messages)-1; left < right; left, right = left+1, right-1 {
 			messages[left], messages[right] = messages[right], messages[left]
 		}
@@ -77,7 +80,6 @@ func (r *Repository) ListSessionMessagesPage(sessionID string, limit int, before
 	if len(messages) == 0 {
 		return messages, false, nil
 	}
-	messages, hasMore := FetchWindow(messages, limit)
 	normalizeMessages(messages)
 	return messages, hasMore, nil
 }
