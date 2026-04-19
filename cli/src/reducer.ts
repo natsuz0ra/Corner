@@ -33,6 +33,7 @@ export function createInitialState(
     blinkOn: true,
     compact: true,
     toolOutputExpanded: false,
+    planMode: false,
     thinkingDetailContent: "",
     inputValue: "",
     inputKey: 0,
@@ -199,6 +200,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
         streaming: false,
         assistantWaiting: false,
         toolOutputExpanded: false,
+        planMode: false,
         thinkingDetailContent: "",
         view: "chat",
         menuKind: null,
@@ -395,6 +397,9 @@ export function reducer(state: AppState, action: AppAction): AppState {
         view: "thinking-detail",
         thinkingDetailContent: action.content,
       };
+
+    case "TOGGLE_PLAN_MODE":
+      return { ...state, planMode: !state.planMode };
 
     default:
       return state;

@@ -8,7 +8,7 @@ import (
 )
 
 func TestCreateSession_ReturnsBadRequestForMalformedJSON(t *testing.T) {
-	controller := NewHTTPController(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	controller := NewHTTPController(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/sessions", bytes.NewBufferString(`{"name":`))
 	req.Header.Set("Content-Type", "application/json")

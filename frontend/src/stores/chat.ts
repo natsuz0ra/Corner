@@ -31,6 +31,7 @@ export const useChatStore = defineStore('chat', () => {
   const connectionStatus = ref<ConnectionStatus>('disconnected')
   const connectionError = ref('')
   const suppressNextConnectionNotice = ref(false)
+  const planMode = ref(false)
   const isSocketReady = computed(() => connectionStatus.value === 'connected')
 
   const replyBatches = ref<AssistantReplyBatch[]>([])
@@ -634,7 +635,7 @@ export const useChatStore = defineStore('chat', () => {
     if (files.length > 0) {
       uploaded = await uploadAttachmentsForCurrentSession(files)
     }
-    const sent = ws.send(trimmed, currentSessionId.value, modelId, uploaded.map((item) => item.id), thinkingLevel)
+    const sent = ws.send(trimmed, currentSessionId.value, modelId, uploaded.map((item) => item.id), thinkingLevel, planMode.value)
     if (!sent) {
       const error = 'socket is not connected'
       connectionError.value = error
@@ -692,6 +693,10 @@ export const useChatStore = defineStore('chat', () => {
     return shouldSuppress
   }
 
+  function togglePlanMode() {
+    planMode.value = !planMode.value
+  }
+
   return {
     sessions,
     sessionPageSize,
@@ -728,5 +733,7 @@ export const useChatStore = defineStore('chat', () => {
     dismissApproval,
     disconnectSocket,
     consumeSuppressNextConnectionNotice,
+    planMode,
+    togglePlanMode,
   }
 })

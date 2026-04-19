@@ -79,6 +79,8 @@ const {
   thinkingLevel,
   thinkingSelectOptions,
   onThinkingLevelChange,
+  planMode,
+  onPlanToggle,
 } = useHomeChatPage()
 
 const { isDark, toggleTheme } = useTheme()
@@ -228,12 +230,14 @@ provideChatContext({
                   :is-streaming="store.waiting"
                   :pending-files="pendingFiles"
                   :placeholder="t('inputPlaceholder')"
+                  :plan-mode="planMode"
                   @send="sendMessage"
                   @stop="stopMessage"
                   @files-change="onSelectFiles"
                   @remove-file="removePendingFile"
                   @model-change="onModelChange"
                 @thinking-change="onThinkingLevelChange"
+                @plan-toggle="onPlanToggle"
                 />
               </div>
             </template>
@@ -270,12 +274,14 @@ provideChatContext({
                 :is-streaming="store.waiting"
                 :pending-files="pendingFiles"
                 :placeholder="t('inputPlaceholder')"
+                :plan-mode="planMode"
                 @send="sendMessage"
                 @stop="stopMessage"
                 @files-change="onSelectFiles"
                 @remove-file="removePendingFile"
                 @model-change="onModelChange"
               @thinking-change="onThinkingLevelChange"
+              @plan-toggle="onPlanToggle"
               />
             </div>
           </footer>

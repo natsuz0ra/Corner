@@ -13,6 +13,7 @@ import (
 	"time"
 
 	chatsvc "slimebot/internal/services/chat"
+	plansvc "slimebot/internal/services/plan"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -21,6 +22,7 @@ import (
 // Controller is the WebSocket handler: upgrades connections, splits read/write, serializes chat and tool approval.
 type Controller struct {
 	chatService *chatsvc.ChatService
+	planService *plansvc.PlanService
 	upgrader    websocket.Upgrader
 }
 
@@ -34,6 +36,8 @@ type chatIncoming struct {
 	ToolCallID    string   `json:"toolCallId"`    // Tool call ID (for approval flow)
 	Approved      *bool    `json:"approved"`      // Approval outcome
 	ThinkingLevel string   `json:"thinkingLevel"` // Thinking level: off, low, medium, high
+	PlanMode      bool     `json:"planMode"`      // Plan mode: LLM generates plan instead of executing
+	PlanID        string   `json:"planId"`        // Plan ID (for approve/reject)
 }
 
 type wsOutChunk struct {
@@ -76,9 +80,10 @@ func (a *activeChatCanceler) Cancel() bool {
 	return true
 }
 
-func NewController(chatService *chatsvc.ChatService) *Controller {
+func NewController(chatService *chatsvc.ChatService, planService *plansvc.PlanService) *Controller {
 	return &Controller{
 		chatService: chatService,
+		planService: planService,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -228,6 +233,33 @@ func (w *Controller) startReadLoop(
 				if activeCancel.Cancel() {
 					_ = enqueue(map[string]any{"type": "stopping", "sessionId": incoming.SessionID})
 				}
+			case "plan_approve":
+				if w.planService != nil && incoming.PlanID != "" {
+					plan, planErr := w.planService.UpdatePlanStatus(incoming.PlanID, constants.PlanStatusApproved)
+					if planErr != nil {
+						_ = enqueue(map[string]any{"type": "error", "error": "Plan not found."})
+						continue
+					}
+					_ = enqueue(map[string]any{"type": "plan_status", "planId": plan.ID, "status": plan.Status})
+					execContent := "Execute the following approved plan:\n\n" + plan.Content
+					execIncoming := chatIncoming{
+						Type:      "chat",
+						SessionID: incoming.SessionID,
+						Content:   execContent,
+						ModelID:   incoming.ModelID,
+						PlanMode:  false,
+					}
+					select {
+					case <-sessionCtx.Done():
+						return
+					case chatCh <- execIncoming:
+					}
+				}
+			case "plan_reject":
+				if w.planService != nil && incoming.PlanID != "" {
+					_, _ = w.planService.UpdatePlanStatus(incoming.PlanID, constants.PlanStatusRejected)
+					_ = enqueue(map[string]any{"type": "plan_status", "planId": incoming.PlanID, "status": constants.PlanStatusRejected})
+				}
 			case "chat", "":
 				if strings.TrimSpace(incoming.Content) == "" && len(incoming.AttachmentIDs) == 0 {
 					continue
@@ -315,6 +347,7 @@ func (w *Controller) handleChatIncoming(
 		incoming.ModelID,
 		incoming.AttachmentIDs,
 		incoming.ThinkingLevel,
+		incoming.PlanMode,
 		callbacks,
 	)
 	cancel()

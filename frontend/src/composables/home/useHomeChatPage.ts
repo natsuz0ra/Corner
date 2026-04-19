@@ -139,5 +139,7 @@ export function useHomeChatPage() {
     renameFromFloatingMenu: sessionActions.renameFromFloatingMenu,
     deleteFromFloatingMenu: sessionActions.deleteFromFloatingMenu,
     onModelChange: modelState.onModelChange,
+    planMode: computed(() => store.planMode),
+    onPlanToggle: store.togglePlanMode,
   }
 }

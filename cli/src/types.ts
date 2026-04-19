@@ -215,6 +215,7 @@ export const SUPPORTED_COMMANDS: CommandMeta[] = [
   { command: "/effort", description: "Toggle thinking level (off/low/medium/high)" },
   { command: "/skills", description: "View and manage installed skills" },
   { command: "/mcp", description: "Manage MCP configurations" },
+  { command: "/plan", description: "Toggle plan mode (on/off)" },
   { command: "/help", description: "Show available commands" },
 ];
 
@@ -237,6 +238,7 @@ export interface AppState {
   blinkOn: boolean;
   compact: boolean;
   toolOutputExpanded: boolean;
+  planMode: boolean;
 
   // Thinking detail view
   thinkingDetailContent: string;
@@ -330,4 +332,5 @@ export type AppAction =
   | { type: "THINKING_START" }
   | { type: "THINKING_CHUNK"; chunk: string }
   | { type: "THINKING_DONE" }
+  | { type: "TOGGLE_PLAN_MODE" }
   | { type: "VIEW_THINKING_DETAIL"; content: string };

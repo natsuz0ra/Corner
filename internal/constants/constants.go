@@ -64,6 +64,12 @@ const (
 
 	SettingThinkingLevel = "thinkingLevel"
 
+	// Plan mode
+	PlanStatusPending  = "pending"
+	PlanStatusApproved = "approved"
+	PlanStatusRejected = "rejected"
+	PlanStatusExecuted = "executed"
+
 	// WebSocket
 	WSChatTimeout     = 600 * time.Second
 	WSWriteChannelBuf = 128

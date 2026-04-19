@@ -70,6 +70,7 @@ type AgentCallbacks struct {
 type AgentLoopOptions struct {
 	Depth        int
 	ApprovalMode string
+	PlanMode     bool
 }
 
 // AgentService runs the LLM loop with tools, approvals, and MCP/skill loading.
@@ -377,6 +378,12 @@ func (a *AgentService) RunAgentLoop(
 		preamble := strings.TrimSpace(result.AssistantMessage.Content)
 
 		for _, tc := range result.ToolCalls {
+			// Plan mode: block non-read-only tools.
+			if opts.PlanMode && !isPlanModeAllowedTool(tc.Name) {
+				messages = appendToolMessage(messages, tc.ID, "This tool is blocked in plan mode. Only read-only tools (web_search, search_memory) are allowed.")
+				continue
+			}
+
 			invocation, err := resolveToolInvocation(tc, mcpToolMeta, opts.ApprovalMode)
 			if err != nil {
 				messages = appendToolMessage(messages, tc.ID, fmt.Sprintf("failed to parse tool invocation: %s", err.Error()))
@@ -444,6 +451,17 @@ func (a *AgentService) RunAgentLoop(
 	}
 
 	return finalAnswer.String(), fmt.Errorf("agent loop reached max iterations (%d)", maxIter)
+}
+
+// isPlanModeAllowedTool returns true if the tool function name is allowed in plan mode.
+func isPlanModeAllowedTool(funcName string) bool {
+	toolName, _, _ := parseToolCallName(funcName)
+	switch toolName {
+	case "web_search", "search_memory":
+		return true
+	default:
+		return false
+	}
 }
 
 // parseToolCallName parses "{tool}__{command}" function names.

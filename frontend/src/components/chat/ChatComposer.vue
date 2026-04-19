@@ -2,6 +2,7 @@
 import { nextTick, ref, watch } from 'vue'
 import { mdiClose, mdiPaperclip, mdiSend, mdiStop } from '@mdi/js'
 import { useI18n } from 'vue-i18n'
+import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import MdiIcon from '@/components/ui/MdiIcon.vue'
 import TruncationTooltip from '@/components/ui/TruncationTooltip.vue'
 import AppSelect, { type SelectOption } from '@/components/ui/AppSelect.vue'
@@ -19,6 +20,7 @@ const props = defineProps<{
   isStreaming: boolean
   pendingFiles: File[]
   placeholder: string
+  planMode: boolean
 }>()
 
 const emit = defineEmits<{
@@ -29,6 +31,7 @@ const emit = defineEmits<{
   removeFile: [index: number]
   modelChange: [modelId: string]
   thinkingChange: [level: string]
+  planToggle: []
 }>()
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -124,7 +127,7 @@ watch(
       @keydown="onTextareaKeydown"
       @input="onTextareaInput"
     />
-    <div class="absolute bottom-2 left-3 right-3 flex items-center justify-between gap-2">
+    <div class="absolute bottom-2 left-3 right-3 flex items-center justify-between gap-2 z-10">
       <div class="flex items-center gap-2">
         <AppSelect
           :model-value="selectedModelId"
@@ -141,6 +144,10 @@ watch(
           size="xs"
           @update:model-value="emit('thinkingChange', $event)"
         />
+        <div class="flex items-center gap-1 text-xs text-gray-400">
+          <ToggleSwitch :model-value="planMode" @update:model-value="emit('planToggle')" />
+          <span>{{ t('planModeLabel') }}</span>
+        </div>
       </div>
       <div class="flex items-center gap-2">
         <div class="relative z-[120] group/upload-tip">
