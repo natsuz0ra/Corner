@@ -1013,7 +1013,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
   return (
     <Box flexDirection="column">
-      <Banner version={state.version} modelName={state.modelName} cwd={state.cwd} approvalMode={state.approvalMode} thinkingLevel={state.thinkingLevel} planMode={state.planMode} />
+      <Banner version={state.version} modelName={state.modelName} cwd={state.cwd} approvalMode={state.approvalMode} thinkingLevel={state.thinkingLevel} />
       <Text> </Text>
       {(state.timeline.length > 0 || state.streaming) && (
         <>
@@ -1206,21 +1206,22 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         <Box flexDirection="column">
           <CommandHints input={state.inputValue} />
           <Text color="gray" dimColor>
-            Tab to autocomplete, Enter to run, Esc to clear.
+            Tab autocomplete | Enter run | Esc clear
           </Text>
         </Box>
       )}
 
       {state.view === "chat" && !state.streaming && !state.inputValue.startsWith("/") && (
-        state.approvalMode === "auto" ? (
-          <Text color="yellow" bold>
-{"\u00A0"}{"\u00A0"}Auto execute mode enabled — commands run without approval
-          </Text>
-        ) : (
+        <Box>
+          {state.planMode && <Text color="#22d3ee" bold>◆ Plan </Text>}
+          {state.approvalMode === "auto" && <Text color="#eab308" bold>◆ Auto </Text>}
           <Text color="gray" dimColor>
-            Enter to send | / for commands | Tab to autocomplete | Ctrl+K compact | Ctrl+O expand output | Esc to cancel
+            {state.planMode || state.approvalMode === "auto"
+              ? "/ commands | Shift+Tab toggle | Esc to cancel"
+              : "/ for commands | Tab autocomplete | Shift+Tab plan mode | Esc to cancel"
+            }
           </Text>
-        )
+        </Box>
       )}
 
       {state.view === "approval" && (
