@@ -65,6 +65,7 @@ const (
 	SettingThinkingLevel = "thinkingLevel"
 
 	// Plan mode
+	PlanCompleteTool   = "plan_complete__submit"
 	PlanStatusPending  = "pending"
 	PlanStatusApproved = "approved"
 	PlanStatusRejected = "rejected"

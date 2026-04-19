@@ -28,6 +28,7 @@ type chatTurnState struct {
 type chatTurnResult struct {
 	answer        string
 	interrupted   bool
+	planCompleted bool
 	title         string
 	memoryPayload string
 	pushErr       error
@@ -280,7 +281,8 @@ func (s *ChatService) executeChatTurn(
 	}
 
 	agentStart := time.Now()
-	answer, err := s.agent.RunAgentLoop(ctx, state.modelConfig, sessionID, state.contextMessages, state.enabledMCPConfigs, activatedSkills, agentCallbacks, AgentLoopOptions{ApprovalMode: approvalMode, PlanMode: planMode})
+	var planCompleted bool
+	answer, err := s.agent.RunAgentLoop(ctx, state.modelConfig, sessionID, state.contextMessages, state.enabledMCPConfigs, activatedSkills, agentCallbacks, AgentLoopOptions{ApprovalMode: approvalMode, PlanMode: planMode, PlanComplete: &planCompleted})
 	logging.Span("agent_loop", agentStart)
 	s.mergeSessionActivatedSkills(sessionID, activatedSkills)
 
@@ -299,9 +301,15 @@ func (s *ChatService) executeChatTurn(
 		return nil, err
 	}
 
-	finalAnswer := answer
-	if strings.TrimSpace(finalAnswer) == "" {
+	var finalAnswer string
+	if planMode {
+		// In plan mode, use accumulated streamed text which includes all iterations.
 		finalAnswer = strings.TrimSpace(accumulator.answerBuilder.String())
+	} else {
+		finalAnswer = answer
+		if strings.TrimSpace(finalAnswer) == "" {
+			finalAnswer = strings.TrimSpace(accumulator.answerBuilder.String())
+		}
 	}
 
 	title := parser.Title()
@@ -322,6 +330,7 @@ func (s *ChatService) executeChatTurn(
 	return &chatTurnResult{
 		answer:        finalAnswer,
 		interrupted:   interrupted,
+		planCompleted: planCompleted,
 		title:         title,
 		memoryPayload: memoryPayload,
 		pushErr:       accumulator.pushErr,
@@ -366,7 +375,7 @@ func (s *ChatService) finalizeChatTurn(
 		logging.Info("memory_enqueue_skipped", "session", sessionID, "reason", "empty_or_unparsed")
 	}
 
-	if planMode && s.planService != nil && strings.TrimSpace(result.answer) != "" {
+	if planMode && result.planCompleted && s.planService != nil && strings.TrimSpace(result.answer) != "" {
 		title := "Plan"
 		for _, line := range strings.Split(result.answer, "\n") {
 			line = strings.TrimSpace(line)
@@ -433,11 +442,12 @@ Analyze the user's request and create a detailed implementation plan.
    - **Steps**: Numbered implementation steps with file paths and code references
    - **Risks**: Potential issues and mitigations
    - **Expected Outcome**: What success looks like
-4. End with a clear summary the user can review and approve or reject.
+4. **Submit** — When your complete plan has been written, call the plan_complete__submit tool. You MUST call this tool when finished — without it the user will not see the review menu.
 
 ## Rules
 
 - You MUST NOT write implementation code — only describe what needs to be done.
 - You MUST NOT execute any commands or modify any files.
 - Be specific: include file paths, function names, and concrete actions in each step.
-- Only web_search and search_memory tools are available for research.`
+- You MUST call plan_complete__submit when your plan is complete.
+- Only web_search, search_memory, and plan_complete__submit tools are available.`
