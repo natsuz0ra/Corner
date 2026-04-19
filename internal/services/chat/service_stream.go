@@ -375,10 +375,11 @@ func (s *ChatService) finalizeChatTurn(
 				break
 			}
 		}
-		if _, saveErr := s.planService.SavePlan(sessionID, title, result.answer); saveErr != nil {
+		if plan, saveErr := s.planService.SavePlan(sessionID, title, result.answer); saveErr != nil {
 			logging.Info("plan_save_error", "session", sessionID, "error", saveErr.Error())
 		} else {
 			logging.Info("plan_saved", "session", sessionID)
+			streamResult.PlanID = plan.ID
 		}
 	}
 

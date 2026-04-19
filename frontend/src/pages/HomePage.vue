@@ -14,6 +14,7 @@ import HomeHeaderBar from '@/components/home/HomeHeaderBar.vue'
 import HomeSidebar from '@/components/home/HomeSidebar.vue'
 import AppLogo from '@/components/ui/AppLogo.vue'
 import ApprovalDrawer from '@/components/chat/ApprovalDrawer.vue'
+import PlanConfirmationDrawer from '@/components/chat/PlanConfirmationDrawer.vue'
 import { provideChatContext } from '@/composables/chat/useChatContext'
 import { useHomeChatPage } from '@/composables/home/useHomeChatPage'
 import { useHomeTransitions } from '@/composables/home/useHomeTransitions'
@@ -343,6 +344,15 @@ provideChatContext({
       :params="store.pendingApproval.params"
       @approve="store.approveToolCall(store.pendingApproval!.toolCallId, true)"
       @reject="store.approveToolCall(store.pendingApproval!.toolCallId, false)"
+    />
+
+    <PlanConfirmationDrawer
+      v-if="store.pendingPlanConfirmation"
+      :visible="!!store.pendingPlanConfirmation"
+      :plan-content="store.pendingPlanConfirmation.content"
+      @execute="store.approvePlan(selectedModelId)"
+      @modify="(feedback) => store.modifyPlan(feedback, selectedModelId, thinkingLevel)"
+      @cancel="store.rejectPlan()"
     />
   </div>
 </template>

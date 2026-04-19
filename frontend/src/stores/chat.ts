@@ -45,6 +45,8 @@ export const useChatStore = defineStore('chat', () => {
     params: Record<string, string>
   } | null>(null)
 
+  const pendingPlanConfirmation = ref<{ planId: string; content: string } | null>(null)
+
   const ws = new ChatSocket()
 
   function resetSessionRuntimeState() {
@@ -436,6 +438,12 @@ export const useChatStore = defineStore('chat', () => {
           batch.collapsed = true
         }
         currentBatchId.value = ''
+        if (meta?.planId) {
+          pendingPlanConfirmation.value = {
+            planId: meta.planId,
+            content: answer || '',
+          }
+        }
         await loadSessions()
       },
       onError: (error, sessionId) => {
@@ -697,6 +705,38 @@ export const useChatStore = defineStore('chat', () => {
     planMode.value = !planMode.value
   }
 
+  function approvePlan(modelId: string) {
+    if (!pendingPlanConfirmation.value) return
+    const { planId } = pendingPlanConfirmation.value
+    const sessionId = currentSessionId.value
+    if (!sessionId) return
+    planMode.value = false
+    ws.sendPlanApprove(planId, sessionId, modelId)
+    pendingPlanConfirmation.value = null
+  }
+
+  function rejectPlan() {
+    if (!pendingPlanConfirmation.value) return
+    const { planId } = pendingPlanConfirmation.value
+    const sessionId = currentSessionId.value
+    if (!sessionId) return
+    ws.sendPlanReject(planId, sessionId)
+    pendingPlanConfirmation.value = null
+  }
+
+  function modifyPlan(feedback: string, modelId: string, thinkingLevel: string) {
+    if (!pendingPlanConfirmation.value) return
+    const { planId } = pendingPlanConfirmation.value
+    const sessionId = currentSessionId.value
+    if (!sessionId) return
+    ws.sendPlanModify(planId, sessionId, modelId, feedback, thinkingLevel)
+    pendingPlanConfirmation.value = null
+  }
+
+  function dismissPlanConfirmation() {
+    pendingPlanConfirmation.value = null
+  }
+
   return {
     sessions,
     sessionPageSize,
@@ -735,5 +775,10 @@ export const useChatStore = defineStore('chat', () => {
     consumeSuppressNextConnectionNotice,
     planMode,
     togglePlanMode,
+    pendingPlanConfirmation,
+    approvePlan,
+    rejectPlan,
+    modifyPlan,
+    dismissPlanConfirmation,
   }
 })

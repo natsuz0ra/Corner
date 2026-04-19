@@ -53,6 +53,7 @@ type ChatStreamResult struct {
 	SummaryUpdated    bool
 	PushFailed        bool
 	PushError         string
+	PlanID            string
 }
 
 // NewChatService constructs ChatService with per-session skill activation maps.

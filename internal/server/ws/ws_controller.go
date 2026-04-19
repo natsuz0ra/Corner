@@ -260,6 +260,24 @@ func (w *Controller) startReadLoop(
 					_, _ = w.planService.UpdatePlanStatus(incoming.PlanID, constants.PlanStatusRejected)
 					_ = enqueue(map[string]any{"type": "plan_status", "planId": incoming.PlanID, "status": constants.PlanStatusRejected})
 				}
+			case "plan_modify":
+				if w.planService != nil && incoming.PlanID != "" {
+					_, _ = w.planService.UpdatePlanStatus(incoming.PlanID, constants.PlanStatusRejected)
+					_ = enqueue(map[string]any{"type": "plan_status", "planId": incoming.PlanID, "status": constants.PlanStatusRejected})
+				}
+				modifyIncoming := chatIncoming{
+					Type:          "chat",
+					SessionID:     incoming.SessionID,
+					Content:       incoming.Content,
+					ModelID:       incoming.ModelID,
+					PlanMode:      true,
+					ThinkingLevel: incoming.ThinkingLevel,
+				}
+				select {
+				case <-sessionCtx.Done():
+					return
+				case chatCh <- modifyIncoming:
+				}
 			case "chat", "":
 				if strings.TrimSpace(incoming.Content) == "" && len(incoming.AttachmentIDs) == 0 {
 					continue
@@ -383,6 +401,9 @@ func (w *Controller) handleChatIncoming(
 		// Client uses flags for copy and rendering (e.g. i18n for "output stopped").
 		donePayload["isInterrupted"] = streamResult.IsInterrupted
 		donePayload["isStopPlaceholder"] = streamResult.IsStopPlaceholder
+		if streamResult.PlanID != "" {
+			donePayload["planId"] = streamResult.PlanID
+		}
 	}
 	if !enqueue(donePayload) {
 		return false

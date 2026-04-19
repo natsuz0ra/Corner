@@ -149,6 +149,13 @@ const messages = {
     toolApprovalTitle: '工具执行审批',
     toolApprovalApprove: '批准执行',
     toolApprovalReject: '拒绝',
+    planConfirmTitle: '计划已生成',
+    planConfirmExecute: '执行计划',
+    planConfirmModify: '修改计划',
+    planConfirmCancel: '取消',
+    planConfirmModifyPlaceholder: '输入修改建议...',
+    planConfirmSendFeedback: '发送反馈',
+    planConfirmBack: '返回',
   },
   'en-US': {
     newSession: 'New Session',
@@ -298,6 +305,13 @@ const messages = {
     toolApprovalTitle: 'Tool Execution Approval',
     toolApprovalApprove: 'Approve',
     toolApprovalReject: 'Reject',
+    planConfirmTitle: 'Plan Generated',
+    planConfirmExecute: 'Execute Plan',
+    planConfirmModify: 'Modify Plan',
+    planConfirmCancel: 'Cancel',
+    planConfirmModifyPlaceholder: 'Enter modification feedback...',
+    planConfirmSendFeedback: 'Send Feedback',
+    planConfirmBack: 'Back',
   },
 }
 
