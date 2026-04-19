@@ -121,7 +121,7 @@ export interface SubagentChunkData {
 
 // ===== UI state types =====
 
-export type ViewMode = "chat" | "menu" | "mcp-editor" | "mcp-template" | "model-editor" | "approval" | "thinking-detail";
+export type ViewMode = "chat" | "menu" | "mcp-editor" | "mcp-template" | "model-editor" | "approval" | "thinking-detail" | "plan-confirm";
 
 export type MenuKind =
   | "session"
@@ -280,6 +280,14 @@ export interface AppState {
   approvalParams: Record<string, string>;
   approvalReplyCh: ((approved: boolean) => void) | null;
 
+  // Plan confirmation
+  pendingPlanId: string;
+  pendingPlanContent: string;
+  planConfirmCursor: number;
+  planConfirmModifying: boolean;
+  planModifyInput: string;
+  planModifyInputKey: number;
+
   // Connection
   apiURL: string;
   cliToken: string;
@@ -333,4 +341,10 @@ export type AppAction =
   | { type: "THINKING_CHUNK"; chunk: string }
   | { type: "THINKING_DONE" }
   | { type: "TOGGLE_PLAN_MODE" }
+  | { type: "SET_PLAN_CONFIRMATION"; planId: string; content: string }
+  | { type: "PLAN_CONFIRM_NAV"; delta: number }
+  | { type: "PLAN_CONFIRM_START_MODIFY" }
+  | { type: "PLAN_CONFIRM_CANCEL_MODIFY" }
+  | { type: "SET_PLAN_MODIFY_INPUT"; value: string }
+  | { type: "CLEAR_PLAN_CONFIRMATION" }
   | { type: "VIEW_THINKING_DETAIL"; content: string };

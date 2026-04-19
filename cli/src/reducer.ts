@@ -60,6 +60,12 @@ export function createInitialState(
     approvalCommand: "",
     approvalParams: {},
     approvalReplyCh: null,
+    pendingPlanId: "",
+    pendingPlanContent: "",
+    planConfirmCursor: 0,
+    planConfirmModifying: false,
+    planModifyInput: "",
+    planModifyInputKey: 0,
     apiURL,
     cliToken,
     version,
@@ -400,6 +406,43 @@ export function reducer(state: AppState, action: AppAction): AppState {
 
     case "TOGGLE_PLAN_MODE":
       return { ...state, planMode: !state.planMode };
+
+    case "SET_PLAN_CONFIRMATION":
+      return {
+        ...state,
+        view: "plan-confirm",
+        pendingPlanId: action.planId,
+        pendingPlanContent: action.content,
+        planConfirmCursor: 0,
+        planConfirmModifying: false,
+        planModifyInput: "",
+      };
+
+    case "PLAN_CONFIRM_NAV": {
+      const opts = 3;
+      const newCursor = Math.max(0, Math.min(opts - 1, state.planConfirmCursor + action.delta));
+      return { ...state, planConfirmCursor: newCursor };
+    }
+
+    case "PLAN_CONFIRM_START_MODIFY":
+      return { ...state, planConfirmModifying: true, planModifyInput: "", planModifyInputKey: state.planModifyInputKey + 1 };
+
+    case "PLAN_CONFIRM_CANCEL_MODIFY":
+      return { ...state, planConfirmModifying: false, planModifyInput: "" };
+
+    case "SET_PLAN_MODIFY_INPUT":
+      return { ...state, planModifyInput: action.value };
+
+    case "CLEAR_PLAN_CONFIRMATION":
+      return {
+        ...state,
+        view: "chat",
+        pendingPlanId: "",
+        pendingPlanContent: "",
+        planConfirmCursor: 0,
+        planConfirmModifying: false,
+        planModifyInput: "",
+      };
 
     default:
       return state;

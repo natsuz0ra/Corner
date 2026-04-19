@@ -19,7 +19,7 @@ import (
 	"slimebot/internal/tools"
 )
 
-const balancedTemperature = 1.2
+const balancedTemperature = 1.0
 
 // ApprovalRequest is sent to the client for tool-call approval.
 type ApprovalRequest struct {

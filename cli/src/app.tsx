@@ -8,6 +8,7 @@ import { Box, Text, useApp, useInput, useStdout } from "ink";
 import type { Key } from "ink";
 import { APIClient } from "./api/client.js";
 import { ApprovalView } from "./components/ApprovalView.js";
+import { PlanConfirmView } from "./components/PlanConfirmView.js";
 import { Banner } from "./components/Banner.js";
 import { CommandHints } from "./components/CommandHints.js";
 import { MCPEditor } from "./components/MCPEditor.js";
@@ -135,6 +136,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
   const socketRef = useRef<CLISocket | null>(null);
   const blinkRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionRef = useRef({ id: "", name: "" });
+  const liveAssistantRef = useRef("");
   const clearScreenDeferred = useCallback(() => {
     setImmediate(() => clearScreen());
   }, []);
@@ -150,6 +152,10 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
   useEffect(() => {
     sessionRef.current = { id: state.sessionId, name: state.sessionName };
   }, [state.sessionId, state.sessionName]);
+
+  useEffect(() => {
+    liveAssistantRef.current = state.liveAssistant;
+  }, [state.liveAssistant]);
 
   const refreshSessionName = useCallback(async (sessionId: string) => {
     if (!sessionId) {
@@ -703,6 +709,13 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           type: "STREAM_DONE",
           error: meta?.isStopPlaceholder ? "Generation stopped." : null,
         } as AppAction);
+        if (meta?.planId) {
+          dispatch({
+            type: "SET_PLAN_CONFIRMATION",
+            planId: meta.planId,
+            content: liveAssistantRef.current || "",
+          } as AppAction);
+        }
         const current = sessionRef.current;
         applyTerminalTitle(current.name);
         if (current.id) {
@@ -827,6 +840,52 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           },
         } as AppAction);
         dispatch({ type: "CLEAR_APPROVAL" } as AppAction);
+      }
+      return;
+    }
+
+    if (state.view === "plan-confirm") {
+      if (state.planConfirmModifying) {
+        if (key.escape) {
+          dispatch({ type: "PLAN_CONFIRM_CANCEL_MODIFY" } as AppAction);
+          return;
+        }
+        return;
+      }
+      if (key.upArrow) {
+        dispatch({ type: "PLAN_CONFIRM_NAV", delta: -1 } as AppAction);
+        return;
+      }
+      if (key.downArrow) {
+        dispatch({ type: "PLAN_CONFIRM_NAV", delta: 1 } as AppAction);
+        return;
+      }
+      if (key.return) {
+        switch (state.planConfirmCursor) {
+          case 0: // Execute
+            socketRef.current?.sendPlanApprove(
+              state.pendingPlanId, state.sessionId, state.modelId,
+            );
+            dispatch({ type: "TOGGLE_PLAN_MODE" } as AppAction);
+            dispatch({ type: "CLEAR_PLAN_CONFIRMATION" } as AppAction);
+            break;
+          case 1: // Modify
+            dispatch({ type: "PLAN_CONFIRM_START_MODIFY" } as AppAction);
+            break;
+          case 2: // Cancel
+            socketRef.current?.sendPlanReject(
+              state.pendingPlanId, state.sessionId,
+            );
+            dispatch({ type: "CLEAR_PLAN_CONFIRMATION" } as AppAction);
+            break;
+        }
+        return;
+      }
+      if (key.escape) {
+        socketRef.current?.sendPlanReject(
+          state.pendingPlanId, state.sessionId,
+        );
+        dispatch({ type: "CLEAR_PLAN_CONFIRMATION" } as AppAction);
       }
       return;
     }
@@ -1060,6 +1119,44 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         />
       )}
 
+      {state.view === "plan-confirm" && !state.planConfirmModifying && (
+        <PlanConfirmView
+          cursor={state.planConfirmCursor}
+          modifying={false}
+          modifyInput=""
+        />
+      )}
+
+      {state.view === "plan-confirm" && state.planConfirmModifying && (
+        <Box flexDirection="column">
+          <PlanConfirmView
+            cursor={state.planConfirmCursor}
+            modifying={true}
+            modifyInput={state.planModifyInput}
+          />
+          <Box>
+            <Text bold color="white">{"❯ "}</Text>
+            <TextInput
+              key={state.planModifyInputKey}
+              value={state.planModifyInput}
+              onChange={(value) => dispatch({ type: "SET_PLAN_MODIFY_INPUT", value } as AppAction)}
+              onSubmit={(rawValue) => {
+                const feedback = rawValue.trim();
+                if (feedback) {
+                  socketRef.current?.sendPlanModify(
+                    state.pendingPlanId, state.sessionId, state.modelId,
+                    feedback, state.thinkingLevel,
+                  );
+                }
+                dispatch({ type: "CLEAR_PLAN_CONFIRMATION" } as AppAction);
+              }}
+              focus={true}
+              columns={Math.max(20, width - 3)}
+            />
+          </Box>
+        </Box>
+      )}
+
       {state.view === "thinking-detail" && (
         <Box flexDirection="column">
           <Text bold color="magenta">{"Thinking Detail"}</Text>
@@ -1150,6 +1247,18 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       {state.view === "approval" && (
         <Text color="gray" dimColor>
           Y to approve | N/Esc to reject
+        </Text>
+      )}
+
+      {state.view === "plan-confirm" && !state.planConfirmModifying && (
+        <Text color="gray" dimColor>
+          Arrow keys to navigate | Enter to select | Esc to cancel
+        </Text>
+      )}
+
+      {state.view === "plan-confirm" && state.planConfirmModifying && (
+        <Text color="gray" dimColor>
+          Type feedback, Enter to submit | Esc to go back
         </Text>
       )}
 

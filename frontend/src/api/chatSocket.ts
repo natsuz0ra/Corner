@@ -6,7 +6,7 @@ type Handlers = {
   onStart: (sessionId?: string) => void
   onChunk: (chunk: string, sessionId?: string) => void
   onSessionTitle: (title: string, sessionId?: string) => void
-  onDone: (sessionId?: string, answer?: string, meta?: { isInterrupted?: boolean; isStopPlaceholder?: boolean }) => void
+  onDone: (sessionId?: string, answer?: string, meta?: { isInterrupted?: boolean; isStopPlaceholder?: boolean; planId?: string }) => void
   onError: (error: string, sessionId?: string) => void
   onToolCallStart?: (data: ToolCallStartData, sessionId?: string) => void
   onToolCallResult?: (data: ToolCallResultData, sessionId?: string) => void
@@ -85,6 +85,7 @@ type WSIncoming = {
   parentToolCallId?: string
   subagentRunId?: string
   task?: string
+  planId?: string
 }
 
 export class ChatSocket {
@@ -136,6 +137,33 @@ export class ChatSocket {
       return false
     }
     this.ws.send(JSON.stringify({ type: 'tool_approve', toolCallId, approved }))
+    return true
+  }
+
+  sendPlanApprove(planId: string, sessionId: string, modelId: string) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this.handlers?.onSocketError?.('socket is not connected')
+      return false
+    }
+    this.ws.send(JSON.stringify({ type: 'plan_approve', planId, sessionId, modelId }))
+    return true
+  }
+
+  sendPlanReject(planId: string, sessionId: string) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this.handlers?.onSocketError?.('socket is not connected')
+      return false
+    }
+    this.ws.send(JSON.stringify({ type: 'plan_reject', planId, sessionId }))
+    return true
+  }
+
+  sendPlanModify(planId: string, sessionId: string, modelId: string, content: string, thinkingLevel: string) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this.handlers?.onSocketError?.('socket is not connected')
+      return false
+    }
+    this.ws.send(JSON.stringify({ type: 'plan_modify', planId, sessionId, modelId, content, thinkingLevel }))
     return true
   }
 
@@ -194,6 +222,7 @@ export class ChatSocket {
         this.handlers?.onDone(data.sessionId, data.answer, {
           isInterrupted: data.isInterrupted,
           isStopPlaceholder: data.isStopPlaceholder,
+          planId: data.planId,
         })
       }
       if (data.type === 'error') this.handlers?.onError(data.error || 'unknown error', data.sessionId)
