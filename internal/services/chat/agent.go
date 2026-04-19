@@ -332,6 +332,12 @@ func (a *AgentService) RunAgentLoop(
 	if err != nil {
 		return "", fmt.Errorf("failed to load MCP tools: %w", err)
 	}
+
+	// Plan mode: only expose read-only tools so the model cannot even attempt to call others.
+	if opts.PlanMode {
+		toolDefs = filterPlanModeToolDefs(toolDefs)
+		mcpToolMeta = filterPlanModeMCPMeta(mcpToolMeta)
+	}
 	messages := make([]llmsvc.ChatMessage, len(contextMessages))
 	copy(messages, contextMessages)
 
@@ -462,6 +468,36 @@ func isPlanModeAllowedTool(funcName string) bool {
 	default:
 		return false
 	}
+}
+
+// filterPlanModeToolDefs keeps only read-only tool definitions for plan mode.
+func filterPlanModeToolDefs(defs []llmsvc.ToolDef) []llmsvc.ToolDef {
+	var filtered []llmsvc.ToolDef
+	for _, d := range defs {
+		toolName, _, err := parseToolCallName(d.Name)
+		if err != nil {
+			continue
+		}
+		if isPlanModeAllowedTool(toolName) {
+			filtered = append(filtered, d)
+		}
+	}
+	return filtered
+}
+
+// filterPlanModeMCPMeta keeps only MCP metadata entries for read-only tools.
+func filterPlanModeMCPMeta(meta map[string]mcp.ToolMeta) map[string]mcp.ToolMeta {
+	filtered := make(map[string]mcp.ToolMeta)
+	for k, v := range meta {
+		toolName, _, err := parseToolCallName(k)
+		if err != nil {
+			continue
+		}
+		if isPlanModeAllowedTool(toolName) {
+			filtered[k] = v
+		}
+	}
+	return filtered
 }
 
 // parseToolCallName parses "{tool}__{command}" function names.

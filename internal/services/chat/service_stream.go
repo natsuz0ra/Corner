@@ -417,19 +417,27 @@ func (s *ChatService) applySessionTitleUpdate(ctx context.Context, store session
 	return nil
 }
 
-const planModeSystemMessage = `## Plan Mode Active
+const planModeSystemMessage = `Plan mode is active. The user indicated that they do not want you to execute yet — you MUST NOT make any edits, run any commands, or otherwise make any changes to the system. This supersedes any other instructions you have received.
 
-You are currently in PLAN MODE. Your task is to analyze the user's request and create a detailed implementation plan.
+## Your Task
 
-Rules:
-1. You MUST NOT execute any tools that modify files, run commands, or change system state.
-2. You MAY use read-only tools (web_search for research, search_memory for context) ONLY to gather information needed for planning.
-3. Your response MUST be a structured markdown plan with these sections:
+Analyze the user's request and create a detailed implementation plan.
+
+## Workflow
+
+1. **Research** — Use read-only tools (web_search, search_memory) ONLY to gather information.
+2. **Analyze** — Assess the current state and identify what needs to change.
+3. **Plan** — Create a structured markdown plan with:
    - **Background**: Context and motivation
    - **Analysis**: Current state assessment
    - **Steps**: Numbered implementation steps with file paths and code references
    - **Risks**: Potential issues and mitigations
    - **Expected Outcome**: What success looks like
-4. Be specific: include file paths, function names, and concrete actions in each step.
-5. Do NOT write any implementation code — only describe what needs to be done.
-6. End your response with a clear summary the user can review and approve or reject.`
+4. End with a clear summary the user can review and approve or reject.
+
+## Rules
+
+- You MUST NOT write implementation code — only describe what needs to be done.
+- You MUST NOT execute any commands or modify any files.
+- Be specific: include file paths, function names, and concrete actions in each step.
+- Only web_search and search_memory tools are available for research.`

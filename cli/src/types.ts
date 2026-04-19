@@ -347,4 +347,5 @@ export type AppAction =
   | { type: "PLAN_CONFIRM_CANCEL_MODIFY" }
   | { type: "SET_PLAN_MODIFY_INPUT"; value: string }
   | { type: "CLEAR_PLAN_CONFIRMATION" }
-  | { type: "VIEW_THINKING_DETAIL"; content: string };
+  | { type: "VIEW_THINKING_DETAIL"; content: string }
+  | { type: "FLUSH_AND_WAIT" };

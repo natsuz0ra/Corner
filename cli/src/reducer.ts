@@ -444,6 +444,22 @@ export function reducer(state: AppState, action: AppAction): AppState {
         planModifyInput: "",
       };
 
+    case "FLUSH_AND_WAIT": {
+      const entries = [...state.timeline];
+      if (state.liveAssistant.trim()) {
+        entries.push({
+          kind: "assistant",
+          content: state.liveAssistant,
+        });
+      }
+      return {
+        ...state,
+        assistantWaiting: true,
+        liveAssistant: "",
+        timeline: entries,
+      };
+    }
+
     default:
       return state;
   }
