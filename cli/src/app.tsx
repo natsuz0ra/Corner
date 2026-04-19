@@ -726,6 +726,8 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         dispatch({ type: "STREAM_DONE", error } as AppAction);
       },
       onToolCallStart: (data: ToolCallStartData) => {
+        // Flush preamble text to timeline before tool entry
+        dispatch({ type: "FLUSH_AND_WAIT" } as AppAction);
         dispatch({
           type: "UPSERT_TOOL_ENTRY",
           entry: {

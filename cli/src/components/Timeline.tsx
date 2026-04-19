@@ -374,17 +374,19 @@ export function Timeline({
       {streaming && (
         <>
           {entries.length > 0 && <Text> </Text>}
-          {assistantWaiting ? (
-            <Box key="waiting">
-              <Spinner enabled={true} />
-              <GradientFlowText
-                text={` Waiting for response...`}
-                enabled={true}
-              />
-            </Box>
-          ) : liveAssistant ? (
-            <StreamingMarkdown content={liveAssistant} maxWidth={maxWidth} compact={compact} />
-          ) : null}
+          {liveAssistant && !assistantWaiting && (
+            <>
+              <StreamingMarkdown content={liveAssistant} maxWidth={maxWidth} compact={compact} />
+              <Text> </Text>
+            </>
+          )}
+          <Box key="waiting">
+            <Spinner enabled={true} />
+            <GradientFlowText
+              text={` Waiting for response...`}
+              enabled={true}
+            />
+          </Box>
         </>
       )}
     </Box>
