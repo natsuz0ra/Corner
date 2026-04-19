@@ -71,6 +71,7 @@ type AgentLoopOptions struct {
 	Depth        int
 	ApprovalMode string
 	PlanMode     bool
+	PlanComplete *bool // set to true when plan_complete tool is called
 }
 
 // AgentService runs the LLM loop with tools, approvals, and MCP/skill loading.
@@ -177,6 +178,22 @@ func buildRunSubagentToolDef() llmsvc.ToolDef {
 				},
 			},
 			"required": []string{"task"},
+		},
+	}
+}
+
+func buildPlanCompleteToolDef() llmsvc.ToolDef {
+	return llmsvc.ToolDef{
+		Name:        constants.PlanCompleteTool,
+		Description: "[plan] Call this tool ONLY when your complete plan has been written in your response. This submits the plan for user review. You MUST call this tool when you finish writing your plan — without it the user will not see the review menu.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"title": map[string]any{
+					"type":        "string",
+					"description": "Short title for the plan. Omit to auto-detect from the first heading.",
+				},
+			},
 		},
 	}
 }
@@ -337,6 +354,7 @@ func (a *AgentService) RunAgentLoop(
 	if opts.PlanMode {
 		toolDefs = filterPlanModeToolDefs(toolDefs)
 		mcpToolMeta = filterPlanModeMCPMeta(mcpToolMeta)
+		toolDefs = append(toolDefs, buildPlanCompleteToolDef())
 	}
 	messages := make([]llmsvc.ChatMessage, len(contextMessages))
 	copy(messages, contextMessages)
@@ -384,6 +402,15 @@ func (a *AgentService) RunAgentLoop(
 		preamble := strings.TrimSpace(result.AssistantMessage.Content)
 
 		for _, tc := range result.ToolCalls {
+			// Handle plan_complete: signal plan completion and skip regular execution.
+			if tc.Name == constants.PlanCompleteTool {
+				if opts.PlanComplete != nil {
+					*opts.PlanComplete = true
+				}
+				messages = appendToolMessage(messages, tc.ID, "Plan submitted for review.")
+				continue
+			}
+
 			// Plan mode: block non-read-only tools.
 			if opts.PlanMode && !isPlanModeAllowedTool(tc.Name) {
 				messages = appendToolMessage(messages, tc.ID, "This tool is blocked in plan mode. Only read-only tools (web_search, search_memory) are allowed.")
@@ -454,6 +481,11 @@ func (a *AgentService) RunAgentLoop(
 
 			messages = appendToolMessage(messages, tc.ID, buildToolResultContent(execResult))
 		}
+
+		// If plan_complete was called, return immediately so the caller can save the plan.
+		if opts.PlanComplete != nil && *opts.PlanComplete {
+			return finalAnswer.String(), nil
+		}
 	}
 
 	return finalAnswer.String(), fmt.Errorf("agent loop reached max iterations (%d)", maxIter)
@@ -461,9 +493,15 @@ func (a *AgentService) RunAgentLoop(
 
 // isPlanModeAllowedTool returns true if the tool function name is allowed in plan mode.
 func isPlanModeAllowedTool(funcName string) bool {
+	// Handle tools without __ separator (e.g. search_memory, plan_complete__submit).
+	switch funcName {
+	case "search_memory":
+		return true
+	}
+	// Handle tools with __ separator (e.g. web_search__search, plan_complete__submit).
 	toolName, _, _ := parseToolCallName(funcName)
 	switch toolName {
-	case "web_search", "search_memory":
+	case "web_search", "plan_complete":
 		return true
 	default:
 		return false
@@ -474,11 +512,7 @@ func isPlanModeAllowedTool(funcName string) bool {
 func filterPlanModeToolDefs(defs []llmsvc.ToolDef) []llmsvc.ToolDef {
 	var filtered []llmsvc.ToolDef
 	for _, d := range defs {
-		toolName, _, err := parseToolCallName(d.Name)
-		if err != nil {
-			continue
-		}
-		if isPlanModeAllowedTool(toolName) {
+		if isPlanModeAllowedTool(d.Name) {
 			filtered = append(filtered, d)
 		}
 	}
