@@ -567,7 +567,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     dispatch({ type: "STREAM_START" } as AppAction);
 
     const sendToSocket = (sid: string): boolean => {
-      return socketRef.current?.send(content, sid, state.modelId, state.thinkingLevel) || false;
+      return socketRef.current?.send(content, sid, state.modelId, state.thinkingLevel, state.planMode) || false;
     };
 
     if (!state.sessionId) {
@@ -631,6 +631,10 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     }
     if (cmd === "/help") {
       showHelp();
+      return;
+    }
+    if (cmd === "/plan") {
+      dispatch({ type: "TOGGLE_PLAN_MODE" } as AppAction);
       return;
     }
     appendSystem(`Unknown command: ${cmd}`);
@@ -787,6 +791,11 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       }
       socketRef.current?.close();
       exit();
+      return;
+    }
+
+    if (key.tab && key.shift && state.view === "chat") {
+      dispatch({ type: "TOGGLE_PLAN_MODE" } as AppAction);
       return;
     }
 
@@ -953,7 +962,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
   return (
     <Box flexDirection="column">
-      <Banner version={state.version} modelName={state.modelName} cwd={state.cwd} approvalMode={state.approvalMode} thinkingLevel={state.thinkingLevel} />
+      <Banner version={state.version} modelName={state.modelName} cwd={state.cwd} approvalMode={state.approvalMode} thinkingLevel={state.thinkingLevel} planMode={state.planMode} />
       <Text> </Text>
       {(state.timeline.length > 0 || state.streaming) && (
         <>

@@ -20,6 +20,7 @@ import (
 	llmsvc "slimebot/internal/services/llm"
 	memsvc "slimebot/internal/services/memory"
 	oaisvc "slimebot/internal/services/openai"
+	plansvc "slimebot/internal/services/plan"
 	sessionsvc "slimebot/internal/services/session"
 	settingssvc "slimebot/internal/services/settings"
 	skillsvc "slimebot/internal/services/skill"
@@ -43,6 +44,7 @@ type Core struct {
 	ChatUpload       *chatsvc.ChatUploadService
 	MCPManager       *mcp.Manager
 	MemoryService    *memsvc.MemoryService
+	PlanService      *plansvc.PlanService
 
 	warmupOnce    sync.Once
 	warmupDone    chan struct{}
@@ -94,6 +96,12 @@ func NewCore(cfg config.Config) (*Core, error) {
 	chatService := chatsvc.NewChatService(repo, repo, providerFactory, mcpManager, skillRuntime, memoryService)
 	chatService.SetUploadService(chatUpload)
 
+	planService, err := plansvc.NewPlanService()
+	if err != nil {
+		return nil, err
+	}
+	chatService.SetPlanService(planService)
+
 	return &Core{
 		Config:           cfg,
 		Repo:             repo,
@@ -110,6 +118,7 @@ func NewCore(cfg config.Config) (*Core, error) {
 		ChatUpload:       chatUpload,
 		MCPManager:       mcpManager,
 		MemoryService:    memoryService,
+		PlanService:      planService,
 		warmupDone:       make(chan struct{}),
 	}, nil
 }

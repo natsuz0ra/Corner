@@ -158,7 +158,7 @@ export class CLISocket {
     });
   }
 
-  send(content: string, sessionId: string, modelId: string, thinkingLevel: string = "off"): boolean {
+  send(content: string, sessionId: string, modelId: string, thinkingLevel: string = "off", planMode: boolean = false): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
     this.ws.send(
       JSON.stringify({
@@ -168,6 +168,7 @@ export class CLISocket {
         modelId,
         attachmentIds: [],
         thinkingLevel,
+        planMode,
       }),
     );
     return true;

@@ -42,6 +42,7 @@ func (s *ChatService) HandleChatStream(
 	modelID string,
 	attachmentIDs []string,
 	thinkingLevel string,
+	planMode bool,
 	callbacks AgentCallbacks,
 ) (*ChatStreamResult, error) {
 	if strings.TrimSpace(content) == "" && len(attachmentIDs) == 0 {
@@ -54,12 +55,19 @@ func (s *ChatService) HandleChatStream(
 	}
 	defer s.cleanupTurnAttachments(state.attachments)
 
-	result, err := s.executeChatTurn(ctx, sessionID, requestID, state, callbacks)
+	if planMode {
+		state.contextMessages = append(state.contextMessages, llmsvc.ChatMessage{
+			Role:    "system",
+			Content: planModeSystemMessage,
+		})
+	}
+
+	result, err := s.executeChatTurn(ctx, sessionID, requestID, state, callbacks, planMode)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.finalizeChatTurn(ctx, sessionID, requestID, state, result)
+	return s.finalizeChatTurn(ctx, sessionID, requestID, state, result, planMode)
 }
 
 // prepareChatTurn validates input, resolves model config, saves user message, builds context in parallel.
@@ -169,6 +177,7 @@ func (s *ChatService) executeChatTurn(
 	requestID string,
 	state *chatTurnState,
 	callbacks AgentCallbacks,
+	planMode bool,
 ) (*chatTurnResult, error) {
 	parser := newTitleStreamParser(!state.session.IsTitleLocked)
 	accumulator := &chatStreamAccumulator{}
@@ -271,7 +280,7 @@ func (s *ChatService) executeChatTurn(
 	}
 
 	agentStart := time.Now()
-	answer, err := s.agent.RunAgentLoop(ctx, state.modelConfig, sessionID, state.contextMessages, state.enabledMCPConfigs, activatedSkills, agentCallbacks, AgentLoopOptions{ApprovalMode: approvalMode})
+	answer, err := s.agent.RunAgentLoop(ctx, state.modelConfig, sessionID, state.contextMessages, state.enabledMCPConfigs, activatedSkills, agentCallbacks, AgentLoopOptions{ApprovalMode: approvalMode, PlanMode: planMode})
 	logging.Span("agent_loop", agentStart)
 	s.mergeSessionActivatedSkills(sessionID, activatedSkills)
 
@@ -319,13 +328,14 @@ func (s *ChatService) executeChatTurn(
 	}, nil
 }
 
-// finalizeChatTurn persists assistant message, updates title, enqueues memory.
+// finalizeChatTurn persists assistant message, updates title, enqueues memory, saves plan if applicable.
 func (s *ChatService) finalizeChatTurn(
 	ctx context.Context,
 	sessionID string,
 	requestID string,
 	state *chatTurnState,
 	result *chatTurnResult,
+	planMode bool,
 ) (*ChatStreamResult, error) {
 	assistantMessage, err := s.store.AddMessageWithInput(ctx, domain.AddMessageInput{
 		SessionID:         sessionID,
@@ -355,6 +365,23 @@ func (s *ChatService) finalizeChatTurn(
 	} else if s.memory != nil {
 		logging.Info("memory_enqueue_skipped", "session", sessionID, "reason", "empty_or_unparsed")
 	}
+
+	if planMode && s.planService != nil && strings.TrimSpace(result.answer) != "" {
+		title := "Plan"
+		for _, line := range strings.Split(result.answer, "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "# ") {
+				title = strings.TrimSpace(strings.TrimPrefix(line, "# "))
+				break
+			}
+		}
+		if _, saveErr := s.planService.SavePlan(sessionID, title, result.answer); saveErr != nil {
+			logging.Info("plan_save_error", "session", sessionID, "error", saveErr.Error())
+		} else {
+			logging.Info("plan_saved", "session", sessionID)
+		}
+	}
+
 	if result.pushErr != nil {
 		streamResult.PushFailed = true
 		streamResult.PushError = result.pushErr.Error()
@@ -388,3 +415,20 @@ func (s *ChatService) applySessionTitleUpdate(ctx context.Context, store session
 	}
 	return nil
 }
+
+const planModeSystemMessage = `## Plan Mode Active
+
+You are currently in PLAN MODE. Your task is to analyze the user's request and create a detailed implementation plan.
+
+Rules:
+1. You MUST NOT execute any tools that modify files, run commands, or change system state.
+2. You MAY use read-only tools (web_search for research, search_memory for context) ONLY to gather information needed for planning.
+3. Your response MUST be a structured markdown plan with these sections:
+   - **Background**: Context and motivation
+   - **Analysis**: Current state assessment
+   - **Steps**: Numbered implementation steps with file paths and code references
+   - **Risks**: Potential issues and mitigations
+   - **Expected Outcome**: What success looks like
+4. Be specific: include file paths, function names, and concrete actions in each step.
+5. Do NOT write any implementation code — only describe what needs to be done.
+6. End your response with a clear summary the user can review and approve or reject.`

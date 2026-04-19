@@ -76,6 +76,7 @@ type HTTPController struct {
 	llmConfigs   llmConfigService
 	mcpConfigs   mcpConfigService
 	platforms    messagePlatformConfigService
+	plans        planService
 	tokenManager *auth.TokenManager
 }
 
@@ -87,6 +88,7 @@ func NewHTTPController(
 	llmConfigsService llmConfigService,
 	mcpConfigsService mcpConfigService,
 	platformsService messagePlatformConfigService,
+	plansService planService,
 	skillPackage skillPackageService,
 	skillRuntime skillRuntimeService,
 	chatUploads chatUploadService,
@@ -102,6 +104,7 @@ func NewHTTPController(
 		llmConfigs:   llmConfigsService,
 		mcpConfigs:   mcpConfigsService,
 		platforms:    platformsService,
+		plans:        plansService,
 		tokenManager: tokenManager,
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"slimebot/internal/mcp"
 	llmsvc "slimebot/internal/services/llm"
 	memsvc "slimebot/internal/services/memory"
+	plansvc "slimebot/internal/services/plan"
 	skillsvc "slimebot/internal/services/skill"
 )
 
@@ -19,6 +20,7 @@ type ChatService struct {
 	agent          *AgentService
 	skillRuntime   *skillsvc.SkillRuntimeService
 	memory         *memsvc.MemoryService
+	planService    *plansvc.PlanService
 	uploads        *ChatUploadService
 	skillsMu       sync.Mutex
 	skillsBySess   map[string]map[string]struct{}
@@ -71,6 +73,11 @@ func NewChatService(store domain.ChatStore, settingsStore domain.SettingsStore, 
 // SetUploadService injects the upload staging service for one-turn consume/cleanup.
 func (s *ChatService) SetUploadService(uploads *ChatUploadService) {
 	s.uploads = uploads
+}
+
+// SetPlanService injects the plan service for plan mode file management.
+func (s *ChatService) SetPlanService(ps *plansvc.PlanService) {
+	s.planService = ps
 }
 
 // SetRunContext injects deployment/runtime info for the system prompt environment section.
