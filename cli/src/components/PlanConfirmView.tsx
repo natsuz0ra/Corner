@@ -1,68 +1,79 @@
 /**
  * PlanConfirmView — plan confirmation dialog for CLI.
- * Shows three options (Execute, Modify, Cancel) with arrow key navigation.
+ * Two options: Execute Plan + Feedback input, ESC to cancel.
  */
 
 import React from "react";
 import { Box, Text } from "ink";
+import { TextInput } from "./TextInput.js";
 
-const OPTIONS = [
-  { label: "Execute Plan", color: "green" as const },
-  { label: "Modify Plan", color: "yellow" as const },
-  { label: "Cancel", color: "red" as const },
-];
+const PLACEHOLDER = "Type feedback to modify plan...";
 
 interface PlanConfirmViewProps {
   cursor: number;
-  modifying: boolean;
-  modifyInput: string;
+  feedback: string;
+  feedbackKey: number;
+  onFeedbackChange: (value: string) => void;
+  onFeedbackSubmit: (value: string) => void;
+  onEscape: () => void;
+  columns: number;
 }
 
 export function PlanConfirmView({
   cursor,
-  modifying,
-  modifyInput,
+  feedback,
+  feedbackKey,
+  onFeedbackChange,
+  onFeedbackSubmit,
+  onEscape,
+  columns,
 }: PlanConfirmViewProps): React.ReactElement {
-  if (modifying) {
-    return (
-      <Box flexDirection="column">
-        <Text bold color="cyan">
-          Modify Plan — Enter your feedback
-        </Text>
-        <Text color="gray">
-          Type your feedback below, Enter to submit, Esc to go back.
-        </Text>
-        <Text>
-          {"> "}
-          <Text color="white">{modifyInput}</Text>
-          <Text color="gray">_</Text>
-        </Text>
-      </Box>
-    );
-  }
+  const inputFocused = cursor === 1;
 
   return (
     <Box flexDirection="column">
       <Text bold color="cyan">
         Plan Generated — Choose an action
       </Text>
-      {OPTIONS.map((opt, i) => (
-        <Text key={opt.label}>
-          {i === cursor ? (
-            <Text bold color={opt.color}>
-              {"  > "}
-              {opt.label}
+      <Text>
+        {cursor === 0 ? (
+          <Text bold color="green">
+            {"  > 1. Execute Plan"}
+          </Text>
+        ) : (
+          <Text color="gray">
+            {"    1. Execute Plan"}
+          </Text>
+        )}
+      </Text>
+      <Box>
+        {inputFocused ? (
+          <Text>
+            <Text bold color="yellow">
+              {"  > 2. "}
             </Text>
-          ) : (
-            <Text color="gray">
-              {"    "}
-              {opt.label}
-            </Text>
-          )}
-        </Text>
-      ))}
+          </Text>
+        ) : (
+          <Text color="gray">
+            {"    2. "}
+          </Text>
+        )}
+        {inputFocused ? (
+          <TextInput
+            key={feedbackKey}
+            value={feedback}
+            onChange={onFeedbackChange}
+            onSubmit={onFeedbackSubmit}
+            onEscape={onEscape}
+            focus={true}
+            columns={Math.max(20, columns - 8)}
+          />
+        ) : (
+          <Text color="gray">{feedback || PLACEHOLDER}</Text>
+        )}
+      </Box>
       <Text color="gray">
-        Arrow keys to navigate, Enter to select, Esc to cancel
+        Arrow keys to navigate | Enter to select | Esc to cancel
       </Text>
     </Box>
   );

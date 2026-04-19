@@ -284,7 +284,6 @@ export interface AppState {
   pendingPlanId: string;
   pendingPlanContent: string;
   planConfirmCursor: number;
-  planConfirmModifying: boolean;
   planModifyInput: string;
   planModifyInputKey: number;
 
@@ -343,8 +342,6 @@ export type AppAction =
   | { type: "TOGGLE_PLAN_MODE" }
   | { type: "SET_PLAN_CONFIRMATION"; planId: string; content: string }
   | { type: "PLAN_CONFIRM_NAV"; delta: number }
-  | { type: "PLAN_CONFIRM_START_MODIFY" }
-  | { type: "PLAN_CONFIRM_CANCEL_MODIFY" }
   | { type: "SET_PLAN_MODIFY_INPUT"; value: string }
   | { type: "CLEAR_PLAN_CONFIRMATION" }
   | { type: "VIEW_THINKING_DETAIL"; content: string }
