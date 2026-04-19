@@ -847,11 +847,13 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     }
 
     if (state.view === "plan-confirm") {
-      if (state.planConfirmModifying) {
-        if (key.escape) {
-          dispatch({ type: "PLAN_CONFIRM_CANCEL_MODIFY" } as AppAction);
+      // When input is focused (cursor=1), TextInput handles keys except nav
+      if (state.planConfirmCursor === 1) {
+        if (key.upArrow) {
+          dispatch({ type: "PLAN_CONFIRM_NAV", delta: -1 } as AppAction);
           return;
         }
+        // Let TextInput handle Enter, Escape, and typing
         return;
       }
       if (key.upArrow) {
@@ -863,24 +865,12 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         return;
       }
       if (key.return) {
-        switch (state.planConfirmCursor) {
-          case 0: // Execute
-            socketRef.current?.sendPlanApprove(
-              state.pendingPlanId, state.sessionId, state.modelId,
-            );
-            dispatch({ type: "TOGGLE_PLAN_MODE" } as AppAction);
-            dispatch({ type: "CLEAR_PLAN_CONFIRMATION" } as AppAction);
-            break;
-          case 1: // Modify
-            dispatch({ type: "PLAN_CONFIRM_START_MODIFY" } as AppAction);
-            break;
-          case 2: // Cancel
-            socketRef.current?.sendPlanReject(
-              state.pendingPlanId, state.sessionId,
-            );
-            dispatch({ type: "CLEAR_PLAN_CONFIRMATION" } as AppAction);
-            break;
-        }
+        // cursor=0: Execute Plan
+        socketRef.current?.sendPlanApprove(
+          state.pendingPlanId, state.sessionId, state.modelId,
+        );
+        dispatch({ type: "TOGGLE_PLAN_MODE" } as AppAction);
+        dispatch({ type: "CLEAR_PLAN_CONFIRMATION" } as AppAction);
         return;
       }
       if (key.escape) {
@@ -1121,42 +1111,29 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         />
       )}
 
-      {state.view === "plan-confirm" && !state.planConfirmModifying && (
+      {state.view === "plan-confirm" && (
         <PlanConfirmView
           cursor={state.planConfirmCursor}
-          modifying={false}
-          modifyInput=""
+          feedback={state.planModifyInput}
+          feedbackKey={state.planModifyInputKey}
+          onFeedbackChange={(value) => dispatch({ type: "SET_PLAN_MODIFY_INPUT", value } as AppAction)}
+          onFeedbackSubmit={(rawValue) => {
+            const feedback = rawValue.trim();
+            if (!feedback) return;
+            socketRef.current?.sendPlanModify(
+              state.pendingPlanId, state.sessionId, state.modelId,
+              feedback, state.thinkingLevel,
+            );
+            dispatch({ type: "CLEAR_PLAN_CONFIRMATION" } as AppAction);
+          }}
+          onEscape={() => {
+            socketRef.current?.sendPlanReject(
+              state.pendingPlanId, state.sessionId,
+            );
+            dispatch({ type: "CLEAR_PLAN_CONFIRMATION" } as AppAction);
+          }}
+          columns={width}
         />
-      )}
-
-      {state.view === "plan-confirm" && state.planConfirmModifying && (
-        <Box flexDirection="column">
-          <PlanConfirmView
-            cursor={state.planConfirmCursor}
-            modifying={true}
-            modifyInput={state.planModifyInput}
-          />
-          <Box>
-            <Text bold color="white">{"❯ "}</Text>
-            <TextInput
-              key={state.planModifyInputKey}
-              value={state.planModifyInput}
-              onChange={(value) => dispatch({ type: "SET_PLAN_MODIFY_INPUT", value } as AppAction)}
-              onSubmit={(rawValue) => {
-                const feedback = rawValue.trim();
-                if (feedback) {
-                  socketRef.current?.sendPlanModify(
-                    state.pendingPlanId, state.sessionId, state.modelId,
-                    feedback, state.thinkingLevel,
-                  );
-                }
-                dispatch({ type: "CLEAR_PLAN_CONFIRMATION" } as AppAction);
-              }}
-              focus={true}
-              columns={Math.max(20, width - 3)}
-            />
-          </Box>
-        </Box>
       )}
 
       {state.view === "thinking-detail" && (
@@ -1252,15 +1229,9 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         </Text>
       )}
 
-      {state.view === "plan-confirm" && !state.planConfirmModifying && (
+      {state.view === "plan-confirm" && (
         <Text color="gray" dimColor>
           Arrow keys to navigate | Enter to select | Esc to cancel
-        </Text>
-      )}
-
-      {state.view === "plan-confirm" && state.planConfirmModifying && (
-        <Text color="gray" dimColor>
-          Type feedback, Enter to submit | Esc to go back
         </Text>
       )}
 

@@ -63,7 +63,6 @@ export function createInitialState(
     pendingPlanId: "",
     pendingPlanContent: "",
     planConfirmCursor: 0,
-    planConfirmModifying: false,
     planModifyInput: "",
     planModifyInputKey: 0,
     apiURL,
@@ -414,21 +413,14 @@ export function reducer(state: AppState, action: AppAction): AppState {
         pendingPlanId: action.planId,
         pendingPlanContent: action.content,
         planConfirmCursor: 0,
-        planConfirmModifying: false,
         planModifyInput: "",
       };
 
     case "PLAN_CONFIRM_NAV": {
-      const opts = 3;
+      const opts = 2;
       const newCursor = Math.max(0, Math.min(opts - 1, state.planConfirmCursor + action.delta));
       return { ...state, planConfirmCursor: newCursor };
     }
-
-    case "PLAN_CONFIRM_START_MODIFY":
-      return { ...state, planConfirmModifying: true, planModifyInput: "", planModifyInputKey: state.planModifyInputKey + 1 };
-
-    case "PLAN_CONFIRM_CANCEL_MODIFY":
-      return { ...state, planConfirmModifying: false, planModifyInput: "" };
 
     case "SET_PLAN_MODIFY_INPUT":
       return { ...state, planModifyInput: action.value };
@@ -440,7 +432,6 @@ export function reducer(state: AppState, action: AppAction): AppState {
         pendingPlanId: "",
         pendingPlanContent: "",
         planConfirmCursor: 0,
-        planConfirmModifying: false,
         planModifyInput: "",
       };
 
