@@ -147,6 +147,8 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
   const blinkRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionRef = useRef({ id: "", name: "" });
   const liveAssistantRef = useRef("");
+  const planModeRef = useRef(false);
+  const planStartedRef = useRef(false);
   const clearScreenDeferred = useCallback(() => {
     setImmediate(() => clearScreen());
   }, []);
@@ -166,6 +168,10 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
   useEffect(() => {
     liveAssistantRef.current = state.liveAssistant;
   }, [state.liveAssistant]);
+
+  useEffect(() => {
+    planModeRef.current = state.planMode;
+  }, [state.planMode]);
 
   const refreshSessionName = useCallback(async (sessionId: string) => {
     if (!sessionId) {
@@ -709,6 +715,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         void refreshSessionName(sessionId);
       },
       onStart: () => {
+        planStartedRef.current = false;
         dispatch({ type: "STREAM_START" } as AppAction);
       },
       onChunk: (chunk) => {
@@ -737,7 +744,15 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       },
       onToolCallStart: (data: ToolCallStartData) => {
         // Flush preamble text to timeline before tool entry
+        const hadLiveText = !!liveAssistantRef.current.trim();
         dispatch({ type: "FLUSH_AND_WAIT" } as AppAction);
+        // Fallback: if streamed text was incomplete/missing, use preamble from tool_call_start
+        if (!hadLiveText && data.preamble?.trim()) {
+          dispatch({
+            type: "APPEND_ENTRY",
+            entry: { kind: "assistant", content: data.preamble.trim() },
+          } as AppAction);
+        }
         dispatch({
           type: "UPSERT_TOOL_ENTRY",
           entry: {
@@ -800,6 +815,10 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       },
       onPlanBody: (content: string) => {
         dispatch({ type: "PLAN_BODY", planBody: content } as AppAction);
+      },
+      onPlanStart: () => {
+        planStartedRef.current = true;
+        dispatch({ type: "PLAN_START" } as AppAction);
       },
     });
 

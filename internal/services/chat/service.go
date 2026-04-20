@@ -39,8 +39,11 @@ type ChatService struct {
 
 // chatStreamAccumulator collects streamed text and the first push error, if any.
 type chatStreamAccumulator struct {
-	answerBuilder strings.Builder
-	pushErr       error
+	answerBuilder    strings.Builder
+	narrationBuilder strings.Builder // plan mode: text before plan_start
+	planBodyBuilder  strings.Builder // plan mode: text after plan_start
+	planStarted      bool            // plan mode: set true when plan_start tool called
+	pushErr          error
 }
 
 // ChatStreamResult is the outcome of one chat stream after persistence.

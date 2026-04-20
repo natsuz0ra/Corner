@@ -345,5 +345,6 @@ export type AppAction =
   | { type: "SET_PLAN_MODIFY_INPUT"; value: string }
   | { type: "CLEAR_PLAN_CONFIRMATION" }
   | { type: "PLAN_BODY"; planBody: string; narration?: string }
+  | { type: "PLAN_START" }
   | { type: "VIEW_THINKING_DETAIL"; content: string }
   | { type: "FLUSH_AND_WAIT" };

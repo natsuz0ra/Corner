@@ -196,6 +196,11 @@ func (s *ChatService) executeChatTurn(
 			return nil
 		}
 		if planMode {
+			if accumulator.planStarted {
+				accumulator.planBodyBuilder.WriteString(body)
+			} else {
+				accumulator.narrationBuilder.WriteString(body)
+			}
 			return nil // plan mode: buffer only, send after loop completes
 		}
 		if err := callbacks.OnChunk(body); err != nil {
@@ -274,6 +279,10 @@ func (s *ChatService) executeChatTurn(
 			}
 			return callbacks.OnThinkingDone()
 		},
+		OnPlanStart: func() error {
+			accumulator.planStarted = true
+			return nil
+		},
 	}
 
 	activatedSkills := s.getSessionActivatedSkills(sessionID)
@@ -312,10 +321,18 @@ func (s *ChatService) executeChatTurn(
 
 	if planMode {
 		accumulated := strings.TrimSpace(accumulator.answerBuilder.String())
-		narration, planBody := splitNarrationAndPlan(accumulated)
+		finalAnswer = accumulated
+
+		var narration, planBody string
+		if accumulator.planStarted {
+			narration = strings.TrimSpace(accumulator.narrationBuilder.String())
+			planBody = accumulator.planBodyBuilder.String()
+		} else {
+			// Fallback: model did not call plan_start, use heuristic split.
+			narration, planBody = splitNarrationAndPlan(accumulated)
+		}
 		resultNarration = narration
 		resultPlanBody = planBody
-		finalAnswer = accumulated
 
 		// Send narration as a single chunk (non-streaming)
 		if narration != "" && callbacks.OnChunk != nil {
@@ -479,18 +496,20 @@ Analyze the user's request and create a detailed implementation plan.
 
 1. **Research** — Use read-only tools (web_search, search_memory) ONLY to gather information.
 2. **Analyze** — Assess the current state and identify what needs to change.
-3. **Plan** — Create a structured markdown plan with:
+3. **Begin Plan** — Call the plan_start tool when you are ready to begin writing your plan. All text output BEFORE this call will appear as narration; all text AFTER will be the plan body. You MUST call this before writing your plan.
+4. **Plan** — Create a structured markdown plan with:
    - **Background**: Context and motivation
    - **Analysis**: Current state assessment
    - **Steps**: Numbered implementation steps with file paths and code references
    - **Risks**: Potential issues and mitigations
    - **Expected Outcome**: What success looks like
-4. **Submit** — When your complete plan has been written, call the plan_complete__submit tool. You MUST call this tool when finished — without it the user will not see the review menu.
+5. **Submit** — When your complete plan has been written, call the plan_complete__submit tool. You MUST call this tool when finished — without it the user will not see the review menu.
 
 ## Rules
 
 - You MUST NOT write implementation code — only describe what needs to be done.
 - You MUST NOT execute any commands or modify any files.
 - Be specific: include file paths, function names, and concrete actions in each step.
+- You MUST call plan_start before writing your plan.
 - You MUST call plan_complete__submit when your plan is complete.
-- Only web_search, search_memory, and plan_complete__submit tools are available.`
+- Only web_search, search_memory, plan_start, and plan_complete__submit tools are available.`

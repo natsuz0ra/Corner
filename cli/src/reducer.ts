@@ -125,7 +125,9 @@ export function reducer(state: AppState, action: AppAction): AppState {
 
     case "STREAM_DONE": {
       const entries = [...state.timeline];
-      if (state.liveAssistant.trim()) {
+      // In plan mode, PLAN_BODY already flushed liveAssistant — skip to avoid duplicate
+      const hasPlanEntry = entries.some((e) => e.kind === "plan");
+      if (!hasPlanEntry && state.liveAssistant.trim()) {
         entries.push({
           kind: "assistant",
           content: state.liveAssistant,
@@ -436,8 +438,20 @@ export function reducer(state: AppState, action: AppAction): AppState {
         planModifyInput: "",
       };
 
+    case "PLAN_START": {
+      const entries = [...state.timeline];
+      if (state.liveAssistant.trim()) {
+        entries.push({ kind: "assistant", content: state.liveAssistant });
+      }
+      return { ...state, timeline: entries, liveAssistant: "" };
+    }
+
     case "PLAN_BODY": {
       const entries = [...state.timeline];
+      // Flush liveAssistant (narration chunk) as assistant entry before splitting
+      if (state.liveAssistant.trim()) {
+        entries.push({ kind: "assistant", content: state.liveAssistant });
+      }
       // Find the last assistant entry and trim it to narration only
       for (let i = entries.length - 1; i >= 0; i--) {
         if (entries[i].kind === "assistant") {
@@ -452,7 +466,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
       }
       // Append plan entry
       entries.push({ kind: "plan", content: action.planBody });
-      return { ...state, timeline: entries };
+      return { ...state, timeline: entries, liveAssistant: "" };
     }
 
     case "FLUSH_AND_WAIT": {
