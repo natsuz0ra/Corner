@@ -64,6 +64,7 @@ type AgentCallbacks struct {
 	OnThinkingStart  func() error
 	OnThinkingChunk  func(chunk string) error
 	OnThinkingDone   func() error
+	OnPlanStart      func() error                // plan writing phase has begun
 	OnPlanBody       func(planBody string) error // send complete plan body (non-streaming, plan mode only)
 }
 
@@ -72,6 +73,7 @@ type AgentLoopOptions struct {
 	Depth        int
 	ApprovalMode string
 	PlanMode     bool
+	PlanStarted  *bool // set to true when plan_start tool is called
 	PlanComplete *bool // set to true when plan_complete tool is called
 }
 
@@ -195,6 +197,17 @@ func buildPlanCompleteToolDef() llmsvc.ToolDef {
 					"description": "Short title for the plan. Omit to auto-detect from the first heading.",
 				},
 			},
+		},
+	}
+}
+
+func buildPlanStartToolDef() llmsvc.ToolDef {
+	return llmsvc.ToolDef{
+		Name:        constants.PlanStartTool,
+		Description: "[plan] Call this tool when you are ready to begin writing your plan. All text output BEFORE this call will appear as narration; all text AFTER will be the plan body. You MUST call this before writing your plan.",
+		Parameters: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
 		},
 	}
 }
@@ -355,6 +368,7 @@ func (a *AgentService) RunAgentLoop(
 	if opts.PlanMode {
 		toolDefs = filterPlanModeToolDefs(toolDefs)
 		mcpToolMeta = filterPlanModeMCPMeta(mcpToolMeta)
+		toolDefs = append(toolDefs, buildPlanStartToolDef())
 		toolDefs = append(toolDefs, buildPlanCompleteToolDef())
 	}
 	messages := make([]llmsvc.ChatMessage, len(contextMessages))
@@ -403,6 +417,20 @@ func (a *AgentService) RunAgentLoop(
 		preamble := strings.TrimSpace(result.AssistantMessage.Content)
 
 		for _, tc := range result.ToolCalls {
+			// Handle plan_start: signal transition from research to plan writing.
+			if tc.Name == constants.PlanStartTool {
+				if opts.PlanStarted != nil {
+					*opts.PlanStarted = true
+				}
+				if callbacks.OnPlanStart != nil {
+					if err := callbacks.OnPlanStart(); err != nil {
+						return "", fmt.Errorf("OnPlanStart callback failed: %w", err)
+					}
+				}
+				messages = appendToolMessage(messages, tc.ID, "Plan writing phase started.")
+				continue
+			}
+
 			// Handle plan_complete: signal plan completion and skip regular execution.
 			if tc.Name == constants.PlanCompleteTool {
 				if opts.PlanComplete != nil {
@@ -494,9 +522,9 @@ func (a *AgentService) RunAgentLoop(
 
 // isPlanModeAllowedTool returns true if the tool function name is allowed in plan mode.
 func isPlanModeAllowedTool(funcName string) bool {
-	// Handle tools without __ separator (e.g. search_memory, plan_complete__submit).
+	// Handle tools without __ separator (e.g. search_memory, plan_start).
 	switch funcName {
-	case "search_memory":
+	case "search_memory", "plan_start":
 		return true
 	}
 	// Handle tools with __ separator (e.g. web_search__search, plan_complete__submit).

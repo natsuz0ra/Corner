@@ -561,6 +561,25 @@ func (w *Controller) buildCallbacks(
 			}
 			return nil
 		},
+		OnPlanStart: func() error {
+			if !enqueue(map[string]any{
+				"type":      "plan_start",
+				"sessionId": sessionID,
+			}) {
+				return context.Canceled
+			}
+			return nil
+		},
+		OnPlanBody: func(planBody string) error {
+			if !enqueue(map[string]any{
+				"type":      "plan_body",
+				"sessionId": sessionID,
+				"content":   planBody,
+			}) {
+				return context.Canceled
+			}
+			return nil
+		},
 	}
 }
 

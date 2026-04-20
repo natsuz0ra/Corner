@@ -22,6 +22,7 @@ export interface WSHandlers {
   onThinkingChunk?: (chunk: string) => void;
   onThinkingDone?: () => void;
   onPlanBody?: (content: string, sessionId?: string) => void;
+  onPlanStart?: () => void;
 }
 
 interface WSIncoming {
@@ -157,6 +158,9 @@ export class CLISocket {
 
       if (msg.type === "plan_body") {
         this.handlers?.onPlanBody?.(msg.content || "", msg.sessionId);
+      }
+      if (msg.type === "plan_start") {
+        this.handlers?.onPlanStart?.();
       }
     });
 
