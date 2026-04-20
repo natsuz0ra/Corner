@@ -54,6 +54,8 @@ type ChatStreamResult struct {
 	PushFailed        bool
 	PushError         string
 	PlanID            string
+	Narration         string // text before the first heading in plan mode
+	PlanBody          string // text from the first heading onwards in plan mode
 }
 
 // NewChatService constructs ChatService with per-session skill activation maps.

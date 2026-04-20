@@ -32,6 +32,8 @@ type chatTurnResult struct {
 	title         string
 	memoryPayload string
 	pushErr       error
+	narration     string
+	planBody      string
 }
 
 // HandleChatStream runs one full turn: persist user message, build context, run agent, save assistant.
@@ -193,6 +195,9 @@ func (s *ChatService) executeChatTurn(
 		if accumulator.pushErr != nil {
 			return nil
 		}
+		if planMode {
+			return nil // plan mode: buffer only, send after loop completes
+		}
 		if err := callbacks.OnChunk(body); err != nil {
 			accumulator.pushErr = err
 		}
@@ -302,9 +307,28 @@ func (s *ChatService) executeChatTurn(
 	}
 
 	var finalAnswer string
+	var resultNarration string
+	var resultPlanBody string
+
 	if planMode {
-		// In plan mode, use accumulated streamed text which includes all iterations.
-		finalAnswer = strings.TrimSpace(accumulator.answerBuilder.String())
+		accumulated := strings.TrimSpace(accumulator.answerBuilder.String())
+		narration, planBody := splitNarrationAndPlan(accumulated)
+		resultNarration = narration
+		resultPlanBody = planBody
+		finalAnswer = accumulated
+
+		// Send narration as a single chunk (non-streaming)
+		if narration != "" && callbacks.OnChunk != nil {
+			if sendErr := callbacks.OnChunk(narration + "\n"); sendErr != nil && !interrupted {
+				return nil, sendErr
+			}
+		}
+		// Send plan body via OnPlanBody (non-streaming)
+		if planBody != "" && callbacks.OnPlanBody != nil {
+			if sendErr := callbacks.OnPlanBody(planBody); sendErr != nil && !interrupted {
+				return nil, sendErr
+			}
+		}
 	} else {
 		finalAnswer = answer
 		if strings.TrimSpace(finalAnswer) == "" {
@@ -334,6 +358,8 @@ func (s *ChatService) executeChatTurn(
 		title:         title,
 		memoryPayload: memoryPayload,
 		pushErr:       accumulator.pushErr,
+		narration:     resultNarration,
+		planBody:      resultPlanBody,
 	}, nil
 }
 
@@ -364,6 +390,8 @@ func (s *ChatService) finalizeChatTurn(
 		Answer:            result.answer,
 		IsInterrupted:     result.interrupted,
 		IsStopPlaceholder: result.interrupted && strings.TrimSpace(result.answer) == "",
+		Narration:         result.narration,
+		PlanBody:          result.planBody,
 	}
 	if err := s.applySessionTitleUpdate(ctx, s.store, state.session, result.title, streamResult); err != nil {
 		return nil, err
@@ -424,6 +452,21 @@ func (s *ChatService) applySessionTitleUpdate(ctx context.Context, store session
 		result.Title = title
 	}
 	return nil
+}
+
+// splitNarrationAndPlan splits accumulated plan text into narration (before first heading)
+// and plan body (from first heading onwards). Returns (narration, planBody).
+// If no heading is found, returns ("", fullText).
+func splitNarrationAndPlan(fullText string) (string, string) {
+	lines := strings.Split(fullText, "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "# ") {
+			narration := strings.TrimSpace(strings.Join(lines[:i], "\n"))
+			planBody := strings.Join(lines[i:], "\n")
+			return narration, planBody
+		}
+	}
+	return "", fullText
 }
 
 const planModeSystemMessage = `Plan mode is active. The user indicated that they do not want you to execute yet — you MUST NOT make any edits, run any commands, or otherwise make any changes to the system. This supersedes any other instructions you have received.

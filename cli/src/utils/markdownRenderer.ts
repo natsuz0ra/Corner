@@ -236,6 +236,7 @@ export function renderMarkdownLines(
   content: string,
   maxWidth: number,
   compact = false,
+  preserveTrailingBlanks = false,
 ): string[] {
   configureMarked();
 
@@ -266,8 +267,10 @@ export function renderMarkdownLines(
 
   flushBuffer();
 
-  while (lines.length > 1 && lines[lines.length - 1] === "") {
-    lines.pop();
+  if (!preserveTrailingBlanks) {
+    while (lines.length > 1 && lines[lines.length - 1] === "") {
+      lines.pop();
+    }
   }
   return lines.length > 0 ? lines : [""];
 }

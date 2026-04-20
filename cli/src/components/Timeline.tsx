@@ -148,6 +148,31 @@ function StreamingMarkdown({
   );
 }
 
+function PlanBlock({ content, maxWidth }: { content: string; maxWidth: number }): React.ReactElement {
+  const innerWidth = Math.max(1, maxWidth - 4);
+  const lines = useMemo(
+    () => renderMarkdownLines(content, innerWidth, false, true),
+    [content, innerWidth],
+  );
+  const borderColor = "#22d3ee";
+  const headerLabel = "Plan";
+  const topContent = `${headerLabel} ${"─".repeat(Math.max(0, innerWidth - headerLabel.length - 1))}`;
+  const bottomWidth = Math.max(0, innerWidth + 1);
+
+  return (
+    <Box flexDirection="column">
+      <Text color={borderColor} bold>{`┌─ ${topContent}`}</Text>
+      {lines.map((line, i) => (
+        <Text key={i}>
+          <Text color={borderColor}>{"│ "}</Text>
+          <Text>{line}</Text>
+        </Text>
+      ))}
+      <Text color={borderColor}>{`└${"─".repeat(bottomWidth)}┘`}</Text>
+    </Box>
+  );
+}
+
 function parentToolEntryExists(entries: TimelineEntry[], parentId: string): boolean {
   return entries.some((e) => e.kind === "tool" && e.toolCallId === parentId);
 }
@@ -221,6 +246,10 @@ function TimelineBlock({
   nestedUnderParent?: boolean;
   thinkingNumber?: number;
 }): React.ReactElement {
+  if (entry.kind === "plan") {
+    return <PlanBlock content={entry.content} maxWidth={maxWidth} />;
+  }
+
   if (entry.kind === "user") {
     const lines = entry.content.split("\n");
     return (
