@@ -64,6 +64,7 @@ type AgentCallbacks struct {
 	OnThinkingStart  func() error
 	OnThinkingChunk  func(chunk string) error
 	OnThinkingDone   func() error
+	OnPlanBody       func(planBody string) error // send complete plan body (non-streaming, plan mode only)
 }
 
 // AgentLoopOptions configures nested agent execution.

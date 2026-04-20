@@ -12,7 +12,7 @@ export interface WSHandlers {
   onChunk: (chunk: string, sessionId?: string) => void;
   onDone: (
     sessionId?: string,
-    meta?: { isInterrupted?: boolean; isStopPlaceholder?: boolean; planId?: string },
+    meta?: { isInterrupted?: boolean; isStopPlaceholder?: boolean; planId?: string; planBody?: string; narration?: string },
   ) => void;
   onError: (error: string, sessionId?: string) => void;
   onToolCallStart?: (data: ToolCallStartData, sessionId?: string) => void;
@@ -21,6 +21,7 @@ export interface WSHandlers {
   onThinkingStart?: () => void;
   onThinkingChunk?: (chunk: string) => void;
   onThinkingDone?: () => void;
+  onPlanBody?: (content: string, sessionId?: string) => void;
 }
 
 interface WSIncoming {
@@ -43,6 +44,8 @@ interface WSIncoming {
   parentToolCallId?: string;
   subagentRunId?: string;
   planId?: string;
+  planBody?: string;
+  narration?: string;
 }
 
 export class CLISocket {
@@ -91,6 +94,8 @@ export class CLISocket {
           isInterrupted: msg.isInterrupted,
           isStopPlaceholder: msg.isStopPlaceholder,
           planId: msg.planId,
+          planBody: msg.planBody,
+          narration: msg.narration,
         });
       }
       if (msg.type === "error")
@@ -148,6 +153,10 @@ export class CLISocket {
       }
       if (msg.type === "thinking_done") {
         this.handlers?.onThinkingDone?.();
+      }
+
+      if (msg.type === "plan_body") {
+        this.handlers?.onPlanBody?.(msg.content || "", msg.sessionId);
       }
     });
 

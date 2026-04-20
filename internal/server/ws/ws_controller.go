@@ -403,6 +403,8 @@ func (w *Controller) handleChatIncoming(
 		donePayload["isStopPlaceholder"] = streamResult.IsStopPlaceholder
 		if streamResult.PlanID != "" {
 			donePayload["planId"] = streamResult.PlanID
+			donePayload["planBody"] = streamResult.PlanBody
+			donePayload["narration"] = streamResult.Narration
 		}
 	}
 	if !enqueue(donePayload) {

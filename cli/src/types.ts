@@ -168,7 +168,7 @@ export const MCP_TEMPLATES: MCPTemplate[] = [
 export type ModelProvider = "openai" | "anthropic";
 
 export interface TimelineEntry {
-  kind: "user" | "assistant" | "system" | "tool" | "thinking";
+  kind: "user" | "assistant" | "system" | "tool" | "thinking" | "plan";
   content: string;
   toolCallId?: string;
   toolName?: string;
@@ -344,5 +344,6 @@ export type AppAction =
   | { type: "PLAN_CONFIRM_NAV"; delta: number }
   | { type: "SET_PLAN_MODIFY_INPUT"; value: string }
   | { type: "CLEAR_PLAN_CONFIRMATION" }
+  | { type: "PLAN_BODY"; planBody: string; narration?: string }
   | { type: "VIEW_THINKING_DETAIL"; content: string }
   | { type: "FLUSH_AND_WAIT" };

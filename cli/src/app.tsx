@@ -22,6 +22,7 @@ import { completeCommand, isCommand } from "./utils/commands.js";
 import { formatTimestamp } from "./utils/format.js";
 import { clearScreen, setTerminalTitle } from "./utils/terminal.js";
 import { CLISocket } from "./ws/socket.js";
+import { splitNarrationAndPlan } from "./utils/planUtils.js";
 import type {
   AppAction,
   AppState,
@@ -111,7 +112,16 @@ export function mapHistoryMessages(
           ...(tc.subagentRunId ? { subagentRunId: tc.subagentRunId } : {}),
         });
       }
-      entries.push({ kind: "assistant", content: msg.content });
+      // Try to split narration from plan body for history display
+      const { narration, planBody } = splitNarrationAndPlan(msg.content);
+      if (planBody && planBody !== msg.content) {
+        if (narration) {
+          entries.push({ kind: "assistant", content: narration });
+        }
+        entries.push({ kind: "plan", content: planBody });
+      } else {
+        entries.push({ kind: "assistant", content: msg.content });
+      }
       continue;
     }
 
@@ -713,7 +723,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           dispatch({
             type: "SET_PLAN_CONFIRMATION",
             planId: meta.planId,
-            content: liveAssistantRef.current || "",
+            content: meta.planBody || liveAssistantRef.current || "",
           } as AppAction);
         }
         const current = sessionRef.current;
@@ -787,6 +797,9 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       },
       onThinkingDone: () => {
         dispatch({ type: "THINKING_DONE" } as AppAction);
+      },
+      onPlanBody: (content: string) => {
+        dispatch({ type: "PLAN_BODY", planBody: content } as AppAction);
       },
     });
 
