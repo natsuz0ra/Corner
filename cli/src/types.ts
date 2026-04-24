@@ -350,7 +350,7 @@ export type AppAction =
   | { type: "LOAD_HISTORY"; entries: TimelineEntry[] }
   | { type: "THINKING_START" }
   | { type: "THINKING_CHUNK"; chunk: string }
-  | { type: "THINKING_DONE" }
+  | { type: "THINKING_DONE"; finishedAt?: number }
   | { type: "TOGGLE_PLAN_MODE" }
   | { type: "SET_PLAN_CONFIRMATION"; planId: string; content: string }
   | { type: "PLAN_CONFIRM_NAV"; delta: number }

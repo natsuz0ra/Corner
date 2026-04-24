@@ -18,6 +18,11 @@ export type AssistantReplyTimelineItem =
       kind: 'text'
       content: string
     }
+  | {
+      id: string
+      kind: 'plan'
+      content: string
+    }
   | { id: string; kind: 'thinking'; content: string; done: boolean; durationMs?: number; startedAt?: number }
 
 export interface AssistantReplyBatch {
@@ -69,8 +74,32 @@ export function buildInterleavedTimeline(
   const thinkingMap = new Map(thinkingRecords.map(item => [item.thinkingId, item]))
   const segments = parseContentMarkers(content)
   const timeline: AssistantReplyTimelineItem[] = []
+  const planParts: string[] = []
+  let inPlan = false
+
+  const pushPlan = () => {
+    const planContent = planParts.join('')
+    if (planContent.trim() !== '') {
+      timeline.push({ id: crypto.randomUUID(), kind: 'plan', content: planContent })
+    }
+    planParts.length = 0
+  }
 
   for (const seg of segments) {
+    if (seg.type === 'plan_start') {
+      if (inPlan) pushPlan()
+      inPlan = true
+      continue
+    }
+    if (seg.type === 'plan_end') {
+      if (inPlan) pushPlan()
+      inPlan = false
+      continue
+    }
+    if (inPlan) {
+      if (seg.type === 'text') planParts.push(seg.content)
+      continue
+    }
     if (seg.type === 'text') {
       timeline.push({ id: crypto.randomUUID(), kind: 'text', content: seg.content })
     } else if (seg.type === 'tool_call_marker' && seg.toolCallId) {
@@ -94,6 +123,7 @@ export function buildInterleavedTimeline(
       }
     }
   }
+  if (inPlan) pushPlan()
 
   // Fallback: append tool calls whose markers are missing
   const markerIds = new Set(segments.filter(s => s.toolCallId).map(s => s.toolCallId))

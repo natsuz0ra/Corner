@@ -70,3 +70,24 @@ test("TOGGLE_TOOL_OUTPUT switches tool output expanded on and off", () => {
   state = reducer(state, { type: "TOGGLE_TOOL_OUTPUT" } as any);
   assert.equal(state.toolOutputExpanded, false);
 });
+
+test("THINKING_DONE stores a fixed thinking duration", () => {
+  const state = {
+    ...initState(),
+    timeline: [
+      {
+        kind: "thinking",
+        content: "reasoning",
+        thinkingDone: false,
+        thinkingStartedAt: 1_000,
+      },
+    ],
+  };
+
+  const next = reducer(state, { type: "THINKING_DONE", finishedAt: 2_750 } as any);
+  const entry = next.timeline[0];
+
+  assert.equal(entry.kind, "thinking");
+  assert.equal(entry.thinkingDone, true);
+  assert.equal(entry.thinkingDurationMs, 1_750);
+});

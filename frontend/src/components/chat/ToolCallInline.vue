@@ -217,13 +217,16 @@ const showNested = computed(() => props.nestedTools.length > 0)
 .inline-tool {
   border-radius: 8px;
   border: 1px solid var(--tool-card-border, rgba(100, 116, 139, 0.15));
-  background: var(--card-bg);
+  background:
+    linear-gradient(90deg, var(--tool-section-bg, rgba(99, 102, 241, 0.04)), transparent),
+    var(--card-bg);
   overflow: hidden;
-  transition: border-color 150ms ease;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .inline-tool:hover {
   border-color: var(--tool-card-border-hover, rgba(100, 116, 139, 0.3));
+  box-shadow: var(--tool-card-shadow-hover, none);
 }
 
 .inline-tool-row {
@@ -231,11 +234,12 @@ const showNested = computed(() => props.nestedTools.length > 0)
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 6px 10px;
+  min-height: 34px;
+  padding: 7px 10px;
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--text-muted, #94a3b8);
+  color: var(--tool-content-text, #64748b);
   font-size: 13px;
   font-weight: 500;
   line-height: 1;
@@ -244,7 +248,7 @@ const showNested = computed(() => props.nestedTools.length > 0)
 }
 
 .inline-tool-row:hover {
-  background: rgba(100, 116, 139, 0.06);
+  background: var(--tool-summary-bg, rgba(100, 116, 139, 0.06));
 }
 
 .inline-tool-row:focus-visible {
@@ -329,10 +333,10 @@ const showNested = computed(() => props.nestedTools.length > 0)
 /* --- Expanded detail --- */
 
 .inline-tool-detail {
-  padding: 0 10px 8px;
+  padding: 0 10px 10px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .inline-section {

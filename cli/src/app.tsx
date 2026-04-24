@@ -923,7 +923,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         dispatch({ type: "THINKING_CHUNK", chunk } as AppAction);
       },
       onThinkingDone: () => {
-        dispatch({ type: "THINKING_DONE" } as AppAction);
+        dispatch({ type: "THINKING_DONE", finishedAt: Date.now() } as AppAction);
       },
       onPlanBody: (content: string) => {
         dispatch({ type: "PLAN_BODY", planBody: content } as AppAction);

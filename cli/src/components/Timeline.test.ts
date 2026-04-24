@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { TimelineEntry } from "../types";
-import { formatToolOutputLines, formatToolParamLines } from "./Timeline";
+import { formatThinkingLabel, formatToolOutputLines, formatToolParamLines } from "./Timeline";
 
 test("formatToolOutputLines aligns tool output with fixed spaces", () => {
   const entry: TimelineEntry = {
@@ -99,4 +99,16 @@ test("formatToolParamLines pretty prints JSON params", () => {
   assert.ok(lines.some((line) => line.includes("command: echo ok")));
   assert.ok(lines.some((line) => line.includes("headers:")));
   assert.ok(lines.some((line) => line.includes("Content-Type")));
+});
+
+test("formatThinkingLabel uses fixed duration after thinking completes", () => {
+  const label = formatThinkingLabel({
+    kind: "thinking",
+    content: "",
+    thinkingDone: true,
+    thinkingStartedAt: 1_000,
+    thinkingDurationMs: 1_750,
+  });
+
+  assert.equal(label, "Thought for 1.8s");
 });

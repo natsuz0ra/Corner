@@ -115,6 +115,16 @@ export function formatToolParamLines(entry: TimelineEntry, maxWidth: number): st
   return result;
 }
 
+export function formatThinkingLabel(entry: TimelineEntry): string {
+  const done = entry.thinkingDone;
+  const duration = done && entry.thinkingDurationMs !== undefined
+    ? (entry.thinkingDurationMs / 1000).toFixed(1) + "s"
+    : done && entry.thinkingStartedAt
+    ? ((Date.now() - entry.thinkingStartedAt) / 1000).toFixed(1) + "s"
+    : "";
+  return done ? `Thought for ${duration}` : "Thinking...";
+}
+
 function StreamingMarkdown({
   content,
   maxWidth,
@@ -285,23 +295,19 @@ function TimelineBlock({
 
   if (entry.kind === "thinking") {
     const done = entry.thinkingDone;
-    const duration = done && entry.thinkingDurationMs !== undefined
-      ? (entry.thinkingDurationMs / 1000).toFixed(1) + "s"
-      : done && entry.thinkingStartedAt
-      ? ((Date.now() - entry.thinkingStartedAt) / 1000).toFixed(1) + "s"
-      : "";
-    const label = done
-      ? `Thought for ${duration}`
-      : "Thinking...";
+    const label = formatThinkingLabel(entry);
     const numPrefix = thinkingNumber !== undefined ? `[${thinkingNumber}] ` : "";
+    const dotColor = done ? "#38bdf8" : "#22d3ee";
+    const labelColor = done ? "#7dd3fc" : "#22d3ee";
+    const indexColor = "#67e8f9";
     return (
       <Text>
-        <Text bold color="#9C27B0">
+        <Text bold color={dotColor}>
           {!done && !blinkOn ? " " : DOT}
         </Text>
         <Text>{" "}</Text>
-        <Text color="gray">{numPrefix}</Text>
-        <Text dimColor>{label}</Text>
+        <Text color={indexColor}>{numPrefix}</Text>
+        <Text color={labelColor} bold={!done}>{label}</Text>
       </Text>
     );
   }
