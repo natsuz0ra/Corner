@@ -143,7 +143,7 @@ const messages = {
     logout: '退出登录',
     forcePasswordChangeTitle: '首次登录请修改密码',
     forcePasswordChangeTip: '为保证账号安全，首次登录后必须修改密码，完成前不可跳过。',
-    thinkingLabel: 'Thinking...',
+    thinkingLabel: '思考中...',
     thoughtFor: '思考了 {duration}',
     toolWaitingApproval: '等待审批',
     toolApprovalTitle: '工具执行审批',

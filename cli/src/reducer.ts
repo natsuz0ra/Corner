@@ -391,7 +391,11 @@ export function reducer(state: AppState, action: AppAction): AppState {
       const entries = [...state.timeline];
       for (let i = entries.length - 1; i >= 0; i--) {
         if (entries[i].kind === "thinking" && !entries[i].thinkingDone) {
-          entries[i] = { ...entries[i], thinkingDone: true };
+          const startedAt = entries[i].thinkingStartedAt;
+          const durationMs = startedAt !== undefined
+            ? Math.max(0, (action.finishedAt ?? Date.now()) - startedAt)
+            : entries[i].thinkingDurationMs;
+          entries[i] = { ...entries[i], thinkingDone: true, thinkingDurationMs: durationMs };
           break;
         }
       }

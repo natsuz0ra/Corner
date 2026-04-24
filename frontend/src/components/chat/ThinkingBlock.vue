@@ -75,15 +75,17 @@ const summaryText = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 0;
-  border-radius: 10px;
-  border: 1px solid var(--tool-card-border, rgba(139, 92, 246, 0.15));
-  background: var(--card-bg, rgba(139, 92, 246, 0.04));
+  border-radius: 8px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  background:
+    linear-gradient(90deg, rgba(125, 211, 252, 0.08), rgba(125, 211, 252, 0.02)),
+    var(--card-bg, rgba(139, 92, 246, 0.04));
   overflow: hidden;
-  transition: border-color 180ms ease;
+  transition: border-color 180ms ease, background-color 180ms ease;
 }
 
 .thinking-block:hover {
-  border-color: var(--tool-card-border-hover, rgba(139, 92, 246, 0.25));
+  border-color: rgba(56, 189, 248, 0.36);
 }
 
 .thinking-summary {
@@ -91,11 +93,12 @@ const summaryText = computed(() => {
   align-items: center;
   gap: 8px;
   width: 100%;
+  min-height: 34px;
   padding: 8px 12px;
   background: none;
   border: none;
   cursor: default;
-  color: var(--text-muted, #9ca3af);
+  color: var(--text-secondary, #4c4980);
   font-size: 13px;
   font-weight: 500;
   line-height: 1;
@@ -108,7 +111,7 @@ const summaryText = computed(() => {
 }
 
 .thinking-summary[aria-expanded]:hover {
-  background: rgba(139, 92, 246, 0.06);
+  background: rgba(14, 165, 233, 0.06);
 }
 
 .thinking-summary[aria-expanded]:focus-visible {
@@ -119,7 +122,7 @@ const summaryText = computed(() => {
 
 .thinking-dot {
   flex-shrink: 0;
-  color: #a78bfa;
+  color: #0ea5e9;
 }
 
 .thinking-dot--pulsing {
@@ -139,7 +142,8 @@ const summaryText = computed(() => {
 
 .thinking-summary-text {
   flex: 1 1 auto;
-  color: #a78bfa;
+  color: #0284c7;
+  font-weight: 650;
 }
 
 .thinking-chevron {
@@ -153,16 +157,16 @@ const summaryText = computed(() => {
 }
 
 .thinking-content {
-  border-left: 3px solid #a78bfa;
+  border-left: 3px solid #0ea5e9;
   margin: 0 12px 10px 12px;
   padding: 8px 10px;
   border-radius: 0 8px 8px 0;
-  background: rgba(139, 92, 246, 0.04);
+  background: rgba(14, 165, 233, 0.05);
 }
 
 .thinking-content-text {
   margin: 0;
-  color: var(--text-muted, #9ca3af);
+  color: var(--text-secondary, #4c4980);
   font-size: 12px;
   line-height: 1.55;
   white-space: pre-wrap;
@@ -170,6 +174,26 @@ const summaryText = computed(() => {
   max-height: 240px;
   overflow-y: auto;
   scrollbar-width: thin;
+}
+
+.dark .thinking-block {
+  border-color: rgba(56, 189, 248, 0.24);
+  background:
+    linear-gradient(90deg, rgba(56, 189, 248, 0.12), rgba(56, 189, 248, 0.04)),
+    var(--card-bg, rgba(255, 255, 255, 0.04));
+}
+
+.dark .thinking-block:hover {
+  border-color: rgba(125, 211, 252, 0.36);
+}
+
+.dark .thinking-summary-text,
+.dark .thinking-dot {
+  color: #7dd3fc;
+}
+
+.dark .thinking-content-text {
+  color: #dbeafe;
 }
 
 .thinking-expand-enter-active {
