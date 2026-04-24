@@ -90,7 +90,7 @@ func (c *OpenAIClient) StreamChatWithTools(
 		if len(chunk.Choices) > 0 {
 			delta := chunk.Choices[0].Delta
 
-			// Handle reasoning_content from Volcengine/DeepSeek compatible APIs.
+			// Handle reasoning_content from Volcengine/DeepSeek/Zhipu compatible APIs.
 			if reasoning := extractReasoningContent(delta); reasoning != "" {
 				if callbacks.OnThinkingChunk != nil {
 					if err := callbacks.OnThinkingChunk(reasoning); err != nil {
@@ -139,23 +139,23 @@ func (c *OpenAIClient) StreamChatWithTools(
 }
 
 // extractReasoningContent extracts reasoning_content from a streaming delta.
-// Volcengine and DeepSeek return thinking content via this non-standard field.
+// Volcengine, DeepSeek, and Zhipu return thinking content via this non-standard field.
+// The openai-go SDK marks ExtraFields as status=invalid for unknown fields, so
+// we cannot use f.Valid() — we check f.Raw() instead.
 func extractReasoningContent(delta openai.ChatCompletionChunkChoiceDelta) string {
 	f, ok := delta.JSON.ExtraFields["reasoning_content"]
-	if !ok || !f.Valid() {
+	if !ok {
 		return ""
 	}
-	raw := delta.RawJSON()
-	if raw == "" {
+	raw := f.Raw()
+	if raw == "" || raw == "null" {
 		return ""
 	}
-	var data struct {
-		ReasoningContent string `json:"reasoning_content"`
-	}
-	if err := json.Unmarshal([]byte(raw), &data); err != nil {
+	var result string
+	if err := json.Unmarshal([]byte(raw), &result); err != nil {
 		return ""
 	}
-	return data.ReasoningContent
+	return result
 }
 
 // supportsDeveloperRole: some compatible endpoints (e.g. Alibaba Cloud) omit developer role; fall back to system.

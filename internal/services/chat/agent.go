@@ -388,6 +388,7 @@ func (a *AgentService) RunAgentLoop(
 		logging.Info("agent_iteration", "iteration", i+1, "messages", len(messages), "agent_depth", opts.Depth)
 
 		var chunkBuf strings.Builder
+		var thinkingStarted bool
 		result, err := provider.StreamChatWithTools(ctx, modelConfig, messages, toolDefs, llmsvc.StreamCallbacks{
 			OnChunk: func(chunk string) error {
 				chunkBuf.WriteString(chunk)
@@ -397,6 +398,14 @@ func (a *AgentService) RunAgentLoop(
 				return callbacks.OnChunk(chunk)
 			},
 			OnThinkingChunk: func(thinkingChunk string) error {
+				if !thinkingStarted {
+					thinkingStarted = true
+					if callbacks.OnThinkingStart != nil {
+						if err := callbacks.OnThinkingStart(); err != nil {
+							return err
+						}
+					}
+				}
 				if callbacks.OnThinkingChunk == nil {
 					return nil
 				}
@@ -405,6 +414,14 @@ func (a *AgentService) RunAgentLoop(
 		})
 		if err != nil {
 			return "", fmt.Errorf("agent LLM call failed at iteration %d: %w", i+1, err)
+		}
+
+		if thinkingStarted {
+			if callbacks.OnThinkingDone != nil {
+				if err := callbacks.OnThinkingDone(); err != nil {
+					return "", fmt.Errorf("OnThinkingDone callback failed: %w", err)
+				}
+			}
 		}
 
 		if result.Type == llmsvc.StreamResultText {
