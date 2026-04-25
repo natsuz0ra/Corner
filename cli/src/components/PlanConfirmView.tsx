@@ -10,7 +10,9 @@ import { TextInput } from "./TextInput.js";
 const PLACEHOLDER = "Type feedback to modify plan...";
 
 export const PLAN_CONFIRM_SECTION_GAP_LINES = 1;
+export const PLAN_CONFIRM_TITLE_GAP_LINES = PLAN_CONFIRM_SECTION_GAP_LINES;
 export const PLAN_CONFIRM_OPTION_GAP_LINES = 0;
+export const PLAN_CONFIRM_HINT_GAP_LINES = PLAN_CONFIRM_SECTION_GAP_LINES;
 export const PLAN_CONFIRM_COLORS = {
 	title: "#a78bfa",
 	selectedCursor: "#22d3ee",
@@ -47,7 +49,7 @@ export function PlanConfirmView({
 			<Text bold color={PLAN_CONFIRM_COLORS.title}>
 				Plan Generated - Choose an action
 			</Text>
-			{PLAN_CONFIRM_OPTION_GAP_LINES > 0 && <Text> </Text>}
+			{PLAN_CONFIRM_TITLE_GAP_LINES > 0 && <Text> </Text>}
 			<Text>
 				{cursor === 0 ? (
 					<Text>
@@ -62,7 +64,7 @@ export function PlanConfirmView({
 					<Text color={PLAN_CONFIRM_COLORS.idle}>{"    1. Execute Plan"}</Text>
 				)}
 			</Text>
-			{PLAN_CONFIRM_SECTION_GAP_LINES > 0 && <Text> </Text>}
+			{PLAN_CONFIRM_OPTION_GAP_LINES > 0 && <Text> </Text>}
 			<Box>
 				{inputFocused ? (
 					<Text>
@@ -104,7 +106,7 @@ export function PlanConfirmView({
 					</Text>
 				)}
 			</Box>
-			{PLAN_CONFIRM_SECTION_GAP_LINES > 0 && <Text> </Text>}
+			{PLAN_CONFIRM_HINT_GAP_LINES > 0 && <Text> </Text>}
 			<Text color={PLAN_CONFIRM_COLORS.hint}>
 				Arrow keys to navigate | Enter to select | Esc to cancel
 			</Text>

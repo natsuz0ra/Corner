@@ -104,6 +104,12 @@ export function reducer(state: AppState, action: AppAction): AppState {
     case "SET_SESSION_NAME":
       return { ...state, sessionName: action.sessionName };
 
+    case "APPLY_SESSION_TITLE":
+      if (!action.sessionId || action.sessionId !== state.sessionId || !action.title.trim()) {
+        return state;
+      }
+      return { ...state, sessionName: action.title };
+
     case "SET_MODEL":
       return { ...state, modelId: action.modelId, modelName: action.modelName };
 

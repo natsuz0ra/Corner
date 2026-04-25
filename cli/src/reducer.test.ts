@@ -66,6 +66,27 @@ test("SET_SESSION_NAME updates current session title", () => {
 	assert.equal(state.sessionName, "Renamed");
 });
 
+test("APPLY_SESSION_TITLE updates only the matching current session", () => {
+	let state = reduce(initState(), {
+		type: "SET_SESSION",
+		sessionId: "sid-2",
+		sessionName: "New Chat",
+	});
+	state = reduce(state, {
+		type: "APPLY_SESSION_TITLE",
+		sessionId: "sid-other",
+		title: "Other Title",
+	});
+	assert.equal(state.sessionName, "New Chat");
+
+	state = reduce(state, {
+		type: "APPLY_SESSION_TITLE",
+		sessionId: "sid-2",
+		title: "Generated Title",
+	});
+	assert.equal(state.sessionName, "Generated Title");
+});
+
 test("TOGGLE_COMPACT switches compact mode on and off", () => {
 	let state = initState();
 	assert.equal(state.compact, true);

@@ -845,6 +845,13 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       onChunk: (chunk) => {
         dispatch({ type: "STREAM_CHUNK", chunk } as AppAction);
       },
+      onSessionTitle: (title, sessionId) => {
+        const trimmed = title.trim();
+        if (!trimmed || !sessionId || sessionId !== sessionRef.current.id) return;
+        sessionRef.current = { ...sessionRef.current, name: trimmed };
+        dispatch({ type: "APPLY_SESSION_TITLE", sessionId, title: trimmed } as AppAction);
+        applyTerminalTitle(trimmed);
+      },
       onDone: (_sid, meta) => {
         dispatch({
           type: "STREAM_DONE",
