@@ -13,6 +13,7 @@ import HomeDialogs from '@/components/home/HomeDialogs.vue'
 import HomeHeaderBar from '@/components/home/HomeHeaderBar.vue'
 import HomeSidebar from '@/components/home/HomeSidebar.vue'
 import AppLogo from '@/components/ui/AppLogo.vue'
+import ApprovalDrawer from '@/components/chat/ApprovalDrawer.vue'
 import { provideChatContext } from '@/composables/chat/useChatContext'
 import { useHomeChatPage } from '@/composables/home/useHomeChatPage'
 import { useHomeTransitions } from '@/composables/home/useHomeTransitions'
@@ -75,6 +76,11 @@ const {
   renameFromFloatingMenu,
   deleteFromFloatingMenu,
   onModelChange,
+  thinkingLevel,
+  thinkingSelectOptions,
+  onThinkingLevelChange,
+  planMode,
+  onPlanToggle,
 } = useHomeChatPage()
 
 const { isDark, toggleTheme } = useTheme()
@@ -101,6 +107,8 @@ const {
 
 provideChatContext({
   waiting: computed(() => store.waiting),
+  planGenerating: computed(() => store.planGenerating),
+  isStreamingMessage: store.isStreamingMessage,
   getReplyToolCount,
   getReplyToolSummary,
   getReplyTimeline,
@@ -216,17 +224,25 @@ provideChatContext({
                   v-model="inputValue"
                   :selected-model-id="selectedModelId"
                   :model-select-options="modelSelectOptions"
+                  :selected-thinking-level="thinkingLevel"
+                  :thinking-select-options="thinkingSelectOptions"
                   :model-options-count="modelOptions.length"
                   :send-disabled="sendDisabled"
                   :stop-disabled="stopDisabled"
                   :is-streaming="store.waiting"
                   :pending-files="pendingFiles"
                   :placeholder="t('inputPlaceholder')"
+                  :plan-mode="planMode"
+                  :plan-confirmation-visible="!!store.pendingPlanConfirmation"
                   @send="sendMessage"
                   @stop="stopMessage"
                   @files-change="onSelectFiles"
                   @remove-file="removePendingFile"
                   @model-change="onModelChange"
+                @thinking-change="onThinkingLevelChange"
+                @plan-toggle="onPlanToggle"
+                @plan-execute="store.approvePlan(selectedModelId, t('planExecuteUserMessage'))"
+                @plan-cancel="store.rejectPlan()"
                 />
               </div>
             </template>
@@ -255,17 +271,25 @@ provideChatContext({
                 v-model="inputValue"
                 :selected-model-id="selectedModelId"
                 :model-select-options="modelSelectOptions"
+                :selected-thinking-level="thinkingLevel"
+                :thinking-select-options="thinkingSelectOptions"
                 :model-options-count="modelOptions.length"
                 :send-disabled="sendDisabled"
                 :stop-disabled="stopDisabled"
                 :is-streaming="store.waiting"
                 :pending-files="pendingFiles"
                 :placeholder="t('inputPlaceholder')"
+                :plan-mode="planMode"
+                :plan-confirmation-visible="!!store.pendingPlanConfirmation"
                 @send="sendMessage"
                 @stop="stopMessage"
                 @files-change="onSelectFiles"
                 @remove-file="removePendingFile"
                 @model-change="onModelChange"
+              @thinking-change="onThinkingLevelChange"
+              @plan-toggle="onPlanToggle"
+              @plan-execute="store.approvePlan(selectedModelId, t('planExecuteUserMessage'))"
+              @plan-cancel="store.rejectPlan()"
               />
             </div>
           </footer>
@@ -317,6 +341,16 @@ provideChatContext({
       @reject-tool-call="store.approveToolCall($event, false)"
       @refresh-model-options="refreshModelOptions"
       @account-updated="onAccountUpdated"
+    />
+
+    <ApprovalDrawer
+      v-if="store.pendingApproval"
+      :visible="!!store.pendingApproval"
+      :tool-name="store.pendingApproval.toolName"
+      :command="store.pendingApproval.command"
+      :params="store.pendingApproval.params"
+      @approve="store.approveToolCall(store.pendingApproval!.toolCallId, true)"
+      @reject="store.approveToolCall(store.pendingApproval!.toolCallId, false)"
     />
   </div>
 </template>

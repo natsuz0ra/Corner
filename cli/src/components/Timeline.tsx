@@ -6,7 +6,8 @@
 import React, { useMemo } from "react";
 import { Box, Text } from "ink";
 import { renderMarkdownLines } from "../utils/markdownRenderer.js";
-import { DOT } from "../utils/terminal.js";
+import { DOT, stripAnsi } from "../utils/terminal.js";
+import { stringWidth } from "../utils/stringWidth.js";
 import type { TimelineEntry, ToolCallStatus } from "../types.js";
 import {
   formatToolInvocation,
@@ -28,6 +29,9 @@ interface TimelineProps {
   maxWidth: number;
   compact: boolean;
   toolOutputExpanded: boolean;
+  thinkingEntryIndex: number;
+  planGenerating: boolean;
+  planReceived: boolean;
 }
 
 function toolDotState(status: ToolCallStatus): { color: string; blink: boolean } {
@@ -114,6 +118,16 @@ export function formatToolParamLines(entry: TimelineEntry, maxWidth: number): st
   return result;
 }
 
+export function formatThinkingLabel(entry: TimelineEntry): string {
+  const done = entry.thinkingDone;
+  const duration = done && entry.thinkingDurationMs !== undefined
+    ? (entry.thinkingDurationMs / 1000).toFixed(1) + "s"
+    : done && entry.thinkingStartedAt
+    ? ((Date.now() - entry.thinkingStartedAt) / 1000).toFixed(1) + "s"
+    : "";
+  return done ? `Thought for ${duration}` : "Thinking...";
+}
+
 function StreamingMarkdown({
   content,
   maxWidth,
@@ -143,6 +157,55 @@ function StreamingMarkdown({
           <Text>{line}</Text>
         </Text>
       ))}
+    </Box>
+  );
+}
+
+function padVisible(content: string, targetWidth: number): string {
+  const visible = stringWidth(stripAnsi(content));
+  return `${content}${" ".repeat(Math.max(0, targetWidth - visible))}`;
+}
+
+export function formatPlanBlockLines(content: string, maxWidth: number): string[] {
+  const outerWidth = Math.max(12, Math.floor(maxWidth) - 2);
+  const contentWidth = Math.max(1, outerWidth - 4);
+  const renderedLines = renderMarkdownLines(content, contentWidth, false, true);
+  const title = " Plan ";
+  const topPrefix = `╭─${title}`;
+  const topFill = "─".repeat(Math.max(0, outerWidth - stringWidth(topPrefix) - 1));
+  const lines = [`${topPrefix}${topFill}╮`];
+
+  for (const line of renderedLines) {
+    lines.push(`│ ${padVisible(line, contentWidth)} │`);
+  }
+
+  lines.push(`╰${"─".repeat(Math.max(0, outerWidth - 2))}╯`);
+  return lines;
+}
+
+function PlanBlock({ content, maxWidth }: { content: string; maxWidth: number }): React.ReactElement {
+  const lines = useMemo(() => formatPlanBlockLines(content, maxWidth), [content, maxWidth]);
+  const borderColor = "#22d3ee";
+
+  return (
+    <Box flexDirection="column">
+      {lines.map((line, i) => {
+        const isBody = i > 0 && i < lines.length - 1;
+        if (!isBody) {
+          return (
+            <Text key={i} color={borderColor} bold={i === 0}>
+              {line}
+            </Text>
+          );
+        }
+        return (
+          <Text key={i}>
+            <Text color={borderColor}>{"│ "}</Text>
+            <Text>{line.slice(2, -2)}</Text>
+            <Text color={borderColor}>{" │"}</Text>
+          </Text>
+        );
+      })}
     </Box>
   );
 }
@@ -210,6 +273,7 @@ function TimelineBlock({
   compact,
   toolOutputExpanded,
   nestedUnderParent,
+  thinkingNumber,
 }: {
   entry: TimelineEntry;
   blinkOn: boolean;
@@ -217,7 +281,12 @@ function TimelineBlock({
   compact: boolean;
   toolOutputExpanded: boolean;
   nestedUnderParent?: boolean;
+  thinkingNumber?: number;
 }): React.ReactElement {
+  if (entry.kind === "plan") {
+    return <PlanBlock content={entry.content} maxWidth={maxWidth} />;
+  }
+
   if (entry.kind === "user") {
     const lines = entry.content.split("\n");
     return (
@@ -247,6 +316,25 @@ function TimelineBlock({
           {DOT}{" "}
         </Text>
         <Text>{entry.content}</Text>
+      </Text>
+    );
+  }
+
+  if (entry.kind === "thinking") {
+    const done = entry.thinkingDone;
+    const label = formatThinkingLabel(entry);
+    const numPrefix = thinkingNumber !== undefined ? `[${thinkingNumber}] ` : "";
+    const dotColor = done ? "#38bdf8" : "#22d3ee";
+    const labelColor = done ? "#7dd3fc" : "#22d3ee";
+    const indexColor = "#67e8f9";
+    return (
+      <Text>
+        <Text bold color={dotColor}>
+          {!done && !blinkOn ? " " : DOT}
+        </Text>
+        <Text>{" "}</Text>
+        <Text color={indexColor}>{numPrefix}</Text>
+        <Text color={labelColor} bold={!done}>{label}</Text>
       </Text>
     );
   }
@@ -309,8 +397,12 @@ export function Timeline({
   maxWidth,
   compact,
   toolOutputExpanded,
+  thinkingEntryIndex,
+  planGenerating,
+  planReceived,
 }: TimelineProps): React.ReactElement {
   const displayRows = useMemo(() => buildTimelineDisplayRows(entries), [entries]);
+  let thinkingCounter = 0;
 
   return (
     <Box flexDirection="column">
@@ -323,6 +415,7 @@ export function Timeline({
             maxWidth={maxWidth}
             compact={compact}
             toolOutputExpanded={toolOutputExpanded}
+            thinkingNumber={row.entry.kind === "thinking" ? ++thinkingCounter : undefined}
           />
           {row.nestedTools && row.nestedTools.length > 0 ? (
             <Box flexDirection="column" marginLeft={2}>
@@ -347,17 +440,21 @@ export function Timeline({
       {streaming && (
         <>
           {entries.length > 0 && <Text> </Text>}
-          {assistantWaiting ? (
+          {liveAssistant && !assistantWaiting && (
+            <>
+              <StreamingMarkdown content={liveAssistant} maxWidth={maxWidth} compact={compact} />
+              <Text> </Text>
+            </>
+          )}
+          {!planReceived && (
             <Box key="waiting">
               <Spinner enabled={true} />
               <GradientFlowText
-                text={` Waiting for response...`}
+                text={planGenerating ? " Planning..." : " Waiting for response..."}
                 enabled={true}
               />
             </Box>
-          ) : liveAssistant ? (
-            <StreamingMarkdown content={liveAssistant} maxWidth={maxWidth} compact={compact} />
-          ) : null}
+          )}
         </>
       )}
     </Box>

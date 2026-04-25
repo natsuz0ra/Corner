@@ -58,6 +58,20 @@ const (
 	MCPFuncNameMaxLen              = 64
 	MCPFuncHashLen                 = 8
 
+	SettingApprovalMode  = "approvalMode"
+	ApprovalModeStandard = "standard"
+	ApprovalModeAuto     = "auto"
+
+	SettingThinkingLevel = "thinkingLevel"
+
+	// Plan mode
+	PlanStartTool      = "plan_start"
+	PlanCompleteTool   = "plan_complete__submit"
+	PlanStatusPending  = "pending"
+	PlanStatusApproved = "approved"
+	PlanStatusRejected = "rejected"
+	PlanStatusExecuted = "executed"
+
 	// WebSocket
 	WSChatTimeout     = 600 * time.Second
 	WSWriteChannelBuf = 128

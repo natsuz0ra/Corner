@@ -19,7 +19,7 @@ import (
 	"slimebot/internal/tools"
 )
 
-const balancedTemperature = 1.2
+const balancedTemperature = 1.0
 
 // ApprovalRequest is sent to the client for tool-call approval.
 type ApprovalRequest struct {
@@ -61,11 +61,22 @@ type AgentCallbacks struct {
 	OnSubagentStart  func(parentToolCallID, runID, task string) error
 	OnSubagentChunk  func(parentToolCallID, runID, chunk string) error
 	OnSubagentDone   func(parentToolCallID, runID string, runErr error) error
+	OnThinkingStart  func() error
+	OnThinkingChunk  func(chunk string) error
+	OnThinkingDone   func() error
+	OnPlanStart      func() error                  // plan writing phase has begun
+	OnPlanChunk      func(chunk string) error      // stream plan body chunk to the client (plan mode only)
+	OnPlanBody       func(planBody string) error   // send complete plan body (non-streaming, plan mode only)
+	OnTitleGenerated func(sessionID, title string) // async notification when title is generated
 }
 
 // AgentLoopOptions configures nested agent execution.
 type AgentLoopOptions struct {
-	Depth int
+	Depth        int
+	ApprovalMode string
+	PlanMode     bool
+	PlanStarted  *bool // set to true when plan_start tool is called
+	PlanComplete *bool // set to true when plan_complete tool is called
 }
 
 // AgentService runs the LLM loop with tools, approvals, and MCP/skill loading.
@@ -172,6 +183,33 @@ func buildRunSubagentToolDef() llmsvc.ToolDef {
 				},
 			},
 			"required": []string{"task"},
+		},
+	}
+}
+
+func buildPlanCompleteToolDef() llmsvc.ToolDef {
+	return llmsvc.ToolDef{
+		Name:        constants.PlanCompleteTool,
+		Description: "[plan] Call this tool ONLY when your complete plan has been written in your response. This submits the plan for user review. You MUST call this tool when you finish writing your plan — without it the user will not see the review menu.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"title": map[string]any{
+					"type":        "string",
+					"description": "Short title for the plan. Omit to auto-detect from the first heading.",
+				},
+			},
+		},
+	}
+}
+
+func buildPlanStartToolDef() llmsvc.ToolDef {
+	return llmsvc.ToolDef{
+		Name:        constants.PlanStartTool,
+		Description: "[plan] Call this tool when you are ready to begin writing your plan. All text output BEFORE this call will appear as narration; all text AFTER will be the plan body. You MUST call this before writing your plan.",
+		Parameters: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
 		},
 	}
 }
@@ -327,6 +365,14 @@ func (a *AgentService) RunAgentLoop(
 	if err != nil {
 		return "", fmt.Errorf("failed to load MCP tools: %w", err)
 	}
+
+	// Plan mode: only expose read-only tools so the model cannot even attempt to call others.
+	if opts.PlanMode {
+		toolDefs = filterPlanModeToolDefs(toolDefs)
+		mcpToolMeta = filterPlanModeMCPMeta(mcpToolMeta)
+		toolDefs = append(toolDefs, buildPlanStartToolDef())
+		toolDefs = append(toolDefs, buildPlanCompleteToolDef())
+	}
 	messages := make([]llmsvc.ChatMessage, len(contextMessages))
 	copy(messages, contextMessages)
 
@@ -344,15 +390,55 @@ func (a *AgentService) RunAgentLoop(
 		logging.Info("agent_iteration", "iteration", i+1, "messages", len(messages), "agent_depth", opts.Depth)
 
 		var chunkBuf strings.Builder
-		result, err := provider.StreamChatWithTools(ctx, modelConfig, messages, toolDefs, func(chunk string) error {
-			chunkBuf.WriteString(chunk)
-			if callbacks.OnChunk == nil {
+		var thinkingStarted bool
+		var thinkingDone bool
+		finishThinking := func() error {
+			if !thinkingStarted || thinkingDone || callbacks.OnThinkingDone == nil {
+				thinkingDone = thinkingStarted
 				return nil
 			}
-			return callbacks.OnChunk(chunk)
+			if err := callbacks.OnThinkingDone(); err != nil {
+				return err
+			}
+			thinkingDone = true
+			return nil
+		}
+		result, err := provider.StreamChatWithTools(ctx, modelConfig, messages, toolDefs, llmsvc.StreamCallbacks{
+			OnChunk: func(chunk string) error {
+				if chunk != "" {
+					if err := finishThinking(); err != nil {
+						return err
+					}
+				}
+				chunkBuf.WriteString(chunk)
+				if callbacks.OnChunk == nil {
+					return nil
+				}
+				return callbacks.OnChunk(chunk)
+			},
+			OnThinkingChunk: func(thinkingChunk string) error {
+				if !thinkingStarted {
+					thinkingStarted = true
+					if callbacks.OnThinkingStart != nil {
+						if err := callbacks.OnThinkingStart(); err != nil {
+							return err
+						}
+					}
+				}
+				if callbacks.OnThinkingChunk == nil {
+					return nil
+				}
+				return callbacks.OnThinkingChunk(thinkingChunk)
+			},
 		})
 		if err != nil {
 			return "", fmt.Errorf("agent LLM call failed at iteration %d: %w", i+1, err)
+		}
+
+		if thinkingStarted && !thinkingDone {
+			if err := finishThinking(); err != nil {
+				return "", fmt.Errorf("OnThinkingDone callback failed: %w", err)
+			}
 		}
 
 		if result.Type == llmsvc.StreamResultText {
@@ -362,10 +448,39 @@ func (a *AgentService) RunAgentLoop(
 
 		// tool_calls: append assistant message (with tool_calls) to context.
 		messages = append(messages, result.AssistantMessage)
-		preamble := strings.TrimSpace(result.AssistantMessage.Content)
+		//preamble := strings.TrimSpace(result.AssistantMessage.Content)
 
 		for _, tc := range result.ToolCalls {
-			invocation, err := resolveToolInvocation(tc, mcpToolMeta)
+			// Handle plan_start: signal transition from research to plan writing.
+			if tc.Name == constants.PlanStartTool {
+				if opts.PlanStarted != nil {
+					*opts.PlanStarted = true
+				}
+				if callbacks.OnPlanStart != nil {
+					if err := callbacks.OnPlanStart(); err != nil {
+						return "", fmt.Errorf("OnPlanStart callback failed: %w", err)
+					}
+				}
+				messages = appendToolMessage(messages, tc.ID, "Plan writing phase started.")
+				continue
+			}
+
+			// Handle plan_complete: signal plan completion and skip regular execution.
+			if tc.Name == constants.PlanCompleteTool {
+				if opts.PlanComplete != nil {
+					*opts.PlanComplete = true
+				}
+				messages = appendToolMessage(messages, tc.ID, "Plan submitted for review.")
+				continue
+			}
+
+			// Plan mode: block non-read-only tools.
+			if opts.PlanMode && !isPlanModeAllowedTool(tc.Name) {
+				messages = appendToolMessage(messages, tc.ID, "This tool is blocked in plan mode. Only read-only tools (web_search, search_memory) are allowed.")
+				continue
+			}
+
+			invocation, err := resolveToolInvocation(tc, mcpToolMeta, opts.ApprovalMode)
 			if err != nil {
 				messages = appendToolMessage(messages, tc.ID, fmt.Sprintf("failed to parse tool invocation: %s", err.Error()))
 				continue
@@ -389,7 +504,7 @@ func (a *AgentService) RunAgentLoop(
 			}
 
 			if tc.Name == constants.RunSubagentTool {
-				if err := a.handleRunSubagentTool(ctx, modelConfig, sessionID, mcpConfigs, activatedSkills, callbacks, opts, tc, invocation, params, preamble, &messages); err != nil {
+				if err := a.handleRunSubagentTool(ctx, modelConfig, sessionID, mcpConfigs, activatedSkills, callbacks, opts, tc, invocation, params, "", &messages); err != nil {
 					return "", err
 				}
 				continue
@@ -402,13 +517,12 @@ func (a *AgentService) RunAgentLoop(
 					Command:          invocation.command,
 					Params:           params,
 					RequiresApproval: invocation.requiresApproval,
-					Preamble:         preamble,
 				}); err != nil {
 					return "", fmt.Errorf("failed to push tool approval request: %w", err)
 				}
 			}
 
-			approved, rejectionMessage := waitApprovalIfNeeded(ctx, callbacks, tc, invocation, params, preamble)
+			approved, rejectionMessage := waitApprovalIfNeeded(ctx, callbacks, tc, invocation, params, "")
 			if !approved {
 				messages = appendToolMessage(messages, tc.ID, rejectionMessage)
 				continue
@@ -429,9 +543,57 @@ func (a *AgentService) RunAgentLoop(
 
 			messages = appendToolMessage(messages, tc.ID, buildToolResultContent(execResult))
 		}
+
+		// If plan_complete was called, return immediately so the caller can save the plan.
+		if opts.PlanComplete != nil && *opts.PlanComplete {
+			return finalAnswer.String(), nil
+		}
 	}
 
 	return finalAnswer.String(), fmt.Errorf("agent loop reached max iterations (%d)", maxIter)
+}
+
+// isPlanModeAllowedTool returns true if the tool function name is allowed in plan mode.
+func isPlanModeAllowedTool(funcName string) bool {
+	// Handle tools without __ separator (e.g. search_memory, plan_start).
+	switch funcName {
+	case "search_memory", "plan_start":
+		return true
+	}
+	// Handle tools with __ separator (e.g. web_search__search, plan_complete__submit).
+	toolName, _, _ := parseToolCallName(funcName)
+	switch toolName {
+	case "web_search", "plan_complete":
+		return true
+	default:
+		return false
+	}
+}
+
+// filterPlanModeToolDefs keeps only read-only tool definitions for plan mode.
+func filterPlanModeToolDefs(defs []llmsvc.ToolDef) []llmsvc.ToolDef {
+	var filtered []llmsvc.ToolDef
+	for _, d := range defs {
+		if isPlanModeAllowedTool(d.Name) {
+			filtered = append(filtered, d)
+		}
+	}
+	return filtered
+}
+
+// filterPlanModeMCPMeta keeps only MCP metadata entries for read-only tools.
+func filterPlanModeMCPMeta(meta map[string]mcp.ToolMeta) map[string]mcp.ToolMeta {
+	filtered := make(map[string]mcp.ToolMeta)
+	for k, v := range meta {
+		toolName, _, err := parseToolCallName(k)
+		if err != nil {
+			continue
+		}
+		if isPlanModeAllowedTool(toolName) {
+			filtered[k] = v
+		}
+	}
+	return filtered
 }
 
 // parseToolCallName parses "{tool}__{command}" function names.
@@ -491,7 +653,11 @@ func executeToolCall(ctx context.Context, toolName, command string, params map[s
 }
 
 // requiresToolApproval defines which tools need user approval (currently exec only).
-func requiresToolApproval(toolName string, isMCP bool) bool {
+// When approvalMode is "auto", all tools skip approval.
+func requiresToolApproval(toolName string, isMCP bool, approvalMode string) bool {
+	if approvalMode == constants.ApprovalModeAuto {
+		return false
+	}
 	if isMCP {
 		return false
 	}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	chatsvc "slimebot/internal/services/chat"
+	plansvc "slimebot/internal/services/plan"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -21,18 +22,23 @@ import (
 // Controller is the WebSocket handler: upgrades connections, splits read/write, serializes chat and tool approval.
 type Controller struct {
 	chatService *chatsvc.ChatService
+	planService *plansvc.PlanService
 	upgrader    websocket.Upgrader
 }
 
 // chatIncoming is the client WebSocket message shape.
 type chatIncoming struct {
-	Type          string   `json:"type"`          // Message type: chat, ping, tool_approve, etc.
-	SessionID     string   `json:"sessionId"`     // Session ID
-	Content       string   `json:"content"`       // User input text
-	ModelID       string   `json:"modelId"`       // LLM config ID
-	AttachmentIDs []string `json:"attachmentIds"` // Attachment IDs
-	ToolCallID    string   `json:"toolCallId"`    // Tool call ID (for approval flow)
-	Approved      *bool    `json:"approved"`      // Approval outcome
+	Type           string   `json:"type"`           // Message type: chat, ping, tool_approve, etc.
+	SessionID      string   `json:"sessionId"`      // Session ID
+	Content        string   `json:"content"`        // User input text
+	DisplayContent string   `json:"displayContent"` // Optional user-visible text when content is an internal prompt
+	ModelID        string   `json:"modelId"`        // LLM config ID
+	AttachmentIDs  []string `json:"attachmentIds"`  // Attachment IDs
+	ToolCallID     string   `json:"toolCallId"`     // Tool call ID (for approval flow)
+	Approved       *bool    `json:"approved"`       // Approval outcome
+	ThinkingLevel  string   `json:"thinkingLevel"`  // Thinking level: off, low, medium, high
+	PlanMode       bool     `json:"planMode"`       // Plan mode: LLM generates plan instead of executing
+	PlanID         string   `json:"planId"`         // Plan ID (for approve/reject)
 }
 
 type wsOutChunk struct {
@@ -75,9 +81,10 @@ func (a *activeChatCanceler) Cancel() bool {
 	return true
 }
 
-func NewController(chatService *chatsvc.ChatService) *Controller {
+func NewController(chatService *chatsvc.ChatService, planService *plansvc.PlanService) *Controller {
 	return &Controller{
 		chatService: chatService,
+		planService: planService,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -227,6 +234,52 @@ func (w *Controller) startReadLoop(
 				if activeCancel.Cancel() {
 					_ = enqueue(map[string]any{"type": "stopping", "sessionId": incoming.SessionID})
 				}
+			case "plan_approve":
+				if w.planService != nil && incoming.PlanID != "" {
+					plan, planErr := w.planService.UpdatePlanStatus(incoming.PlanID, constants.PlanStatusApproved)
+					if planErr != nil {
+						_ = enqueue(map[string]any{"type": "error", "error": "Plan not found."})
+						continue
+					}
+					_ = enqueue(map[string]any{"type": "plan_status", "planId": plan.ID, "status": plan.Status})
+					execContent := "Execute the following approved plan:\n\n" + plan.Content
+					execIncoming := chatIncoming{
+						Type:           "chat",
+						SessionID:      incoming.SessionID,
+						Content:        execContent,
+						DisplayContent: incoming.DisplayContent,
+						ModelID:        incoming.ModelID,
+						PlanMode:       false,
+					}
+					select {
+					case <-sessionCtx.Done():
+						return
+					case chatCh <- execIncoming:
+					}
+				}
+			case "plan_reject":
+				if w.planService != nil && incoming.PlanID != "" {
+					_, _ = w.planService.UpdatePlanStatus(incoming.PlanID, constants.PlanStatusRejected)
+					_ = enqueue(map[string]any{"type": "plan_status", "planId": incoming.PlanID, "status": constants.PlanStatusRejected})
+				}
+			case "plan_modify":
+				if w.planService != nil && incoming.PlanID != "" {
+					_, _ = w.planService.UpdatePlanStatus(incoming.PlanID, constants.PlanStatusRejected)
+					_ = enqueue(map[string]any{"type": "plan_status", "planId": incoming.PlanID, "status": constants.PlanStatusRejected})
+				}
+				modifyIncoming := chatIncoming{
+					Type:          "chat",
+					SessionID:     incoming.SessionID,
+					Content:       incoming.Content,
+					ModelID:       incoming.ModelID,
+					PlanMode:      true,
+					ThinkingLevel: incoming.ThinkingLevel,
+				}
+				select {
+				case <-sessionCtx.Done():
+					return
+				case chatCh <- modifyIncoming:
+				}
 			case "chat", "":
 				if strings.TrimSpace(incoming.Content) == "" && len(incoming.AttachmentIDs) == 0 {
 					continue
@@ -311,8 +364,11 @@ func (w *Controller) handleChatIncoming(
 		session.ID,
 		requestID,
 		incoming.Content,
+		incoming.DisplayContent,
 		incoming.ModelID,
 		incoming.AttachmentIDs,
+		incoming.ThinkingLevel,
+		incoming.PlanMode,
 		callbacks,
 	)
 	cancel()
@@ -323,15 +379,6 @@ func (w *Controller) handleChatIncoming(
 			"sessionId": session.ID,
 			"error":     err.Error(),
 		})
-	}
-	if streamResult != nil && streamResult.TitleUpdated {
-		if !enqueue(map[string]any{
-			"type":      "session_title",
-			"sessionId": session.ID,
-			"title":     streamResult.Title,
-		}) {
-			return false
-		}
 	}
 	if streamResult != nil && streamResult.PushFailed {
 		if !enqueue(map[string]any{
@@ -348,6 +395,11 @@ func (w *Controller) handleChatIncoming(
 		// Client uses flags for copy and rendering (e.g. i18n for "output stopped").
 		donePayload["isInterrupted"] = streamResult.IsInterrupted
 		donePayload["isStopPlaceholder"] = streamResult.IsStopPlaceholder
+		if streamResult.PlanID != "" {
+			donePayload["planId"] = streamResult.PlanID
+			donePayload["planBody"] = streamResult.PlanBody
+			donePayload["narration"] = streamResult.Narration
+		}
 	}
 	if !enqueue(donePayload) {
 		return false
@@ -383,6 +435,24 @@ func (w *Controller) buildCallbacks(
 				*firstChunkSentAt = time.Now()
 			}
 			if !enqueueWSChunk(enqueue, sessionID, chunk) {
+				return context.Canceled
+			}
+			return nil
+		},
+		OnThinkingStart: func() error {
+			if !enqueue(map[string]any{"type": "thinking_start", "sessionId": sessionID}) {
+				return context.Canceled
+			}
+			return nil
+		},
+		OnThinkingChunk: func(chunk string) error {
+			if !enqueue(map[string]any{"type": "thinking_chunk", "sessionId": sessionID, "content": chunk}) {
+				return context.Canceled
+			}
+			return nil
+		},
+		OnThinkingDone: func() error {
+			if !enqueue(map[string]any{"type": "thinking_done", "sessionId": sessionID}) {
 				return context.Canceled
 			}
 			return nil
@@ -484,6 +554,42 @@ func (w *Controller) buildCallbacks(
 				return context.Canceled
 			}
 			return nil
+		},
+		OnPlanStart: func() error {
+			if !enqueue(map[string]any{
+				"type":      "plan_start",
+				"sessionId": sessionID,
+			}) {
+				return context.Canceled
+			}
+			return nil
+		},
+		OnPlanChunk: func(chunk string) error {
+			if !enqueue(map[string]any{
+				"type":      "plan_chunk",
+				"sessionId": sessionID,
+				"content":   chunk,
+			}) {
+				return context.Canceled
+			}
+			return nil
+		},
+		OnPlanBody: func(planBody string) error {
+			if !enqueue(map[string]any{
+				"type":      "plan_body",
+				"sessionId": sessionID,
+				"content":   planBody,
+			}) {
+				return context.Canceled
+			}
+			return nil
+		},
+		OnTitleGenerated: func(titleSessionID, title string) {
+			enqueue(map[string]any{
+				"type":      "session_title",
+				"sessionId": titleSessionID,
+				"title":     title,
+			})
 		},
 	}
 }

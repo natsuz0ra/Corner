@@ -9,7 +9,7 @@ type Provider interface {
 		modelConfig ModelRuntimeConfig,
 		messages []ChatMessage,
 		toolDefs []ToolDef,
-		onChunk func(string) error,
+		callbacks StreamCallbacks,
 	) (*StreamResult, error)
 }
 

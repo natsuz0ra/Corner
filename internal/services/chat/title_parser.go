@@ -5,22 +5,17 @@ import (
 )
 
 const (
-	openTitleTag    = "<title>"
-	closeTitleTag   = "</title>"
 	openMemoryTag   = "<memory>"
 	closeMemoryTag  = "</memory>"
-	parserTagTitle  = "title"
 	parserTagMemory = "memory"
 )
 
 type titleStreamParser struct {
 	// When false, all chunks pass through unchanged.
 	enabled bool
-	// Last successfully parsed title.
-	title string
 	// Last successfully parsed memory JSON payload.
 	memory string
-	// Active protocol tag being parsed: title or memory.
+	// Active protocol tag being parsed: memory.
 	activeTag string
 	// Buffered bytes while detecting an opening tag across chunks.
 	openBuf []byte
@@ -67,23 +62,33 @@ func (p *titleStreamParser) Flush() string {
 	}
 
 	var out strings.Builder
-	if p.activeTag != "" {
-		// Unclosed tag: emit as plain text to avoid dropping characters.
+	if p.activeTag == parserTagMemory && len(p.tagContent) > 0 {
+		// Unclosed memory tag: try to extract JSON from buffered content
+		// (handles wrong or missing closing tags like </Memory>, </title>, etc.)
+		content := string(p.tagContent)
+		if len(p.closeBuf) > 0 {
+			content += string(p.closeBuf)
+		}
+		if jsonStr, _ := extractJSONObject(content); jsonStr != "" {
+			if cleaned := cleanProtocolMemory(jsonStr); cleaned != "" {
+				p.memory = cleaned
+			}
+		} else {
+			out.WriteString("<memory>")
+			out.Write(p.tagContent)
+			out.Write(p.closeBuf)
+		}
+	} else if p.activeTag != "" {
 		out.WriteString("<")
 		out.WriteString(p.activeTag)
 		out.WriteString(">")
 		out.Write(p.tagContent)
 		out.Write(p.closeBuf)
 	} else if len(p.openBuf) > 0 {
-		// Partial open-tag buffer: not a real tag; emit as text.
 		out.Write(p.openBuf)
 	}
 	p.resetStreamState()
 	return out.String()
-}
-
-func (p *titleStreamParser) Title() string {
-	return p.title
 }
 
 func (p *titleStreamParser) Memory() string {
@@ -164,12 +169,7 @@ func (p *titleStreamParser) consumeTagByte(b byte) {
 }
 
 func (p *titleStreamParser) finishActiveTag() {
-	switch p.activeTag {
-	case parserTagTitle:
-		if cleaned := cleanProtocolTitle(string(p.tagContent)); cleaned != "" {
-			p.title = cleaned
-		}
-	case parserTagMemory:
+	if p.activeTag == parserTagMemory {
 		if cleaned := cleanProtocolMemory(string(p.tagContent)); cleaned != "" {
 			p.memory = cleaned
 		}
@@ -188,36 +188,34 @@ func (p *titleStreamParser) resetStreamState() {
 	p.trimNextTextPrefix = false
 }
 
-func cleanProtocolTitle(input string) string {
-	title := strings.ReplaceAll(input, "\r", "")
-	title = strings.ReplaceAll(title, "\n", "")
-	title = strings.Trim(title, "\"'\u201c\u201d")
-	title = truncateRunes(title, 20)
-	return strings.TrimSpace(title)
-}
-
 func cleanProtocolMemory(input string) string {
 	memory := strings.ReplaceAll(input, "\r\n", "\n")
 	memory = strings.ReplaceAll(memory, "\r", "\n")
 	memory = strings.TrimSpace(memory)
+	// Strip trailing non-JSON content (e.g. wrong closing tags like </title>).
+	if idx := strings.LastIndex(memory, "}"); idx >= 0 && idx < len(memory)-1 {
+		trailing := strings.TrimSpace(memory[idx+1:])
+		if trailing != "" {
+			memory = memory[:idx+1]
+		}
+	}
 	return memory
 }
 
-// extractProtocolMetaAndBody is a fallback that strips protocol lines from the final body.
-func extractProtocolMetaAndBody(input string) (string, string, string) {
+// extractProtocolMetaAndBody is a fallback that strips protocol tags from the final body.
+// Title tags are stripped from the body as a migration safety net (prevents leaked tags in display)
+// but the title value is no longer extracted — it is discarded.
+func extractProtocolMetaAndBody(input string) (string, string) {
 	if strings.TrimSpace(input) == "" {
-		return "", "", input
+		return "", input
 	}
 
 	body := input
-	var extractedTitle string
 	var extractedMemory string
 	hasTagBlock := false
 
-	if title, cleaned, foundValue, removed := extractAndRemoveTagBlocks(body, "title", cleanProtocolTitle); removed {
-		if foundValue {
-			extractedTitle = title
-		}
+	// Strip any stray <title> tags from body (migration safety net).
+	if _, cleaned, _, removed := extractAndRemoveTagBlocks(body, "title", strings.TrimSpace); removed {
 		body = cleaned
 		hasTagBlock = true
 	}
@@ -230,10 +228,10 @@ func extractProtocolMetaAndBody(input string) (string, string, string) {
 	}
 
 	if !hasTagBlock {
-		return "", "", input
+		return "", input
 	}
 
-	return extractedTitle, extractedMemory, strings.Trim(body, "\r\n")
+	return extractedMemory, strings.Trim(body, "\r\n")
 }
 
 func extractAndRemoveTagBlocks(input string, tag string, cleaner func(string) string) (string, string, bool, bool) {
@@ -248,22 +246,79 @@ func extractAndRemoveTagBlocks(input string, tag string, cleaner func(string) st
 		if startIdx < 0 {
 			break
 		}
-		endRel := strings.Index(working[startIdx+len(startTag):], endTag)
-		if endRel < 0 {
+		contentAfterOpen := working[startIdx+len(startTag):]
+		endRel := strings.Index(contentAfterOpen, endTag)
+
+		if endRel >= 0 {
+			// Normal case: closing tag found.
+			contentEnd := startIdx + len(startTag) + endRel
+			if value := cleaner(working[startIdx+len(startTag) : contentEnd]); value != "" {
+				latest = value
+				found = true
+			}
+			blockEnd := contentEnd + len(endTag)
+			removeStart, removeEnd, bridge := protocolRemovalRange(working, startIdx, blockEnd)
+			working = working[:removeStart] + bridge + working[removeEnd:]
+			removed = true
+		} else if tag == "memory" {
+			// Fallback: closing tag missing or wrong — extract JSON directly.
+			jsonStr, jsonEnd := extractJSONObject(contentAfterOpen)
+			if jsonStr == "" || jsonEnd < 0 {
+				break
+			}
+			if value := cleaner(jsonStr); value != "" {
+				latest = value
+				found = true
+			}
+			blockEnd := startIdx + len(startTag) + jsonEnd
+			removeStart, removeEnd, bridge := protocolRemovalRange(working, startIdx, blockEnd)
+			working = working[:removeStart] + bridge + working[removeEnd:]
+			removed = true
+		} else {
 			break
 		}
-		contentStart := startIdx + len(startTag)
-		contentEnd := contentStart + endRel
-		if value := cleaner(working[contentStart:contentEnd]); value != "" {
-			latest = value
-			found = true
-		}
-		blockEnd := contentEnd + len(endTag)
-		removeStart, removeEnd, bridge := protocolRemovalRange(working, startIdx, blockEnd)
-		working = working[:removeStart] + bridge + working[removeEnd:]
-		removed = true
 	}
 	return latest, working, found, removed
+}
+
+// extractJSONObject finds the first complete JSON object in input.
+// Returns the JSON string and the byte offset after the closing '}'.
+// Returns ("", -1) if no valid JSON object is found.
+func extractJSONObject(input string) (string, int) {
+	start := strings.Index(input, "{")
+	if start < 0 {
+		return "", -1
+	}
+	depth := 0
+	inString := false
+	escape := false
+	for i := start; i < len(input); i++ {
+		c := input[i]
+		if escape {
+			escape = false
+			continue
+		}
+		if c == '\\' && inString {
+			escape = true
+			continue
+		}
+		if c == '"' {
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+		if c == '{' {
+			depth++
+		} else if c == '}' {
+			depth--
+			if depth == 0 {
+				return input[start : i+1], i + 1
+			}
+		}
+	}
+	return "", -1
 }
 
 func isProtocolSeparatorByte(b byte) bool {
@@ -276,29 +331,21 @@ func isProtocolSeparatorByte(b byte) bool {
 }
 
 func isOpenTagPrefixBytes(candidate []byte) bool {
-	return hasBytePrefix([]byte(openTitleTag), candidate) || hasBytePrefix([]byte(openMemoryTag), candidate)
+	return hasBytePrefix([]byte(openMemoryTag), candidate)
 }
 
 func matchOpenTagBytes(candidate []byte) (string, bool) {
-	switch {
-	case bytesEqual([]byte(openTitleTag), candidate):
-		return parserTagTitle, true
-	case bytesEqual([]byte(openMemoryTag), candidate):
+	if bytesEqual([]byte(openMemoryTag), candidate) {
 		return parserTagMemory, true
-	default:
-		return "", false
 	}
+	return "", false
 }
 
 func parserEndTag(activeTag string) []byte {
-	switch activeTag {
-	case parserTagTitle:
-		return []byte(closeTitleTag)
-	case parserTagMemory:
+	if activeTag == parserTagMemory {
 		return []byte(closeMemoryTag)
-	default:
-		return nil
 	}
+	return nil
 }
 
 func hasBytePrefix(full []byte, prefix []byte) bool {

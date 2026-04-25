@@ -15,6 +15,8 @@ type AppSettings struct {
 	DefaultModel                string
 	MessagePlatformDefaultModel string
 	WebSearchAPIKey             string
+	ApprovalMode                string
+	ThinkingLevel               string
 }
 
 // UpdateSettingsInput is the domain input for partial settings updates.
@@ -23,6 +25,8 @@ type UpdateSettingsInput struct {
 	DefaultModel                string
 	MessagePlatformDefaultModel string
 	WebSearchAPIKey             string
+	ApprovalMode                string
+	ThinkingLevel               string
 }
 
 type SettingsService struct {
@@ -54,11 +58,24 @@ func (s *SettingsService) Get() (*AppSettings, error) {
 	if err != nil {
 		return nil, err
 	}
+	approvalMode, err := s.store.GetSetting(context.Background(), constants.SettingApprovalMode)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(approvalMode) == "" {
+		approvalMode = constants.ApprovalModeStandard
+	}
+	thinkingLevel, err := s.store.GetSetting(context.Background(), constants.SettingThinkingLevel)
+	if err != nil {
+		return nil, err
+	}
 	return &AppSettings{
 		Language:                    language,
 		DefaultModel:                defaultModel,
 		MessagePlatformDefaultModel: messagePlatformDefaultModel,
 		WebSearchAPIKey:             webSearchAPIKey,
+		ApprovalMode:                approvalMode,
+		ThinkingLevel:               thinkingLevel,
 	}, nil
 }
 
@@ -84,6 +101,16 @@ func (s *SettingsService) Update(input UpdateSettingsInput) error {
 			return err
 		}
 		if err := os.Setenv(constants.SettingWebSearchAPIKey, input.WebSearchAPIKey); err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(input.ApprovalMode) != "" {
+		if err := s.store.SetSetting(context.Background(), constants.SettingApprovalMode, input.ApprovalMode); err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(input.ThinkingLevel) != "" {
+		if err := s.store.SetSetting(context.Background(), constants.SettingThinkingLevel, input.ThinkingLevel); err != nil {
 			return err
 		}
 	}

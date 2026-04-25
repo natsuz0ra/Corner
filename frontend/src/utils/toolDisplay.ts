@@ -9,10 +9,22 @@ export interface ExecOutputPayload {
   duration_ms: number
 }
 
+export interface WebSearchResult {
+  title: string
+  url: string
+  content: string
+}
+
+export interface WebSearchPayload {
+  query: string
+  results: WebSearchResult[]
+}
+
 export interface ToolResultDisplay {
-  mode: 'text' | 'exec'
+  mode: 'text' | 'exec' | 'web_search'
   outputText: string
   exec?: ExecOutputPayload
+  webSearch?: WebSearchPayload
 }
 
 function tryParseJSON(raw: string): unknown | null {
@@ -52,7 +64,9 @@ export function formatDisplayText(raw: string): string {
       return raw
     }
   }
-  return decodeCommonEscapes(raw)
+  const decoded = decodeCommonEscapes(raw)
+  // Filter consecutive empty lines in display only
+  return decoded.replace(/\n{2,}/g, '\n').trim()
 }
 
 export function parseExecOutputPayload(raw: string): ExecOutputPayload | null {
@@ -93,6 +107,35 @@ export function parseExecOutputPayload(raw: string): ExecOutputPayload | null {
   }
 }
 
+export function parseWebSearchPayload(raw: string): WebSearchPayload | null {
+  const parsed = tryParseJSON(raw)
+  if (!isRecord(parsed)) return null
+
+  const query = parsed.query
+  const results = parsed.results
+  if (typeof query !== 'string' || !Array.isArray(results)) return null
+
+  const normalizedResults: WebSearchResult[] = results
+    .map((item) => {
+      if (!isRecord(item)) return null
+      const title = item.title
+      const url = item.url
+      const content = typeof item.content === 'string'
+        ? item.content
+        : typeof item.snippet === 'string'
+          ? item.snippet
+          : ''
+      if (typeof title !== 'string' || typeof url !== 'string') return null
+      return { title, url, content }
+    })
+    .filter((item): item is WebSearchResult => item !== null)
+
+  return {
+    query,
+    results: normalizedResults,
+  }
+}
+
 export function formatToolParams(params: Record<string, string>): Array<{ key: string; value: string }> {
   return Object.keys(params)
     .sort()
@@ -108,6 +151,17 @@ export function buildToolResultDisplay(toolName: string, command: string, output
         mode: 'exec',
         outputText: '',
         exec,
+      }
+    }
+  }
+
+  if (toolName === 'web_search') {
+    const webSearch = parseWebSearchPayload(raw)
+    if (webSearch) {
+      return {
+        mode: 'web_search',
+        outputText: formatDisplayText(raw),
+        webSearch,
       }
     }
   }

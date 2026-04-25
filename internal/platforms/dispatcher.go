@@ -27,8 +27,11 @@ type platformChatService interface {
 		sessionID string,
 		requestID string,
 		content string,
+		displayContent string,
 		modelID string,
 		attachmentIDs []string,
+		thinkingLevel string,
+		planMode bool,
 		callbacks chatsvc.AgentCallbacks,
 	) (*chatsvc.ChatStreamResult, error)
 }
@@ -107,8 +110,11 @@ func (d *Dispatcher) HandleInbound(ctx context.Context, message InboundMessage, 
 		session.ID,
 		uuid.NewString(),
 		content,
+		"",
 		modelID,
 		attachmentIDs,
+		"",
+		false,
 		callbacks,
 	)
 	if err != nil {

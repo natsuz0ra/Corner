@@ -81,6 +81,87 @@ func TestListSessionMessagesPage_HasMoreWithLimitPlusOne(t *testing.T) {
 	}
 }
 
+func TestListSessionMessagesPage_DefaultReturnsNewest(t *testing.T) {
+	repo := New(NewSQLiteDBTest(t, "repo_messages_newest_test"))
+	session, err := repo.CreateSession(context.Background(), "s")
+	if err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+
+	// Insert 3 messages with distinct content and small delay to ensure ordering.
+	contents := []string{"oldest", "middle", "newest"}
+	for _, c := range contents {
+		if _, err := repo.AddMessageWithInput(context.Background(), domain.AddMessageInput{
+			SessionID: session.ID,
+			Role:      "user",
+			Content:   c,
+		}); err != nil {
+			t.Fatalf("add message failed: %v", err)
+		}
+		time.Sleep(1 * time.Millisecond)
+	}
+
+	// Request limit=2 (default case, no cursor) — should return the 2 newest messages.
+	page, hasMore, err := repo.ListSessionMessagesPage(session.ID, 2, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("list page failed: %v", err)
+	}
+	if len(page) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(page))
+	}
+	if !hasMore {
+		t.Fatal("expected hasMore=true")
+	}
+	// Must return the 2 newest messages in chronological order.
+	if page[0].Content != "middle" || page[1].Content != "newest" {
+		t.Fatalf("expected [middle, newest], got [%s, %s]", page[0].Content, page[1].Content)
+	}
+}
+
+func TestListSessionMessagesPage_BeforeCursorReturnsNewestBeforeCursor(t *testing.T) {
+	repo := New(NewSQLiteDBTest(t, "repo_messages_before_test"))
+	session, err := repo.CreateSession(context.Background(), "s")
+	if err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+
+	// Insert 5 messages with distinct content.
+	for i, c := range []string{"m0", "m1", "m2", "m3", "m4"} {
+		if _, err := repo.AddMessageWithInput(context.Background(), domain.AddMessageInput{
+			SessionID: session.ID,
+			Role:      "user",
+			Content:   c,
+		}); err != nil {
+			t.Fatalf("add message %d failed: %v", i, err)
+		}
+		time.Sleep(1 * time.Millisecond)
+	}
+
+	// Get m3's cursor (4th message, 0-indexed).
+	all, _, err := repo.ListSessionMessagesPage(session.ID, 100, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("list all failed: %v", err)
+	}
+	m3 := all[3]
+
+	// Request 2 messages before m3 — should return [m1, m2] (the 2 newest before the cursor).
+	before := m3.CreatedAt
+	beforeSeq := m3.Seq
+	page, hasMore, err := repo.ListSessionMessagesPage(session.ID, 2, &before, &beforeSeq, nil, nil)
+	if err != nil {
+		t.Fatalf("list page failed: %v", err)
+	}
+	if len(page) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(page))
+	}
+	if !hasMore {
+		t.Fatal("expected hasMore=true (m0 exists before m1)")
+	}
+	if page[0].Content != "m1" || page[1].Content != "m2" {
+		t.Fatalf("expected [m1, m2], got [%s, %s]", page[0].Content, page[1].Content)
+	}
+}
+
 func TestAddMessageWithInput_AssignsIncreasingSeq(t *testing.T) {
 	repo := New(NewSQLiteDBTest(t, "repo_messages_seq_test"))
 	session, err := repo.CreateSession(context.Background(), "s")

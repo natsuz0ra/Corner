@@ -6,13 +6,19 @@ type Handlers = {
   onStart: (sessionId?: string) => void
   onChunk: (chunk: string, sessionId?: string) => void
   onSessionTitle: (title: string, sessionId?: string) => void
-  onDone: (sessionId?: string, answer?: string, meta?: { isInterrupted?: boolean; isStopPlaceholder?: boolean }) => void
+  onDone: (sessionId?: string, answer?: string, meta?: { isInterrupted?: boolean; isStopPlaceholder?: boolean; planId?: string; planBody?: string }) => void
   onError: (error: string, sessionId?: string) => void
   onToolCallStart?: (data: ToolCallStartData, sessionId?: string) => void
   onToolCallResult?: (data: ToolCallResultData, sessionId?: string) => void
   onSubagentStart?: (data: SubagentStartData, sessionId?: string) => void
   onSubagentChunk?: (data: SubagentChunkData, sessionId?: string) => void
   onSubagentDone?: (data: SubagentDoneData, sessionId?: string) => void
+  onThinkingStart?: (sessionId?: string) => void
+  onThinkingChunk?: (chunk: string, sessionId?: string) => void
+  onThinkingDone?: (sessionId?: string) => void
+  onPlanStart?: (sessionId?: string) => void
+  onPlanChunk?: (chunk: string, sessionId?: string) => void
+  onPlanBody?: (content: string, sessionId?: string) => void
   onOpen?: () => void
   onClose?: () => void
   onSocketError?: (error: string) => void
@@ -82,6 +88,8 @@ type WSIncoming = {
   parentToolCallId?: string
   subagentRunId?: string
   task?: string
+  planId?: string
+  planBody?: string
 }
 
 export class ChatSocket {
@@ -109,12 +117,12 @@ export class ChatSocket {
     this.openSocket()
   }
 
-  send(content: string, sessionId: string, modelId: string, attachmentIds?: string[]) {
+  send(content: string, sessionId: string, modelId: string, attachmentIds?: string[], thinkingLevel?: string, planMode?: boolean) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.handlers?.onSocketError?.('socket is not connected')
       return false
     }
-    this.ws.send(JSON.stringify({ type: 'chat', content, sessionId, modelId, attachmentIds: attachmentIds || [] }))
+    this.ws.send(JSON.stringify({ type: 'chat', content, sessionId, modelId, attachmentIds: attachmentIds || [], thinkingLevel: thinkingLevel || 'off', planMode: !!planMode }))
     return true
   }
 
@@ -133,6 +141,33 @@ export class ChatSocket {
       return false
     }
     this.ws.send(JSON.stringify({ type: 'tool_approve', toolCallId, approved }))
+    return true
+  }
+
+  sendPlanApprove(planId: string, sessionId: string, modelId: string, displayContent?: string) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this.handlers?.onSocketError?.('socket is not connected')
+      return false
+    }
+    this.ws.send(JSON.stringify({ type: 'plan_approve', planId, sessionId, modelId, displayContent: displayContent || '' }))
+    return true
+  }
+
+  sendPlanReject(planId: string, sessionId: string) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this.handlers?.onSocketError?.('socket is not connected')
+      return false
+    }
+    this.ws.send(JSON.stringify({ type: 'plan_reject', planId, sessionId }))
+    return true
+  }
+
+  sendPlanModify(planId: string, sessionId: string, modelId: string, content: string, thinkingLevel: string) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this.handlers?.onSocketError?.('socket is not connected')
+      return false
+    }
+    this.ws.send(JSON.stringify({ type: 'plan_modify', planId, sessionId, modelId, content, thinkingLevel }))
     return true
   }
 
@@ -191,6 +226,8 @@ export class ChatSocket {
         this.handlers?.onDone(data.sessionId, data.answer, {
           isInterrupted: data.isInterrupted,
           isStopPlaceholder: data.isStopPlaceholder,
+          planId: data.planId,
+          planBody: data.planBody,
         })
       }
       if (data.type === 'error') this.handlers?.onError(data.error || 'unknown error', data.sessionId)
@@ -245,6 +282,13 @@ export class ChatSocket {
           error: data.error,
         }, data.sessionId)
       }
+
+      if (data.type === 'thinking_start') this.handlers?.onThinkingStart?.(data.sessionId)
+      if (data.type === 'thinking_chunk') this.handlers?.onThinkingChunk?.(data.content || '', data.sessionId)
+      if (data.type === 'thinking_done') this.handlers?.onThinkingDone?.(data.sessionId)
+      if (data.type === 'plan_start') this.handlers?.onPlanStart?.(data.sessionId)
+      if (data.type === 'plan_chunk') this.handlers?.onPlanChunk?.(data.content || '', data.sessionId)
+      if (data.type === 'plan_body') this.handlers?.onPlanBody?.(data.content || '', data.sessionId)
     }
 
     this.ws.onerror = () => {

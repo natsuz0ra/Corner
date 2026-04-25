@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import type { ToolCallItem } from '@/api/chat'
 import { useChatStore } from '@/stores/chat'
+import type { ToolTimelineEntry } from '@/types/chat'
 
 export function useHomeToolDetail(options: {
   t: (key: string, params?: Record<string, unknown>) => string
@@ -127,7 +128,7 @@ export function useHomeToolDetail(options: {
     return store.replyBatches.find((batch) => batch.id === toolDetailBatchId.value)?.timeline || []
   })
   const toolDetailToolTimeline = computed(() => {
-    return toolDetailTimeline.value.filter((entry) => entry.kind !== 'text')
+    return toolDetailTimeline.value.filter((entry): entry is ToolTimelineEntry => entry.kind !== 'text' && entry.kind !== 'plan')
   })
 
   return {

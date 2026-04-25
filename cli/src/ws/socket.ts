@@ -12,12 +12,17 @@ export interface WSHandlers {
   onChunk: (chunk: string, sessionId?: string) => void;
   onDone: (
     sessionId?: string,
-    meta?: { isInterrupted?: boolean; isStopPlaceholder?: boolean },
+    meta?: { isInterrupted?: boolean; isStopPlaceholder?: boolean; planId?: string; planBody?: string; narration?: string },
   ) => void;
   onError: (error: string, sessionId?: string) => void;
   onToolCallStart?: (data: ToolCallStartData, sessionId?: string) => void;
   onToolCallResult?: (data: ToolCallResultData, sessionId?: string) => void;
   onSubagentChunk?: (data: SubagentChunkData, sessionId?: string) => void;
+  onThinkingStart?: () => void;
+  onThinkingChunk?: (chunk: string) => void;
+  onThinkingDone?: () => void;
+  onPlanBody?: (content: string, sessionId?: string) => void;
+  onPlanStart?: () => void;
 }
 
 interface WSIncoming {
@@ -39,7 +44,9 @@ interface WSIncoming {
   isStopPlaceholder?: boolean;
   parentToolCallId?: string;
   subagentRunId?: string;
-  content?: string;
+  planId?: string;
+  planBody?: string;
+  narration?: string;
 }
 
 export class CLISocket {
@@ -87,6 +94,9 @@ export class CLISocket {
         this.handlers?.onDone(msg.sessionId, {
           isInterrupted: msg.isInterrupted,
           isStopPlaceholder: msg.isStopPlaceholder,
+          planId: msg.planId,
+          planBody: msg.planBody,
+          narration: msg.narration,
         });
       }
       if (msg.type === "error")
@@ -135,6 +145,23 @@ export class CLISocket {
           msg.sessionId,
         );
       }
+
+      if (msg.type === "thinking_start") {
+        this.handlers?.onThinkingStart?.();
+      }
+      if (msg.type === "thinking_chunk") {
+        this.handlers?.onThinkingChunk?.(msg.content || "");
+      }
+      if (msg.type === "thinking_done") {
+        this.handlers?.onThinkingDone?.();
+      }
+
+      if (msg.type === "plan_body") {
+        this.handlers?.onPlanBody?.(msg.content || "", msg.sessionId);
+      }
+      if (msg.type === "plan_start") {
+        this.handlers?.onPlanStart?.();
+      }
     });
 
     this.ws.on("error", () => {
@@ -146,7 +173,7 @@ export class CLISocket {
     });
   }
 
-  send(content: string, sessionId: string, modelId: string): boolean {
+  send(content: string, sessionId: string, modelId: string, thinkingLevel: string = "off", planMode: boolean = false): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
     this.ws.send(
       JSON.stringify({
@@ -155,6 +182,8 @@ export class CLISocket {
         sessionId,
         modelId,
         attachmentIds: [],
+        thinkingLevel,
+        planMode,
       }),
     );
     return true;
@@ -170,6 +199,30 @@ export class CLISocket {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
     this.ws.send(
       JSON.stringify({ type: "tool_approve", toolCallId, approved }),
+    );
+    return true;
+  }
+
+  sendPlanApprove(planId: string, sessionId: string, modelId: string, displayContent: string = ""): boolean {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+    this.ws.send(
+      JSON.stringify({ type: "plan_approve", planId, sessionId, modelId, displayContent }),
+    );
+    return true;
+  }
+
+  sendPlanReject(planId: string, sessionId: string): boolean {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+    this.ws.send(
+      JSON.stringify({ type: "plan_reject", planId, sessionId }),
+    );
+    return true;
+  }
+
+  sendPlanModify(planId: string, sessionId: string, modelId: string, content: string, thinkingLevel: string): boolean {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+    this.ws.send(
+      JSON.stringify({ type: "plan_modify", planId, sessionId, modelId, content, thinkingLevel }),
     );
     return true;
   }

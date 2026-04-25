@@ -70,3 +70,65 @@ test("TOGGLE_TOOL_OUTPUT switches tool output expanded on and off", () => {
   state = reducer(state, { type: "TOGGLE_TOOL_OUTPUT" } as any);
   assert.equal(state.toolOutputExpanded, false);
 });
+
+test("THINKING_DONE stores a fixed thinking duration", () => {
+  const state = {
+    ...initState(),
+    timeline: [
+      {
+        kind: "thinking",
+        content: "reasoning",
+        thinkingDone: false,
+        thinkingStartedAt: 1_000,
+      },
+    ],
+  };
+
+  const next = reducer(state, { type: "THINKING_DONE", finishedAt: 2_750 } as any);
+  const entry = next.timeline[0];
+
+  assert.equal(entry.kind, "thinking");
+  assert.equal(entry.thinkingDone, true);
+  assert.equal(entry.thinkingDurationMs, 1_750);
+});
+
+test("THINKING_START flushes live assistant text before new thinking block", () => {
+  const state = {
+    ...initState(),
+    liveAssistant: "spoken before more thought",
+  };
+
+  const next = reducer(state, { type: "THINKING_START" } as any);
+
+  assert.deepEqual(next.timeline.map((entry) => entry.kind), ["assistant", "thinking"]);
+  assert.equal(next.timeline[0].content, "spoken before more thought");
+  assert.equal(next.liveAssistant, "");
+});
+
+test("STREAM_DONE keeps final assistant when previous timeline already has a plan", () => {
+  const state = {
+    ...initState(),
+    timeline: [{ kind: "plan", content: "# Existing plan" }],
+    liveAssistant: "execution finished",
+    streaming: true,
+  };
+
+  const next = reducer(state, { type: "STREAM_DONE", error: null } as any);
+
+  assert.deepEqual(next.timeline.map((entry) => entry.kind), ["plan", "assistant"]);
+  assert.equal(next.timeline[1].content, "execution finished");
+});
+
+test("STREAM_DONE does not duplicate a plan body received in the current turn", () => {
+  let state = {
+    ...initState(),
+    liveAssistant: "# Plan",
+    streaming: true,
+  };
+
+  state = reducer(state, { type: "PLAN_BODY", planBody: "# Plan" } as any);
+  state = reducer(state, { type: "STREAM_DONE", error: null } as any);
+
+  assert.deepEqual(state.timeline.map((entry) => entry.kind), ["assistant", "plan"]);
+  assert.equal(state.timeline.filter((entry) => entry.kind === "plan").length, 1);
+});

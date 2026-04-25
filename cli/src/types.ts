@@ -45,8 +45,13 @@ export interface Skill {
 
 export interface Settings {
   defaultModel: string;
+  approvalMode?: string;
   [key: string]: unknown;
 }
+
+// Thinking level cycle order
+export const THINKING_LEVELS = ["off", "low", "medium", "high"] as const;
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
 // ===== API response types =====
 
@@ -58,6 +63,7 @@ export interface SessionListResponse {
 export interface SessionHistoryPayload {
   messages: Message[];
   toolCallsByAssistantMessageId: Record<string, ToolCallHistoryItem[]>;
+  thinkingByAssistantMessageId: Record<string, ThinkingHistoryItem[]>;
   hasMore: boolean;
 }
 
@@ -74,6 +80,15 @@ export interface ToolCallHistoryItem {
   error?: string;
   startedAt: string;
   finishedAt?: string;
+}
+
+export interface ThinkingHistoryItem {
+  thinkingId: string;
+  content: string;
+  status: string;
+  startedAt?: string;
+  finishedAt?: string;
+  durationMs?: number;
 }
 
 // ===== WebSocket message types =====
@@ -116,13 +131,14 @@ export interface SubagentChunkData {
 
 // ===== UI state types =====
 
-export type ViewMode = "chat" | "menu" | "mcp-editor" | "mcp-template" | "model-editor" | "approval";
+export type ViewMode = "chat" | "menu" | "mcp-editor" | "mcp-template" | "model-editor" | "approval" | "thinking-detail" | "plan-confirm";
 
 export type MenuKind =
   | "session"
   | "model"
   | "skills"
   | "mcp"
+  | "effort"
   | "help";
 
 // ===== MCP Template types =====
@@ -162,7 +178,7 @@ export const MCP_TEMPLATES: MCPTemplate[] = [
 export type ModelProvider = "openai" | "anthropic";
 
 export interface TimelineEntry {
-  kind: "user" | "assistant" | "system" | "tool";
+  kind: "user" | "assistant" | "system" | "tool" | "thinking" | "plan";
   content: string;
   toolCallId?: string;
   toolName?: string;
@@ -175,6 +191,12 @@ export interface TimelineEntry {
   subagentRunId?: string;
   /** Accumulated nested agent stream (parent run_subagent only). */
   subagentStream?: string;
+  /** Thinking entry: whether thinking is complete. */
+  thinkingDone?: boolean;
+  /** Thinking entry: started timestamp (ms since epoch). */
+  thinkingStartedAt?: number;
+  /** Thinking entry: persisted duration for history replay. */
+  thinkingDurationMs?: number;
 }
 
 export interface MenuItem {
@@ -201,8 +223,11 @@ export const SUPPORTED_COMMANDS: CommandMeta[] = [
   { command: "/new", description: "Create a new chat session" },
   { command: "/session", description: "Open session menu to switch or delete" },
   { command: "/model", description: "Choose the default model" },
+  { command: "/mode", description: "Toggle approval mode (standard/auto)" },
+  { command: "/effort", description: "Toggle thinking level (off/low/medium/high)" },
   { command: "/skills", description: "View and manage installed skills" },
   { command: "/mcp", description: "Manage MCP configurations" },
+  { command: "/plan", description: "Toggle plan mode (on/off)" },
   { command: "/help", description: "Show available commands" },
 ];
 
@@ -216,6 +241,8 @@ export interface AppState {
   sessionName: string;
   modelId: string;
   modelName: string;
+  thinkingLevel: string;
+  approvalMode: string;
   timeline: TimelineEntry[];
   streaming: boolean;
   assistantWaiting: boolean;
@@ -223,6 +250,12 @@ export interface AppState {
   blinkOn: boolean;
   compact: boolean;
   toolOutputExpanded: boolean;
+  planMode: boolean;
+  planGenerating: boolean;
+  planReceived: boolean;
+
+  // Thinking detail view
+  thinkingDetailContent: string;
 
   // Input
   inputValue: string;
@@ -260,6 +293,13 @@ export interface AppState {
   approvalCommand: string;
   approvalParams: Record<string, string>;
   approvalReplyCh: ((approved: boolean) => void) | null;
+
+  // Plan confirmation
+  pendingPlanId: string;
+  pendingPlanContent: string;
+  planConfirmCursor: number;
+  planModifyInput: string;
+  planModifyInputKey: number;
 
   // Connection
   apiURL: string;
@@ -307,4 +347,18 @@ export type AppAction =
   | { type: "TOGGLE_MODEL_EDITOR_PROVIDER_SELECT" }
   | { type: "SET_APPROVAL"; toolCallId: string; toolName: string; command: string; params: Record<string, string>; replyCh: (approved: boolean) => void }
   | { type: "CLEAR_APPROVAL" }
-  | { type: "LOAD_HISTORY"; entries: TimelineEntry[] };
+  | { type: "SET_APPROVAL_MODE"; mode: string }
+  | { type: "SET_THINKING_LEVEL"; level: string }
+  | { type: "LOAD_HISTORY"; entries: TimelineEntry[] }
+  | { type: "THINKING_START" }
+  | { type: "THINKING_CHUNK"; chunk: string }
+  | { type: "THINKING_DONE"; finishedAt?: number }
+  | { type: "TOGGLE_PLAN_MODE" }
+  | { type: "SET_PLAN_CONFIRMATION"; planId: string; content: string }
+  | { type: "PLAN_CONFIRM_NAV"; delta: number }
+  | { type: "SET_PLAN_MODIFY_INPUT"; value: string }
+  | { type: "CLEAR_PLAN_CONFIRMATION" }
+  | { type: "PLAN_BODY"; planBody: string; narration?: string }
+  | { type: "PLAN_START" }
+  | { type: "VIEW_THINKING_DETAIL"; content: string }
+  | { type: "FLUSH_AND_WAIT" };

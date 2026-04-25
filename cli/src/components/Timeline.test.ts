@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { TimelineEntry } from "../types";
-import { formatToolOutputLines, formatToolParamLines } from "./Timeline";
+import { formatThinkingLabel, formatToolOutputLines, formatToolParamLines, formatPlanBlockLines } from "./Timeline";
+import { stringWidth } from "../utils/stringWidth";
+import { stripAnsi } from "../utils/terminal";
 
 test("formatToolOutputLines aligns tool output with fixed spaces", () => {
   const entry: TimelineEntry = {
@@ -99,4 +101,35 @@ test("formatToolParamLines pretty prints JSON params", () => {
   assert.ok(lines.some((line) => line.includes("command: echo ok")));
   assert.ok(lines.some((line) => line.includes("headers:")));
   assert.ok(lines.some((line) => line.includes("Content-Type")));
+});
+
+test("formatThinkingLabel uses fixed duration after thinking completes", () => {
+  const label = formatThinkingLabel({
+    kind: "thinking",
+    content: "",
+    thinkingDone: true,
+    thinkingStartedAt: 1_000,
+    thinkingDurationMs: 1_750,
+  });
+
+  assert.equal(label, "Thought for 1.8s");
+});
+
+test("formatPlanBlockLines renders a closed fixed-width border", () => {
+  const lines = formatPlanBlockLines("# Plan\n\nDo the thing.", 40);
+  const widths = lines.map((line) => stringWidth(stripAnsi(line)));
+
+  assert.ok(lines.length >= 4);
+  assert.equal(new Set(widths).size, 1);
+  assert.match(lines[0]!, /^╭.*╮$/);
+  assert.match(lines[lines.length - 1]!, /^╰.*╯$/);
+  assert.ok(lines.slice(1, -1).every((line) => line.startsWith("│ ") && line.endsWith(" │")));
+});
+
+test("formatPlanBlockLines keeps right border aligned for CJK content", () => {
+  const lines = formatPlanBlockLines("# 更新计划\n\n检查当前版本并备份配置。", 36);
+  const widths = lines.map((line) => stringWidth(stripAnsi(line)));
+
+  assert.equal(new Set(widths).size, 1);
+  assert.ok(lines.slice(1, -1).every((line) => line.endsWith(" │")));
 });
