@@ -86,3 +86,26 @@ export function markLastThinkingDone(timeline: AssistantReplyTimelineItem[], fin
   }
   return timeline
 }
+
+export function getLiveReplyContentSignature(batch: AssistantReplyBatch | undefined) {
+  if (!batch) return ''
+  const parts = batch.timeline.map((entry) => {
+    if (entry.kind === 'text') return `text:${entry.content.length}`
+    if (entry.kind === 'plan') return `plan:${entry.content.length}:${entry.generating ? 1 : 0}`
+    if (entry.kind === 'thinking') return `thinking:${entry.content.length}:${entry.done ? 1 : 0}`
+    return `${entry.kind}:${entry.toolCallId}`
+  })
+
+  for (const item of batch.toolCalls) {
+    parts.push([
+      'tool',
+      item.toolCallId,
+      item.status,
+      item.output?.length ?? 0,
+      item.error?.length ?? 0,
+      item.subagentStream?.length ?? 0,
+    ].join(':'))
+  }
+
+  return parts.join('|')
+}
