@@ -10,6 +10,7 @@ export interface WSHandlers {
   onSession: (sessionId: string) => void;
   onStart: (sessionId?: string) => void;
   onChunk: (chunk: string, sessionId?: string) => void;
+  onSessionTitle?: (title: string, sessionId?: string) => void;
   onDone: (
     sessionId?: string,
     meta?: { isInterrupted?: boolean; isStopPlaceholder?: boolean; planId?: string; planBody?: string; narration?: string },
@@ -88,7 +89,7 @@ export class CLISocket {
       if (msg.type === "chunk")
         this.handlers?.onChunk(msg.content || "", msg.sessionId);
       if (msg.type === "session_title") {
-        // Title update - no action needed for CLI
+        this.handlers?.onSessionTitle?.(msg.title || "", msg.sessionId);
       }
       if (msg.type === "done") {
         this.handlers?.onDone(msg.sessionId, {

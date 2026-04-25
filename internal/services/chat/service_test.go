@@ -352,6 +352,42 @@ func TestHandleChatStream_PlanModeSavesOnlyPlanBody(t *testing.T) {
 	}
 }
 
+func TestHandleChatStream_StartsTitleGenerationBeforeAssistantChunk(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	session, err := repo.CreateSession(ctx, "New Chat")
+	if err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+	model, err := repo.CreateLLMConfig(domain.LLMConfig{
+		Name:     "fake",
+		Provider: llmsvc.ProviderOpenAI,
+		BaseURL:  "http://fake",
+		APIKey:   "key",
+		Model:    "fake-model",
+	})
+	if err != nil {
+		t.Fatalf("create model failed: %v", err)
+	}
+
+	provider := &earlyTitleProvider{titleStarted: make(chan struct{})}
+	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil, nil)
+
+	_, err = svc.HandleChatStream(ctx, session.ID, "request-1", "用户消息", "", model.ID, nil, "off", false, AgentCallbacks{
+		OnChunk: func(string) error { return nil },
+	})
+	if err != nil {
+		t.Fatalf("HandleChatStream failed: %v", err)
+	}
+
+	provider.mu.Lock()
+	got := strings.Join(provider.events, ",")
+	provider.mu.Unlock()
+	if got != "title_call,chunk" {
+		t.Fatalf("events = %q, want title_call,chunk", got)
+	}
+}
+
 type captureMessagesProvider struct {
 	messages []llmsvc.ChatMessage
 }
@@ -464,6 +500,54 @@ func (p *fakePlanModeProvider) StreamChatWithTools(
 			},
 		}, nil
 	}
+}
+
+type earlyTitleProvider struct {
+	titleStarted chan struct{}
+
+	mu     sync.Mutex
+	events []string
+}
+
+func (p *earlyTitleProvider) record(event string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.events = append(p.events, event)
+}
+
+func (p *earlyTitleProvider) StreamChatWithTools(
+	_ context.Context,
+	_ llmsvc.ModelRuntimeConfig,
+	messages []llmsvc.ChatMessage,
+	_ []llmsvc.ToolDef,
+	callbacks llmsvc.StreamCallbacks,
+) (*llmsvc.StreamResult, error) {
+	if len(messages) > 0 && messages[0].Content == titleSystemPrompt {
+		p.record("title_call")
+		select {
+		case <-p.titleStarted:
+		default:
+			close(p.titleStarted)
+		}
+		if callbacks.OnChunk != nil {
+			if err := callbacks.OnChunk(`{"title":"自动标题"}`); err != nil {
+				return nil, err
+			}
+		}
+		return &llmsvc.StreamResult{Type: llmsvc.StreamResultText}, nil
+	}
+
+	select {
+	case <-p.titleStarted:
+	case <-time.After(200 * time.Millisecond):
+	}
+	p.record("chunk")
+	if callbacks.OnChunk != nil {
+		if err := callbacks.OnChunk("answer"); err != nil {
+			return nil, err
+		}
+	}
+	return &llmsvc.StreamResult{Type: llmsvc.StreamResultText}, nil
 }
 
 type stubTitleUpdateStore struct {
@@ -588,7 +672,7 @@ func TestMaybeGenerateTitleAsync_TriggersForInitialSessionName(t *testing.T) {
 	svc := &ChatService{titleGen: gen}
 
 	resultCh := make(chan string, 1)
-	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-1", Name: " New Chat "}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", "助手回复", func(sessionID, title string) {
+	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-1", Name: " New Chat "}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", func(sessionID, title string) {
 		resultCh <- sessionID + ":" + title
 	})
 
@@ -668,7 +752,7 @@ func TestMaybeGenerateTitleAsync_SkipsWhenPreconditionsFail(t *testing.T) {
 			}
 
 			called := make(chan struct{}, 1)
-			svc.maybeGenerateTitleAsync(tt.session, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, tt.userContent, "助手回复", func(string, string) {
+			svc.maybeGenerateTitleAsync(tt.session, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, tt.userContent, func(string, string) {
 				called <- struct{}{}
 			})
 
@@ -696,7 +780,7 @@ func TestMaybeGenerateTitleAsync_DoesNotCallbackWhenPersistReturnsFalse(t *testi
 	svc := &ChatService{titleGen: newTitleGenerator(llmsvc.NewFactory(&fakeTitleProvider{title: `{"title":"自动标题"}`}), store)}
 	called := make(chan struct{}, 1)
 
-	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-6", Name: "New Chat"}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", "助手回复", func(string, string) {
+	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-6", Name: "New Chat"}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", func(string, string) {
 		called <- struct{}{}
 	})
 
@@ -713,17 +797,23 @@ func TestMaybeGenerateTitleAsync_DoesNotCallbackWhenPersistReturnsFalse(t *testi
 }
 
 type fakeTitleProvider struct {
-	title string
-	err   error
+	title          string
+	err            error
+	capturedPrompt string
+	calls          int
 }
 
 func (p *fakeTitleProvider) StreamChatWithTools(
 	_ context.Context,
 	_ llmsvc.ModelRuntimeConfig,
-	_ []llmsvc.ChatMessage,
+	messages []llmsvc.ChatMessage,
 	_ []llmsvc.ToolDef,
 	callbacks llmsvc.StreamCallbacks,
 ) (*llmsvc.StreamResult, error) {
+	p.calls++
+	if len(messages) > 1 {
+		p.capturedPrompt = messages[1].Content
+	}
 	if p.err != nil {
 		return nil, p.err
 	}
@@ -740,7 +830,7 @@ func TestMaybeGenerateTitleAsync_IgnoresGenerationError(t *testing.T) {
 	svc := &ChatService{titleGen: newTitleGenerator(llmsvc.NewFactory(&fakeTitleProvider{err: fmt.Errorf("boom")}), store)}
 	called := make(chan struct{}, 1)
 
-	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-7", Name: "New Chat"}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", "助手回复", func(string, string) {
+	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-7", Name: "New Chat"}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", func(string, string) {
 		called <- struct{}{}
 	})
 
@@ -761,7 +851,7 @@ func TestMaybeGenerateTitleAsync_IgnoresPersistError(t *testing.T) {
 	svc := &ChatService{titleGen: newTitleGenerator(llmsvc.NewFactory(&fakeTitleProvider{title: `{"title":"自动标题"}`}), store)}
 	called := make(chan struct{}, 1)
 
-	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-8", Name: "New Chat"}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", "助手回复", func(string, string) {
+	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-8", Name: "New Chat"}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", func(string, string) {
 		called <- struct{}{}
 	})
 
@@ -774,5 +864,49 @@ func TestMaybeGenerateTitleAsync_IgnoresPersistError(t *testing.T) {
 	case <-called:
 		t.Fatal("callback should not be called on persist error")
 	default:
+	}
+}
+
+func TestMaybeGenerateTitleAsync_UsesOnlyUserMessageForInitialTitle(t *testing.T) {
+	store := &stubTitleUpdateStore{updated: true, done: make(chan struct{})}
+	provider := &fakeTitleProvider{title: `{"title":"自动标题"}`}
+	svc := &ChatService{titleGen: newTitleGenerator(llmsvc.NewFactory(provider), store)}
+
+	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-9", Name: "New Chat"}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户开场", func(string, string) {})
+
+	select {
+	case <-store.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for title persistence")
+	}
+	if strings.Contains(provider.capturedPrompt, "Assistant:") || strings.Contains(provider.capturedPrompt, "助手回复不应参与标题") {
+		t.Fatalf("title prompt should not include assistant answer, got %q", provider.capturedPrompt)
+	}
+}
+
+func TestMaybeGenerateTitleAsync_RetriesAfterGenerationError(t *testing.T) {
+	store := &stubTitleUpdateStore{updated: true, done: make(chan struct{})}
+	provider := &fakeTitleProvider{err: fmt.Errorf("boom")}
+	svc := &ChatService{titleGen: newTitleGenerator(llmsvc.NewFactory(provider), store)}
+	session := &domain.Session{ID: "sid-10", Name: "New Chat"}
+
+	svc.maybeGenerateTitleAsync(session, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", func(string, string) {})
+	time.Sleep(150 * time.Millisecond)
+
+	provider.err = nil
+	provider.title = `{"title":"重试标题"}`
+	svc.maybeGenerateTitleAsync(session, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", func(string, string) {})
+
+	select {
+	case <-store.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for retry title persistence")
+	}
+	if provider.calls < 2 {
+		t.Fatalf("expected retry after generation error, got %d call(s)", provider.calls)
+	}
+	_, _, name := store.snapshot()
+	if name != "重试标题" {
+		t.Fatalf("persisted title = %q, want 重试标题", name)
 	}
 }

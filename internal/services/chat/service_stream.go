@@ -75,6 +75,7 @@ func (s *ChatService) HandleChatStream(
 		return nil, err
 	}
 	defer s.cleanupTurnAttachments(state.attachments)
+	s.maybeGenerateTitleAsync(state.session, state.modelConfig, state.userContent, callbacks.OnTitleGenerated)
 
 	if planMode {
 		state.contextMessages = append(state.contextMessages, llmsvc.ChatMessage{
@@ -459,7 +460,7 @@ func (s *ChatService) executeChatTurn(
 	}, nil
 }
 
-// finalizeChatTurn persists assistant message, enqueues memory, triggers async title generation, saves plan if applicable.
+// finalizeChatTurn persists assistant message, enqueues memory, and saves plan if applicable.
 func (s *ChatService) finalizeChatTurn(
 	ctx context.Context,
 	sessionID string,
@@ -493,7 +494,6 @@ func (s *ChatService) finalizeChatTurn(
 		Narration:         result.narration,
 		PlanBody:          result.planBody,
 	}
-	s.maybeGenerateTitleAsync(state.session, state.modelConfig, state.userContent, result.answer, callbacks.OnTitleGenerated)
 	if s.memory != nil && strings.TrimSpace(result.memoryPayload) != "" {
 		s.memory.EnqueueTurnMemory(sessionID, assistantMessage.ID, result.memoryPayload)
 		logging.Info("memory_enqueue_triggered", "session", sessionID)

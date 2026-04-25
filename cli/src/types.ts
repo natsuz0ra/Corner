@@ -314,6 +314,7 @@ export type AppAction =
   | { type: "SET_INPUT_WITH_KEY"; value: string }
   | { type: "SET_SESSION"; sessionId: string; sessionName?: string }
   | { type: "SET_SESSION_NAME"; sessionName: string }
+  | { type: "APPLY_SESSION_TITLE"; sessionId?: string; title: string }
   | { type: "SET_MODEL"; modelId: string; modelName: string }
   | { type: "STREAM_START" }
   | { type: "STREAM_CHUNK"; chunk: string }
