@@ -29,5 +29,8 @@ func wrapSubagentCallbacks(base AgentCallbacks, parentToolCallID, subagentRunID 
 			result.SubagentRunID = subagentRunID
 			return base.OnToolCallResult(result)
 		},
+		OnThinkingStart: base.OnThinkingStart,
+		OnThinkingChunk: base.OnThinkingChunk,
+		OnThinkingDone:  base.OnThinkingDone,
 	}
 }

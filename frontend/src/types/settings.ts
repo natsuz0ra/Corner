@@ -3,6 +3,7 @@ export interface AppSettings {
   defaultModel?: string
   messagePlatformDefaultModel?: string
   webSearchKey?: string
+  approvalMode?: 'standard' | 'auto'
 }
 
 export interface LLMConfig {

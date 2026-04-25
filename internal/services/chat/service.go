@@ -9,16 +9,20 @@ import (
 	"slimebot/internal/mcp"
 	llmsvc "slimebot/internal/services/llm"
 	memsvc "slimebot/internal/services/memory"
+	plansvc "slimebot/internal/services/plan"
 	skillsvc "slimebot/internal/services/skill"
 )
 
 // ChatService orchestrates the chat flow: context, agent, uploads, and per-session skills.
 type ChatService struct {
 	store          domain.ChatStore
+	settingsStore  domain.SettingsStore
 	agent          *AgentService
 	skillRuntime   *skillsvc.SkillRuntimeService
 	memory         *memsvc.MemoryService
+	planService    *plansvc.PlanService
 	uploads        *ChatUploadService
+	titleGen       *titleGenerator
 	skillsMu       sync.Mutex
 	skillsBySess   map[string]map[string]struct{}
 	skillTouchedAt map[string]time.Time
@@ -36,8 +40,11 @@ type ChatService struct {
 
 // chatStreamAccumulator collects streamed text and the first push error, if any.
 type chatStreamAccumulator struct {
-	answerBuilder strings.Builder
-	pushErr       error
+	answerBuilder    strings.Builder
+	narrationBuilder strings.Builder // plan mode: text before plan_start
+	planBodyBuilder  strings.Builder // plan mode: text after plan_start
+	planStarted      bool            // plan mode: set true when plan_start tool called
+	pushErr          error
 }
 
 // ChatStreamResult is the outcome of one chat stream after persistence.
@@ -45,19 +52,22 @@ type ChatStreamResult struct {
 	Answer            string
 	IsInterrupted     bool
 	IsStopPlaceholder bool
-	TitleUpdated      bool
-	Title             string
 	SummaryUpdated    bool
 	PushFailed        bool
 	PushError         string
+	PlanID            string
+	Narration         string // text before the first heading in plan mode
+	PlanBody          string // text from the first heading onwards in plan mode
 }
 
 // NewChatService constructs ChatService with per-session skill activation maps.
-func NewChatService(store domain.ChatStore, providerFactory *llmsvc.Factory, mcpManager *mcp.Manager, skillRuntime *skillsvc.SkillRuntimeService, memory *memsvc.MemoryService) *ChatService {
+func NewChatService(store domain.ChatStore, settingsStore domain.SettingsStore, providerFactory *llmsvc.Factory, mcpManager *mcp.Manager, skillRuntime *skillsvc.SkillRuntimeService, memory *memsvc.MemoryService) *ChatService {
 	s := &ChatService{
 		store:          store,
+		settingsStore:  settingsStore,
 		skillRuntime:   skillRuntime,
 		memory:         memory,
+		titleGen:       newTitleGenerator(providerFactory, store),
 		skillsBySess:   make(map[string]map[string]struct{}),
 		skillTouchedAt: make(map[string]time.Time),
 	}
@@ -69,6 +79,11 @@ func NewChatService(store domain.ChatStore, providerFactory *llmsvc.Factory, mcp
 // SetUploadService injects the upload staging service for one-turn consume/cleanup.
 func (s *ChatService) SetUploadService(uploads *ChatUploadService) {
 	s.uploads = uploads
+}
+
+// SetPlanService injects the plan service for plan mode file management.
+func (s *ChatService) SetPlanService(ps *plansvc.PlanService) {
+	s.planService = ps
 }
 
 // SetRunContext injects deployment/runtime info for the system prompt environment section.

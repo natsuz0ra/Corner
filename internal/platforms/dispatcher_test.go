@@ -29,7 +29,10 @@ func (m *mockPlatformChatService) HandleChatStream(
 	_ string,
 	_ string,
 	_ string,
+	_ string,
 	_ []string,
+	_ string,
+	_ bool,
 	callbacks chatsvc.AgentCallbacks,
 ) (*chatsvc.ChatStreamResult, error) {
 	_ = callbacks.OnToolCallStart(chatsvc.ApprovalRequest{
@@ -68,7 +71,10 @@ func (m *captureAttachmentChatService) HandleChatStream(
 	_ string,
 	content string,
 	_ string,
+	_ string,
 	attachmentIDs []string,
+	_ string,
+	_ bool,
 	_ chatsvc.AgentCallbacks,
 ) (*chatsvc.ChatStreamResult, error) {
 	m.lastContent = content
@@ -92,7 +98,10 @@ func (m *mockApprovalChatService) HandleChatStream(
 	_ string,
 	_ string,
 	_ string,
+	_ string,
 	_ []string,
+	_ string,
+	_ bool,
 	callbacks chatsvc.AgentCallbacks,
 ) (*chatsvc.ChatStreamResult, error) {
 	_ = callbacks.OnToolCallStart(chatsvc.ApprovalRequest{

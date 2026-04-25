@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Key } from "ink";
 import { handleChatShortcut, mapHistoryMessages } from "./app";
-import type { Message, ToolCallHistoryItem } from "./types";
+import type { Message, ThinkingHistoryItem, ToolCallHistoryItem } from "./types";
 
 test("mapHistoryMessages inserts tool calls after assistant messages in timeline order", () => {
   const messages: Message[] = [
@@ -110,6 +110,191 @@ test("mapHistoryMessages preserves parentToolCallId for nested tool calls", () =
   assert.ok(child && child.kind === "tool");
   assert.equal(child.parentToolCallId, "parent");
   assert.equal(child.subagentRunId, "run-1");
+});
+
+test("mapHistoryMessages restores thinking entries from history markers", () => {
+  const messages: Message[] = [
+    {
+      id: "a1",
+      sessionId: "s1",
+      role: "assistant",
+      content: "<!-- THINKING:think-1 -->\nDone",
+      seq: 1,
+      createdAt: "2026-01-01T00:00:01Z",
+    },
+  ];
+  const thinkingByMsgId: Record<string, ThinkingHistoryItem[]> = {
+    a1: [
+      {
+        thinkingId: "think-1",
+        content: "reasoning text",
+        status: "completed",
+        startedAt: "2026-01-01T00:00:00Z",
+        finishedAt: "2026-01-01T00:00:01Z",
+        durationMs: 1000,
+      },
+    ],
+  };
+
+  const entries = mapHistoryMessages(messages, {}, thinkingByMsgId);
+
+  assert.deepEqual(entries, [
+    {
+      kind: "thinking",
+      content: "reasoning text",
+      thinkingDone: true,
+      thinkingDurationMs: 1000,
+    },
+    { kind: "assistant", content: "Done" },
+  ]);
+});
+
+test("mapHistoryMessages restores thinking markers inside plan history in marker order", () => {
+  const messages: Message[] = [
+    {
+      id: "a1",
+      sessionId: "s1",
+      role: "assistant",
+      content: [
+        "<!-- PLAN_START -->",
+        "<!-- THINKING:think-in-plan -->",
+        "# Plan",
+        "",
+        "Do the thing.",
+        "<!-- PLAN_END -->",
+      ].join("\n"),
+      seq: 1,
+      createdAt: "2026-01-01T00:00:01Z",
+    },
+  ];
+  const thinkingByMsgId: Record<string, ThinkingHistoryItem[]> = {
+    a1: [
+      {
+        thinkingId: "think-in-plan",
+        content: "internal plan reasoning",
+        status: "completed",
+        startedAt: "2026-01-01T00:00:00Z",
+        finishedAt: "2026-01-01T00:00:01Z",
+        durationMs: 1000,
+      },
+    ],
+  };
+
+  const entries = mapHistoryMessages(messages, {}, thinkingByMsgId);
+
+  assert.deepEqual(entries.map((entry) => entry.kind), ["thinking", "plan"]);
+  assert.equal(entries[0].content, "internal plan reasoning");
+  assert.equal(entries[1].content, "# Plan\n\nDo the thing.");
+});
+
+test("mapHistoryMessages keeps thinking outside and inside a plan in order", () => {
+  const messages: Message[] = [
+    {
+      id: "a1",
+      sessionId: "s1",
+      role: "assistant",
+      content: [
+        "<!-- THINKING:think-before -->",
+        "Preamble",
+        "<!-- PLAN_START -->",
+        "<!-- THINKING:think-in-plan -->",
+        "# Plan",
+        "<!-- PLAN_END -->",
+        "<!-- THINKING:think-after -->",
+        "Done",
+      ].join("\n"),
+      seq: 1,
+      createdAt: "2026-01-01T00:00:01Z",
+    },
+  ];
+  const thinkingByMsgId: Record<string, ThinkingHistoryItem[]> = {
+    a1: [
+      {
+        thinkingId: "think-before",
+        content: "before reasoning",
+        status: "completed",
+        startedAt: "2026-01-01T00:00:00Z",
+        durationMs: 1000,
+      },
+      {
+        thinkingId: "think-in-plan",
+        content: "internal plan reasoning",
+        status: "completed",
+        startedAt: "2026-01-01T00:00:01Z",
+        durationMs: 1000,
+      },
+      {
+        thinkingId: "think-after",
+        content: "after reasoning",
+        status: "completed",
+        startedAt: "2026-01-01T00:00:02Z",
+        durationMs: 1000,
+      },
+    ],
+  };
+
+  const entries = mapHistoryMessages(messages, {}, thinkingByMsgId);
+
+  assert.deepEqual(entries.map((entry) => entry.kind), ["thinking", "assistant", "thinking", "plan", "thinking", "assistant"]);
+  assert.equal(entries.filter((entry) => entry.kind === "thinking").length, 3);
+  assert.equal(entries.find((entry) => entry.kind === "plan")?.content, "# Plan");
+});
+
+test("mapHistoryMessages restores text, thinking, and plan markers without dropping plan thinking", () => {
+  const messages: Message[] = [
+    {
+      id: "a1",
+      sessionId: "s1",
+      role: "assistant",
+      content: [
+        "<!-- THINKING:think-1 -->",
+        "Narration",
+        "<!-- THINKING:think-2 -->",
+        "<!-- PLAN_START -->",
+        "<!-- THINKING:think-3 -->",
+        "# Plan",
+        "",
+        "Do the thing.",
+        "<!-- PLAN_END -->",
+      ].join("\n"),
+      seq: 1,
+      createdAt: "2026-01-01T00:00:01Z",
+    },
+  ];
+  const thinkingByMsgId: Record<string, ThinkingHistoryItem[]> = {
+    a1: [
+      {
+        thinkingId: "think-1",
+        content: "first thought",
+        status: "completed",
+        startedAt: "2026-01-01T00:00:00Z",
+        durationMs: 1000,
+      },
+      {
+        thinkingId: "think-2",
+        content: "second thought",
+        status: "completed",
+        startedAt: "2026-01-01T00:00:01Z",
+        durationMs: 1000,
+      },
+      {
+        thinkingId: "think-3",
+        content: "plan thought",
+        status: "completed",
+        startedAt: "2026-01-01T00:00:02Z",
+        durationMs: 1000,
+      },
+    ],
+  };
+
+  const entries = mapHistoryMessages(messages, {}, thinkingByMsgId);
+
+  assert.deepEqual(entries.map((entry) => entry.kind), ["thinking", "assistant", "thinking", "thinking", "plan"]);
+  assert.equal(entries[0].content, "first thought");
+  assert.equal(entries[1].content, "Narration");
+  assert.equal(entries[2].content, "second thought");
+  assert.equal(entries[3].content, "plan thought");
+  assert.equal(entries[4].content, "# Plan\n\nDo the thing.");
 });
 
 function key(overrides: Partial<Key> = {}): Key {

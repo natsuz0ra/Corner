@@ -86,6 +86,11 @@ func New(cfg config.Config, tokenManager *auth.TokenManager, httpController *con
 			api.Get("/skills", adapt(httpController.ListSkills))
 			api.Post("/skills/upload", adapt(httpController.UploadSkills))
 			api.Delete("/skills/{id}", adapt(httpController.DeleteSkill))
+
+			api.Get("/plans", adapt(httpController.ListPlans))
+			api.Get("/plans/{id}", adapt(httpController.GetPlan))
+			api.Patch("/plans/{id}/status", adapt(httpController.UpdatePlanStatus))
+			api.Delete("/plans/{id}", adapt(httpController.DeletePlan))
 		})
 	})
 

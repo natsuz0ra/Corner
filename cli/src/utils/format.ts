@@ -58,7 +58,9 @@ export function formatToolTextValue(raw: string): string {
       return raw;
     }
   }
-  return decodeCommonEscapes(raw);
+  const decoded = decodeCommonEscapes(raw);
+  // Filter consecutive empty lines in display only
+  return decoded.replace(/\n{2,}/g, "\n").trim();
 }
 
 /** Formats params into readable key/value lines. */
@@ -127,10 +129,7 @@ export function formatToolExecutionOutput(toolName: string, command: string, raw
     const payload = parseExecOutputPayload(raw);
     if (payload) {
       const lines: string[] = [
-        `exit_code: ${payload.exit_code} | timed_out: ${payload.timed_out} | truncated: ${payload.truncated}`,
-        `shell: ${payload.shell}`,
-        `working_directory: ${payload.working_directory}`,
-        `duration_ms: ${payload.duration_ms}`,
+        `exit_code: ${payload.exit_code} | timed_out: ${payload.timed_out} | truncated: ${payload.truncated} | duration_ms: ${payload.duration_ms} | shell: ${payload.shell}`,
       ];
 
       if (payload.stdout.trim()) {

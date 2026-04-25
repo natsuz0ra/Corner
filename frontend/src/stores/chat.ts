@@ -3,14 +3,18 @@ import { computed, ref } from 'vue'
 
 import { ChatSocket, type ConnectionStatus } from '@/api/chatSocket'
 import { MESSAGE_PLATFORM_SESSION_ID, sessionAPI } from '@/api/chat'
-import type { MessageAttachmentItem, MessageItem, SessionHistoryPayload, SessionItem, UploadedAttachmentItem } from '@/api/chat'
+import type { MessageAttachmentItem, MessageItem, SessionHistoryPayload, SessionHistoryThinkingItem, SessionItem, UploadedAttachmentItem } from '@/api/chat'
 import { i18n } from '@/i18n'
 import {
+  buildInterleavedTimeline,
+  buildLegacyTimeline,
   buildReplyBatchesFromHistory,
   normalizeToolStatus,
   type AssistantReplyBatch,
   type AssistantReplyTimelineItem,
 } from '@/utils/replyBatchBuilder'
+import { hasContentMarkers, parseContentMarkers, stripContentMarkers } from '@/utils/contentMarkers'
+import { appendPlanBodyToBatch, appendPlanChunkToBatch, appendTextChunkToBatch, finishOpenThinkingEntries, markLastThinkingDone } from '@/utils/liveReplyTimeline'
 
 const HISTORY_PAGE_SIZE = 10
 const MAX_SESSION_PAGE_SIZE = 100
@@ -31,12 +35,22 @@ export const useChatStore = defineStore('chat', () => {
   const connectionStatus = ref<ConnectionStatus>('disconnected')
   const connectionError = ref('')
   const suppressNextConnectionNotice = ref(false)
+  const planMode = ref(false)
+  const planGenerating = ref(false)
   const isSocketReady = computed(() => connectionStatus.value === 'connected')
 
   const replyBatches = ref<AssistantReplyBatch[]>([])
   const currentBatchId = ref<string>('')
   const assistantErrorIds = ref(new Set<string>())
   const failedUserMessageIds = ref(new Set<string>())
+  const pendingApproval = ref<{
+    toolCallId: string
+    toolName: string
+    command: string
+    params: Record<string, string>
+  } | null>(null)
+
+  const pendingPlanConfirmation = ref<{ planId: string; content: string } | null>(null)
 
   const ws = new ChatSocket()
 
@@ -87,6 +101,12 @@ export const useChatStore = defineStore('chat', () => {
     return replyBatches.value.find((item) => item.id === currentBatchId.value)
   }
 
+  function isStreamingMessage(messageId: string): boolean {
+    if (!currentBatchId.value) return false
+    const batch = getCurrentBatch()
+    return batch?.assistantMessageId === messageId
+  }
+
   function formatAssistantError(rawError: string) {
     const safeError = rawError?.trim() || 'unknown error'
     return i18n.global.t('assistantReplyFailed', { error: safeError }) as string
@@ -110,6 +130,23 @@ export const useChatStore = defineStore('chat', () => {
 
   function isFailedUserMessage(messageId: string) {
     return failedUserMessageIds.value.has(messageId)
+  }
+
+  function buildLiveThinkingHistory(content: string, timeline: AssistantReplyTimelineItem[]): SessionHistoryThinkingItem[] {
+    const thinkingEntries = timeline.filter((entry) => entry.kind === 'thinking')
+    if (thinkingEntries.length === 0) return []
+    const thinkingIds = parseContentMarkers(content)
+      .filter((segment) => segment.type === 'thinking_marker' && segment.thinkingId)
+      .map((segment) => segment.thinkingId as string)
+    return thinkingIds.map((thinkingId, index) => {
+      const entry = thinkingEntries[index]
+      return {
+        thinkingId,
+        content: entry?.kind === 'thinking' ? entry.content : '',
+        status: entry?.kind === 'thinking' && !entry.done ? 'streaming' : 'completed',
+        durationMs: entry?.kind === 'thinking' ? entry.durationMs : undefined,
+      }
+    })
   }
 
   function pushFailedUserMessage(content: string) {
@@ -366,16 +403,7 @@ export const useChatStore = defineStore('chat', () => {
         const assistant = messages.value.find((msg) => msg.id === batch.assistantMessageId)
         if (!assistant) return
         assistant.content += chunk
-        const lastTimeline = batch.timeline[batch.timeline.length - 1]
-        if (lastTimeline && lastTimeline.kind === 'text') {
-          lastTimeline.content += chunk
-        } else {
-          batch.timeline.push({
-            id: crypto.randomUUID(),
-            kind: 'text',
-            content: chunk,
-          })
-        }
+        appendTextChunkToBatch(batch, chunk)
         streamingStarted.value = true
       },
       onSessionTitle: (title, sessionId) => {
@@ -388,6 +416,7 @@ export const useChatStore = defineStore('chat', () => {
         if (!sessionId || sessionId !== currentSessionId.value) return
         waiting.value = false
         streamingStarted.value = false
+        planGenerating.value = false
         const batch = getCurrentBatch()
         if (batch) {
           const assistant = messages.value.find((msg) => msg.id === batch.assistantMessageId)
@@ -401,34 +430,23 @@ export const useChatStore = defineStore('chat', () => {
               : (meta?.isStopPlaceholder ? getStoppedPlaceholderText() : '')
           if (finalAnswer !== '') {
             if (assistant) {
-              assistant.content = finalAnswer
+              assistant.content = stripContentMarkers(finalAnswer)
               clearAssistantError(assistant.id)
             }
-            const mergedTextEntry = {
-              id: crypto.randomUUID(),
-              kind: 'text' as const,
-              content: finalAnswer,
-            }
-            const rebuiltTimeline: AssistantReplyTimelineItem[] = []
-            let insertedText = false
-            for (const entry of batch.timeline) {
-              if (entry.kind === 'text') {
-                if (!insertedText) {
-                  rebuiltTimeline.push(mergedTextEntry)
-                  insertedText = true
-                }
-                continue
-              }
-              rebuiltTimeline.push(entry)
-            }
-            if (!insertedText && finalAnswer.trim() !== '') {
-              rebuiltTimeline.push(mergedTextEntry)
-            }
-            batch.timeline = rebuiltTimeline
+            const liveThinking = buildLiveThinkingHistory(finalAnswer, batch.timeline)
+            batch.timeline = hasContentMarkers(finalAnswer)
+              ? buildInterleavedTimeline(batch.toolCalls, finalAnswer, liveThinking)
+              : buildLegacyTimeline(batch.toolCalls, stripContentMarkers(finalAnswer))
           }
           batch.collapsed = true
         }
         currentBatchId.value = ''
+        if (meta?.planId) {
+          pendingPlanConfirmation.value = {
+            planId: meta.planId,
+            content: meta.planBody || (answer ? stripContentMarkers(answer) : ''),
+          }
+        }
         await loadSessions()
       },
       onError: (error, sessionId) => {
@@ -442,6 +460,7 @@ export const useChatStore = defineStore('chat', () => {
         if (!sessionId || sessionId !== currentSessionId.value) return
         const batch = getCurrentBatch()
         if (!batch) return
+        finishOpenThinkingEntries(batch)
         batch.toolCalls.push({
           toolCallId: data.toolCallId,
           toolName: data.toolName,
@@ -453,6 +472,14 @@ export const useChatStore = defineStore('chat', () => {
           parentToolCallId: data.parentToolCallId,
           subagentRunId: data.subagentRunId,
         })
+        if (data.requiresApproval) {
+          pendingApproval.value = {
+            toolCallId: data.toolCallId,
+            toolName: data.toolName,
+            command: data.command,
+            params: data.params,
+          }
+        }
         if (!data.parentToolCallId) {
           batch.timeline.push({
             id: crypto.randomUUID(),
@@ -507,6 +534,60 @@ export const useChatStore = defineStore('chat', () => {
         if (!sessionId || sessionId !== currentSessionId.value) return
         // Final text also arrives via tool_call_result; no state change required here.
       },
+      onThinkingStart: (sessionId) => {
+        if (!sessionId || sessionId !== currentSessionId.value) return
+        const batch = getCurrentBatch()
+        if (!batch) return
+        batch.timeline.push({
+          id: crypto.randomUUID(),
+          kind: 'thinking',
+          content: '',
+          done: false,
+          startedAt: Date.now(),
+        })
+      },
+      onThinkingChunk: (chunk, sessionId) => {
+        if (!sessionId || sessionId !== currentSessionId.value) return
+        const batch = getCurrentBatch()
+        if (!batch) return
+        const entries = [...batch.timeline]
+        for (let i = entries.length - 1; i >= 0; i--) {
+          const e = entries[i]
+          // @ts-ignore
+          if (e.kind === 'thinking' && !e.done) {
+            // @ts-ignore
+            entries[i] = { ...e, content: (e.content || '') + chunk }
+            batch.timeline = entries
+            break
+          }
+        }
+      },
+      onThinkingDone: (sessionId) => {
+        if (!sessionId || sessionId !== currentSessionId.value) return
+        const batch = getCurrentBatch()
+        if (!batch) return
+        batch.timeline = markLastThinkingDone(batch.timeline)
+      },
+      onPlanStart: (sessionId) => {
+        if (!sessionId || sessionId !== currentSessionId.value) return
+        const batch = getCurrentBatch()
+        if (!batch) return
+        finishOpenThinkingEntries(batch)
+        planGenerating.value = true
+      },
+      onPlanChunk: (chunk, sessionId) => {
+        if (!sessionId || sessionId !== currentSessionId.value) return
+        const batch = getCurrentBatch()
+        if (!batch) return
+        appendPlanChunkToBatch(batch, chunk)
+      },
+      onPlanBody: (content, sessionId) => {
+        if (!sessionId || sessionId !== currentSessionId.value) return
+        const batch = getCurrentBatch()
+        if (!batch) return
+        appendPlanBodyToBatch(batch, content)
+        planGenerating.value = false
+      },
       onSocketError: (error) => {
         waiting.value = false
         streamingStarted.value = false
@@ -553,7 +634,7 @@ export const useChatStore = defineStore('chat', () => {
     return response.items || []
   }
 
-  async function sendMessage(content: string, modelId: string, files: File[] = []) {
+  async function sendMessage(content: string, modelId: string, files: File[] = [], thinkingLevel: string = 'off') {
     const trimmed = content.trim()
     if (!trimmed && files.length === 0) {
       return false
@@ -576,7 +657,7 @@ export const useChatStore = defineStore('chat', () => {
     if (files.length > 0) {
       uploaded = await uploadAttachmentsForCurrentSession(files)
     }
-    const sent = ws.send(trimmed, currentSessionId.value, modelId, uploaded.map((item) => item.id))
+    const sent = ws.send(trimmed, currentSessionId.value, modelId, uploaded.map((item) => item.id), thinkingLevel, planMode.value)
     if (!sent) {
       const error = 'socket is not connected'
       connectionError.value = error
@@ -606,7 +687,12 @@ export const useChatStore = defineStore('chat', () => {
     if (item) {
       item.status = approved ? 'executing' : 'rejected'
     }
+    pendingApproval.value = null
     ws.sendToolApproval(toolCallId, approved)
+  }
+
+  function dismissApproval() {
+    pendingApproval.value = null
   }
 
   function disconnectSocket(options?: { silentConnectionNotice?: boolean }) {
@@ -629,6 +715,50 @@ export const useChatStore = defineStore('chat', () => {
     return shouldSuppress
   }
 
+  function togglePlanMode() {
+    planMode.value = !planMode.value
+  }
+
+  function approvePlan(modelId: string, displayContent: string) {
+    if (!pendingPlanConfirmation.value) return
+    const { planId } = pendingPlanConfirmation.value
+    const sessionId = currentSessionId.value
+    if (!sessionId) return
+    planMode.value = false
+    const visibleContent = displayContent.trim() || (i18n.global.t('planExecuteUserMessage') as string)
+    messages.value.push({
+      id: crypto.randomUUID(),
+      sessionId,
+      role: 'user',
+      content: visibleContent,
+      createdAt: new Date().toISOString(),
+    })
+    ws.sendPlanApprove(planId, sessionId, modelId, visibleContent)
+    pendingPlanConfirmation.value = null
+  }
+
+  function rejectPlan() {
+    if (!pendingPlanConfirmation.value) return
+    const { planId } = pendingPlanConfirmation.value
+    const sessionId = currentSessionId.value
+    if (!sessionId) return
+    ws.sendPlanReject(planId, sessionId)
+    pendingPlanConfirmation.value = null
+  }
+
+  function modifyPlan(feedback: string, modelId: string, thinkingLevel: string) {
+    if (!pendingPlanConfirmation.value) return
+    const { planId } = pendingPlanConfirmation.value
+    const sessionId = currentSessionId.value
+    if (!sessionId) return
+    ws.sendPlanModify(planId, sessionId, modelId, feedback, thinkingLevel)
+    pendingPlanConfirmation.value = null
+  }
+
+  function dismissPlanConfirmation() {
+    pendingPlanConfirmation.value = null
+  }
+
   return {
     sessions,
     sessionPageSize,
@@ -642,6 +772,7 @@ export const useChatStore = defineStore('chat', () => {
     connectionStatus,
     isSocketReady,
     isAssistantErrorMessage,
+    isStreamingMessage,
     isFailedUserMessage,
     replyBatches,
     currentBatchId,
@@ -661,7 +792,17 @@ export const useChatStore = defineStore('chat', () => {
     sendMessage,
     stopCurrentResponse,
     approveToolCall,
+    pendingApproval,
+    dismissApproval,
     disconnectSocket,
     consumeSuppressNextConnectionNotice,
+    planMode,
+    planGenerating,
+    togglePlanMode,
+    pendingPlanConfirmation,
+    approvePlan,
+    rejectPlan,
+    modifyPlan,
+    dismissPlanConfirmation,
   }
 })

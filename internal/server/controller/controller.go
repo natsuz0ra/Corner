@@ -24,6 +24,7 @@ type sessionService interface {
 	Delete(id string) error
 	ListMessagesPage(sessionID string, limit int, before *time.Time, beforeSeq *int64, after *time.Time, afterSeq *int64) ([]domain.Message, bool, error)
 	ListToolCallRecordsByAssistantMessageIDs(sessionID string, messageIDs []string) ([]domain.ToolCallRecord, error)
+	ListThinkingRecordsByAssistantMessageIDs(sessionID string, messageIDs []string) ([]domain.ThinkingRecord, error)
 }
 
 type settingsService interface {
@@ -76,6 +77,7 @@ type HTTPController struct {
 	llmConfigs   llmConfigService
 	mcpConfigs   mcpConfigService
 	platforms    messagePlatformConfigService
+	plans        planService
 	tokenManager *auth.TokenManager
 }
 
@@ -87,6 +89,7 @@ func NewHTTPController(
 	llmConfigsService llmConfigService,
 	mcpConfigsService mcpConfigService,
 	platformsService messagePlatformConfigService,
+	plansService planService,
 	skillPackage skillPackageService,
 	skillRuntime skillRuntimeService,
 	chatUploads chatUploadService,
@@ -102,6 +105,7 @@ func NewHTTPController(
 		llmConfigs:   llmConfigsService,
 		mcpConfigs:   mcpConfigsService,
 		platforms:    platformsService,
+		plans:        plansService,
 		tokenManager: tokenManager,
 	}
 }

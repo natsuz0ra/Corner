@@ -1,5 +1,6 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
 import { useChatStore } from '@/stores/chat'
+import { getLiveReplyContentSignature } from '@/utils/liveReplyTimeline'
 
 const BOTTOM_STICK_THRESHOLD_PX = 32
 const TOP_LOAD_THRESHOLD_PX = 200
@@ -23,6 +24,8 @@ export function useHomeScroll(options: {
   const loadingOlderFromScroll = ref(false)
   const scrollTimers = new Map<HTMLElement, ReturnType<typeof setTimeout>>()
   const scrollHandlers = new Map<HTMLElement, () => void>()
+  let messagesResizeObserver: ResizeObserver | null = null
+  let observedMessagesContent: Element | null = null
 
   const showScrollToBottom = computed(() => !isEmptySession.value && !autoStickToBottom.value)
 
@@ -99,6 +102,26 @@ export function useHomeScroll(options: {
       clearTimeout(prev)
       scrollTimers.delete(el)
     }
+  }
+
+  function unobserveMessagesContentSize() {
+    if (messagesResizeObserver && observedMessagesContent) {
+      messagesResizeObserver.unobserve(observedMessagesContent)
+    }
+    observedMessagesContent = null
+  }
+
+  function observeMessagesContentSize(el: HTMLElement | null) {
+    unobserveMessagesContentSize()
+    if (!el || typeof ResizeObserver === 'undefined') return
+    if (!messagesResizeObserver) {
+      messagesResizeObserver = new ResizeObserver(() => {
+        if (!autoStickToBottom.value) return
+        scrollMessagesToBottom()
+      })
+    }
+    observedMessagesContent = el.firstElementChild ?? el
+    messagesResizeObserver.observe(observedMessagesContent)
   }
 
   function bindScrollFade(el: HTMLElement | null, onScroll?: () => void) {
@@ -198,11 +221,13 @@ export function useHomeScroll(options: {
 
   watch(messagesRef, (el, prev) => {
     if (prev) unbindScrollFade(prev)
+    if (prev) unobserveMessagesContentSize()
     if (el) {
       bindScrollFade(el, () => {
         syncAutoStickToBottom(el)
         void maybeLoadOlderMessages(el)
       })
+      observeMessagesContentSize(el)
       syncAutoStickToBottom(el)
       void nextTick(() => {
         void tryFillOlderUntilScrollable()
@@ -276,10 +301,24 @@ export function useHomeScroll(options: {
     },
   )
 
+  watch(
+    () => {
+      const batchId = store.currentBatchId
+      if (!batchId) return ''
+      return getLiveReplyContentSignature(store.replyBatches.find((b) => b.id === batchId))
+    },
+    () => {
+      queueScrollMessagesToBottom()
+    },
+  )
+
   onUnmounted(() => {
     window.removeEventListener('resize', onWindowResizeForSidebarPageSize)
     clearScrollToBottomPendingTimer()
     clearScrollToBottomEndHandler()
+    unobserveMessagesContentSize()
+    messagesResizeObserver?.disconnect()
+    messagesResizeObserver = null
     unbindScrollFade(messagesRef.value)
     unbindScrollFade(sidebarListRef.value)
     scrollTimers.forEach((timer) => clearTimeout(timer))

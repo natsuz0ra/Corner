@@ -24,6 +24,8 @@ export function createInitialState(
     sessionName: "",
     modelId: "",
     modelName: "(none)",
+    thinkingLevel: "off",
+    approvalMode: "standard",
     timeline: [],
     streaming: false,
     assistantWaiting: false,
@@ -31,6 +33,10 @@ export function createInitialState(
     blinkOn: true,
     compact: true,
     toolOutputExpanded: false,
+    planMode: false,
+    planGenerating: false,
+    planReceived: false,
+    thinkingDetailContent: "",
     inputValue: "",
     inputKey: 0,
     menuKind: null,
@@ -56,6 +62,11 @@ export function createInitialState(
     approvalCommand: "",
     approvalParams: {},
     approvalReplyCh: null,
+    pendingPlanId: "",
+    pendingPlanContent: "",
+    planConfirmCursor: 0,
+    planModifyInput: "",
+    planModifyInputKey: 0,
     apiURL,
     cliToken,
     version,
@@ -102,6 +113,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
         streaming: true,
         assistantWaiting: true,
         liveAssistant: "",
+        planReceived: false,
       };
 
     case "STREAM_CHUNK": {
@@ -115,7 +127,9 @@ export function reducer(state: AppState, action: AppAction): AppState {
 
     case "STREAM_DONE": {
       const entries = [...state.timeline];
-      if (state.liveAssistant.trim()) {
+      // In the current plan turn, PLAN_BODY already flushed liveAssistant; older plan entries
+      // must not suppress a later execution response.
+      if (!state.planReceived && state.liveAssistant.trim()) {
         entries.push({
           kind: "assistant",
           content: state.liveAssistant,
@@ -133,6 +147,8 @@ export function reducer(state: AppState, action: AppAction): AppState {
         assistantWaiting: false,
         liveAssistant: "",
         timeline: entries,
+        planGenerating: false,
+        planReceived: false,
       };
     }
 
@@ -196,6 +212,10 @@ export function reducer(state: AppState, action: AppAction): AppState {
         streaming: false,
         assistantWaiting: false,
         toolOutputExpanded: false,
+        planMode: false,
+        planGenerating: false,
+        planReceived: false,
+        thinkingDetailContent: "",
         view: "chat",
         menuKind: null,
         menuTitle: "",
@@ -339,6 +359,12 @@ export function reducer(state: AppState, action: AppAction): AppState {
         approvalReplyCh: null,
       };
 
+    case "SET_APPROVAL_MODE":
+      return { ...state, approvalMode: action.mode };
+
+    case "SET_THINKING_LEVEL":
+      return { ...state, thinkingLevel: action.level };
+
     case "LOAD_HISTORY":
       return {
         ...state,
@@ -347,6 +373,123 @@ export function reducer(state: AppState, action: AppAction): AppState {
         assistantWaiting: false,
         liveAssistant: "",
       };
+
+    case "THINKING_START":
+      {
+        const entries = [...state.timeline];
+        if (state.liveAssistant.trim()) {
+          entries.push({ kind: "assistant", content: state.liveAssistant });
+        }
+        entries.push({
+          kind: "thinking",
+          content: "",
+          thinkingDone: false,
+          thinkingStartedAt: Date.now(),
+        });
+        return {
+          ...state,
+          timeline: entries,
+          liveAssistant: "",
+        };
+      }
+
+    case "THINKING_CHUNK": {
+      const entries = [...state.timeline];
+      for (let i = entries.length - 1; i >= 0; i--) {
+        if (entries[i].kind === "thinking" && !entries[i].thinkingDone) {
+          entries[i] = { ...entries[i], content: entries[i].content + action.chunk };
+          break;
+        }
+      }
+      return { ...state, timeline: entries };
+    }
+
+    case "THINKING_DONE": {
+      const entries = [...state.timeline];
+      for (let i = entries.length - 1; i >= 0; i--) {
+        if (entries[i].kind === "thinking" && !entries[i].thinkingDone) {
+          const startedAt = entries[i].thinkingStartedAt;
+          const durationMs = startedAt !== undefined
+            ? Math.max(0, (action.finishedAt ?? Date.now()) - startedAt)
+            : entries[i].thinkingDurationMs;
+          entries[i] = { ...entries[i], thinkingDone: true, thinkingDurationMs: durationMs };
+          break;
+        }
+      }
+      return { ...state, timeline: entries };
+    }
+
+    case "VIEW_THINKING_DETAIL":
+      return {
+        ...state,
+        view: "thinking-detail",
+        thinkingDetailContent: action.content,
+      };
+
+    case "TOGGLE_PLAN_MODE":
+      return { ...state, planMode: !state.planMode };
+
+    case "SET_PLAN_CONFIRMATION":
+      return {
+        ...state,
+        view: "plan-confirm",
+        pendingPlanId: action.planId,
+        pendingPlanContent: action.content,
+        planConfirmCursor: 0,
+        planModifyInput: "",
+      };
+
+    case "PLAN_CONFIRM_NAV": {
+      const opts = 2;
+      const newCursor = Math.max(0, Math.min(opts - 1, state.planConfirmCursor + action.delta));
+      return { ...state, planConfirmCursor: newCursor };
+    }
+
+    case "SET_PLAN_MODIFY_INPUT":
+      return { ...state, planModifyInput: action.value };
+
+    case "CLEAR_PLAN_CONFIRMATION":
+      return {
+        ...state,
+        view: "chat",
+        pendingPlanId: "",
+        pendingPlanContent: "",
+        planConfirmCursor: 0,
+        planModifyInput: "",
+      };
+
+    case "PLAN_START": {
+      const entries = [...state.timeline];
+      if (state.liveAssistant.trim()) {
+        entries.push({ kind: "assistant", content: state.liveAssistant });
+      }
+      return { ...state, timeline: entries, liveAssistant: "", planGenerating: true };
+    }
+
+    case "PLAN_BODY": {
+      const entries = [...state.timeline];
+      if (state.liveAssistant.trim()) {
+        entries.push({ kind: "assistant", content: state.liveAssistant });
+      }
+      entries.push({ kind: "plan", content: action.planBody });
+      return { ...state, timeline: entries, liveAssistant: "", planGenerating: false, planReceived: true };
+    }
+
+    case "FLUSH_AND_WAIT": {
+      const entries = [...state.timeline];
+      if (state.liveAssistant.trim()) {
+        entries.push({
+          kind: "assistant",
+          content: state.liveAssistant,
+        });
+      }
+      return {
+        ...state,
+        assistantWaiting: true,
+        liveAssistant: "",
+        timeline: entries,
+      };
+    }
 
     default:
       return state;

@@ -21,7 +21,7 @@ type resolvedToolInvocation struct {
 }
 
 // resolveToolInvocation normalizes a model function name into a tool invocation.
-func resolveToolInvocation(tc llmsvc.ToolCallInfo, mcpToolMeta map[string]mcp.ToolMeta) (resolvedToolInvocation, error) {
+func resolveToolInvocation(tc llmsvc.ToolCallInfo, mcpToolMeta map[string]mcp.ToolMeta, approvalMode string) (resolvedToolInvocation, error) {
 	if tc.Name == constants.ActivateSkillTool {
 		return resolvedToolInvocation{
 			toolName:         constants.ActivateSkillTool,
@@ -53,7 +53,7 @@ func resolveToolInvocation(tc llmsvc.ToolCallInfo, mcpToolMeta map[string]mcp.To
 			toolName:         mcpMeta.ServerAlias,
 			command:          mcpMeta.ToolName,
 			isMCP:            true,
-			requiresApproval: requiresToolApproval(mcpMeta.ServerAlias, true),
+			requiresApproval: requiresToolApproval(mcpMeta.ServerAlias, true, approvalMode),
 		}, nil
 	}
 	if err != nil {
@@ -63,7 +63,7 @@ func resolveToolInvocation(tc llmsvc.ToolCallInfo, mcpToolMeta map[string]mcp.To
 		toolName:         toolName,
 		command:          command,
 		isMCP:            false,
-		requiresApproval: requiresToolApproval(toolName, false),
+		requiresApproval: requiresToolApproval(toolName, false, approvalMode),
 	}, nil
 }
 

@@ -34,7 +34,7 @@ func (c *AnthropicClient) StreamChatWithTools(
 	modelConfig llmsvc.ModelRuntimeConfig,
 	messages []llmsvc.ChatMessage,
 	toolDefs []llmsvc.ToolDef,
-	onChunk func(string) error,
+	callbacks llmsvc.StreamCallbacks,
 ) (*llmsvc.StreamResult, error) {
 	baseURL := strings.TrimRight(strings.TrimSpace(modelConfig.BaseURL), "/")
 	apiKey := strings.TrimSpace(modelConfig.APIKey)
@@ -59,11 +59,20 @@ func (c *AnthropicClient) StreamChatWithTools(
 		temperature = 1.0
 	}
 
+	budget := llmsvc.ThinkingBudgetTokens(modelConfig.ThinkingLevel)
+	maxTokens := int64(defaultMaxTokens)
+	if budget > 0 && maxTokens < int64(budget)+1 {
+		maxTokens = int64(budget) + 1
+	}
+
 	params := anthropic.MessageNewParams{
-		MaxTokens: defaultMaxTokens,
+		MaxTokens: maxTokens,
 		Model:     anthropic.Model(model),
 		Messages:  apiMessages,
 		//Temperature: anthropic.Float(temperature),
+	}
+	if budget > 0 {
+		params.Thinking = anthropic.ThinkingConfigParamOfEnabled(int64(budget))
 	}
 	if len(systemBlocks) > 0 {
 		params.System = systemBlocks
@@ -79,6 +88,7 @@ func (c *AnthropicClient) StreamChatWithTools(
 		textBuilder       strings.Builder
 		toolUseBlocks     []pendingToolUse
 		currentToolUseIdx = -1
+		inThinkingBlock   = false
 	)
 
 	for stream.Next() {
@@ -86,20 +96,32 @@ func (c *AnthropicClient) StreamChatWithTools(
 
 		switch event.Type {
 		case "content_block_start":
-			if event.ContentBlock.Type == "tool_use" {
+			if event.ContentBlock.Type == "thinking" || event.ContentBlock.Type == "redacted_thinking" {
+				inThinkingBlock = true
+				currentToolUseIdx = -1
+			} else if event.ContentBlock.Type == "tool_use" {
 				toolUseBlocks = append(toolUseBlocks, pendingToolUse{
 					ID:   event.ContentBlock.ID,
 					Name: event.ContentBlock.Name,
 				})
 				currentToolUseIdx = len(toolUseBlocks) - 1
+				inThinkingBlock = false
 			} else {
 				currentToolUseIdx = -1
+				inThinkingBlock = false
 			}
 
 		case "content_block_delta":
-			if event.Delta.Type == "text_delta" && event.Delta.Text != "" {
+			if inThinkingBlock && event.Delta.Type == "thinking_delta" && event.Delta.Text != "" {
+				if callbacks.OnThinkingChunk != nil {
+					if err := callbacks.OnThinkingChunk(event.Delta.Text); err != nil {
+						return nil, err
+					}
+				}
+			}
+			if !inThinkingBlock && event.Delta.Type == "text_delta" && event.Delta.Text != "" {
 				textBuilder.WriteString(event.Delta.Text)
-				if err := onChunk(event.Delta.Text); err != nil {
+				if err := callbacks.OnChunk(event.Delta.Text); err != nil {
 					return nil, err
 				}
 			}
@@ -109,6 +131,7 @@ func (c *AnthropicClient) StreamChatWithTools(
 
 		case "content_block_stop":
 			currentToolUseIdx = -1
+			inThinkingBlock = false
 		}
 	}
 	if err := stream.Err(); err != nil {

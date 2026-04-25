@@ -2,6 +2,7 @@ package openai
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
+	"github.com/openai/openai-go/v3/shared"
 )
 
 // OpenAIClient wraps an OpenAI-compatible HTTP API client and implements llmsvc.Provider.
@@ -27,7 +29,7 @@ func NewOpenAIClient() *OpenAIClient {
 
 // StreamChat starts a streaming chat request without tools (legacy compatibility).
 func (c *OpenAIClient) StreamChat(ctx context.Context, modelConfig llmsvc.ModelRuntimeConfig, messages []llmsvc.ChatMessage, onChunk func(string) error) error {
-	result, err := c.StreamChatWithTools(ctx, modelConfig, messages, nil, onChunk)
+	result, err := c.StreamChatWithTools(ctx, modelConfig, messages, nil, llmsvc.StreamCallbacks{OnChunk: onChunk})
 	if err != nil {
 		return err
 	}
@@ -43,7 +45,7 @@ func (c *OpenAIClient) StreamChatWithTools(
 	modelConfig llmsvc.ModelRuntimeConfig,
 	messages []llmsvc.ChatMessage,
 	toolDefs []llmsvc.ToolDef,
-	onChunk func(string) error,
+	callbacks llmsvc.StreamCallbacks,
 ) (*llmsvc.StreamResult, error) {
 	baseURL := strings.TrimRight(strings.TrimSpace(modelConfig.BaseURL), "/")
 	apiKey := strings.TrimSpace(modelConfig.APIKey)
@@ -70,6 +72,10 @@ func (c *OpenAIClient) StreamChatWithTools(
 		Temperature: openai.Float(modelConfig.Temperature),
 	}
 
+	if effort := llmsvc.ThinkingReasoningEffort(modelConfig.ThinkingLevel); effort != "" {
+		params.ReasoningEffort = shared.ReasoningEffort(effort)
+	}
+
 	if len(toolDefs) > 0 {
 		params.Tools = buildToolParams(toolDefs)
 	}
@@ -82,9 +88,19 @@ func (c *OpenAIClient) StreamChatWithTools(
 		acc.AddChunk(chunk)
 
 		if len(chunk.Choices) > 0 {
-			content := chunk.Choices[0].Delta.Content
-			if content != "" {
-				if err := onChunk(content); err != nil {
+			delta := chunk.Choices[0].Delta
+
+			// Handle reasoning_content from Volcengine/DeepSeek/Zhipu compatible APIs.
+			if reasoning := extractReasoningContent(delta); reasoning != "" {
+				if callbacks.OnThinkingChunk != nil {
+					if err := callbacks.OnThinkingChunk(reasoning); err != nil {
+						return nil, err
+					}
+				}
+			}
+
+			if delta.Content != "" {
+				if err := callbacks.OnChunk(delta.Content); err != nil {
 					return nil, err
 				}
 			}
@@ -120,6 +136,26 @@ func (c *OpenAIClient) StreamChatWithTools(
 	}
 
 	return &llmsvc.StreamResult{Type: llmsvc.StreamResultText}, nil
+}
+
+// extractReasoningContent extracts reasoning_content from a streaming delta.
+// Volcengine, DeepSeek, and Zhipu return thinking content via this non-standard field.
+// The openai-go SDK marks ExtraFields as status=invalid for unknown fields, so
+// we cannot use f.Valid() — we check f.Raw() instead.
+func extractReasoningContent(delta openai.ChatCompletionChunkChoiceDelta) string {
+	f, ok := delta.JSON.ExtraFields["reasoning_content"]
+	if !ok {
+		return ""
+	}
+	raw := f.Raw()
+	if raw == "" || raw == "null" {
+		return ""
+	}
+	var result string
+	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+		return ""
+	}
+	return result
 }
 
 // supportsDeveloperRole: some compatible endpoints (e.g. Alibaba Cloud) omit developer role; fall back to system.

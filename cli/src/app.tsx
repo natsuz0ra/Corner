@@ -8,6 +8,7 @@ import { Box, Text, useApp, useInput, useStdout } from "ink";
 import type { Key } from "ink";
 import { APIClient } from "./api/client.js";
 import { ApprovalView } from "./components/ApprovalView.js";
+import { PlanConfirmView } from "./components/PlanConfirmView.js";
 import { Banner } from "./components/Banner.js";
 import { CommandHints } from "./components/CommandHints.js";
 import { MCPEditor } from "./components/MCPEditor.js";
@@ -21,6 +22,8 @@ import { completeCommand, isCommand } from "./utils/commands.js";
 import { formatTimestamp } from "./utils/format.js";
 import { clearScreen, setTerminalTitle } from "./utils/terminal.js";
 import { CLISocket } from "./ws/socket.js";
+import { splitNarrationAndPlan } from "./utils/planUtils.js";
+import { hasContentMarkers, parseContentMarkers } from "./utils/contentMarkers.js";
 import type {
   AppAction,
   AppState,
@@ -32,13 +35,14 @@ import type {
   ModelProvider,
   Session,
   Skill,
+  ThinkingHistoryItem,
   TimelineEntry,
   ToolCallHistoryItem,
   ToolCallResultData,
   ToolCallStartData,
   ToolCallStatus,
 } from "./types.js";
-import { MCP_TEMPLATES } from "./types.js";
+import { MCP_TEMPLATES, THINKING_LEVELS } from "./types.js";
 
 /** Detects ctrl+letter keypresses, with a fallback for terminals/OS
  *  combos where Ink's `key.ctrl` flag is not set (e.g. Windows).
@@ -78,6 +82,7 @@ interface AppProps {
 export function mapHistoryMessages(
   messages: Message[],
   toolCallsByMsgId: Record<string, ToolCallHistoryItem[]>,
+  thinkingByMsgId: Record<string, ThinkingHistoryItem[]> = {},
 ): TimelineEntry[] {
   const ordered = [...messages].sort((a, b) => (a.seq || 0) - (b.seq || 0));
   const entries: TimelineEntry[] = [];
@@ -90,27 +95,154 @@ export function mapHistoryMessages(
       continue;
     }
     if (msg.role === "assistant") {
-      // Tool calls happen BEFORE the final assistant response,
-      // so insert them before the assistant content.
       const toolCalls = [...(toolCallsByMsgId[msg.id] || [])].sort((a, b) => {
         return new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime();
       });
-      for (const tc of toolCalls) {
-        entries.push({
-          kind: "tool",
-          content: tc.output || tc.error || "",
-          toolCallId: tc.toolCallId,
-          toolName: tc.toolName,
-          command: tc.command,
-          params: tc.params,
-          status: (tc.status || "completed") as ToolCallStatus,
-          output: tc.output,
-          error: tc.error,
-          ...(tc.parentToolCallId ? { parentToolCallId: tc.parentToolCallId } : {}),
-          ...(tc.subagentRunId ? { subagentRunId: tc.subagentRunId } : {}),
-        });
+      const thinkingRecords = [...(thinkingByMsgId[msg.id] || [])].sort((a, b) => {
+        return new Date(a.startedAt || 0).getTime() - new Date(b.startedAt || 0).getTime();
+      });
+
+      if (hasContentMarkers(msg.content)) {
+        // New messages with markers: split into separate timeline blocks
+        const toolCallMap = new Map(toolCalls.map(tc => [tc.toolCallId, tc]));
+        const thinkingMap = new Map(thinkingRecords.map(item => [item.thinkingId, item]));
+        const segments = parseContentMarkers(msg.content);
+        const markerIds = new Set<string>();
+        const thinkingMarkerIds = new Set<string>();
+        let inPlan = false;
+        const planParts: string[] = [];
+        const flushPlan = () => {
+          if (planParts.length > 0) {
+            entries.push({ kind: "plan", content: planParts.join("") });
+            planParts.length = 0;
+          }
+        };
+        const pushThinking = (thinkingId: string) => {
+          thinkingMarkerIds.add(thinkingId);
+          const thinking = thinkingMap.get(thinkingId);
+          if (thinking) {
+            entries.push({
+              kind: "thinking",
+              content: thinking.content || "",
+              thinkingDone: thinking.status !== "streaming",
+              thinkingDurationMs: thinking.durationMs,
+            });
+          }
+        };
+        const pushToolCall = (toolCallId: string) => {
+          markerIds.add(toolCallId);
+          const tc = toolCallMap.get(toolCallId);
+          if (tc) {
+            entries.push({
+              kind: "tool",
+              content: tc.output || tc.error || "",
+              toolCallId: tc.toolCallId,
+              toolName: tc.toolName,
+              command: tc.command,
+              params: tc.params,
+              status: (tc.status || "completed") as ToolCallStatus,
+              output: tc.output,
+              error: tc.error,
+              ...(tc.parentToolCallId ? { parentToolCallId: tc.parentToolCallId } : {}),
+              ...(tc.subagentRunId ? { subagentRunId: tc.subagentRunId } : {}),
+            });
+          }
+        };
+        for (const seg of segments) {
+          if (seg.type === "plan_start") {
+            inPlan = true;
+            continue;
+          }
+          if (seg.type === "plan_end") {
+            flushPlan();
+            inPlan = false;
+            continue;
+          }
+          if (inPlan) {
+            if (seg.type === "text") planParts.push(seg.content);
+            if (seg.type === "thinking_marker" && seg.thinkingId) {
+              flushPlan();
+              pushThinking(seg.thinkingId);
+            }
+            if (seg.type === "tool_call_marker" && seg.toolCallId) {
+              flushPlan();
+              pushToolCall(seg.toolCallId);
+            }
+            continue;
+          }
+          if (seg.type === "text") {
+            entries.push({ kind: "assistant", content: seg.content });
+          } else if (seg.type === "thinking_marker" && seg.thinkingId) {
+            pushThinking(seg.thinkingId);
+          } else if (seg.type === "tool_call_marker" && seg.toolCallId) {
+            pushToolCall(seg.toolCallId);
+          }
+        }
+        // Handle unclosed plan
+        if (inPlan) flushPlan();
+        for (const thinking of thinkingRecords) {
+          if (!thinkingMarkerIds.has(thinking.thinkingId)) {
+            entries.push({
+              kind: "thinking",
+              content: thinking.content || "",
+              thinkingDone: thinking.status !== "streaming",
+              thinkingDurationMs: thinking.durationMs,
+            });
+          }
+        }
+        // Fallback: append orphan tool (markers missing)
+        for (const tc of toolCalls) {
+          if (!markerIds.has(tc.toolCallId)) {
+            entries.push({
+              kind: "tool",
+              content: tc.output || tc.error || "",
+              toolCallId: tc.toolCallId,
+              toolName: tc.toolName,
+              command: tc.command,
+              params: tc.params,
+              status: (tc.status || "completed") as ToolCallStatus,
+              output: tc.output,
+              error: tc.error,
+              ...(tc.parentToolCallId ? { parentToolCallId: tc.parentToolCallId } : {}),
+              ...(tc.subagentRunId ? { subagentRunId: tc.subagentRunId } : {}),
+            });
+          }
+        }
+      } else {
+        // Legacy: all tools first, then text
+        for (const thinking of thinkingRecords) {
+          entries.push({
+            kind: "thinking",
+            content: thinking.content || "",
+            thinkingDone: thinking.status !== "streaming",
+            thinkingDurationMs: thinking.durationMs,
+          });
+        }
+        for (const tc of toolCalls) {
+          entries.push({
+            kind: "tool",
+            content: tc.output || tc.error || "",
+            toolCallId: tc.toolCallId,
+            toolName: tc.toolName,
+            command: tc.command,
+            params: tc.params,
+            status: (tc.status || "completed") as ToolCallStatus,
+            output: tc.output,
+            error: tc.error,
+            ...(tc.parentToolCallId ? { parentToolCallId: tc.parentToolCallId } : {}),
+            ...(tc.subagentRunId ? { subagentRunId: tc.subagentRunId } : {}),
+          });
+        }
+        const { narration, planBody } = splitNarrationAndPlan(msg.content);
+        if (planBody && planBody !== msg.content) {
+          if (narration) {
+            entries.push({ kind: "assistant", content: narration });
+          }
+          entries.push({ kind: "plan", content: planBody });
+        } else {
+          entries.push({ kind: "assistant", content: msg.content });
+        }
       }
-      entries.push({ kind: "assistant", content: msg.content });
       continue;
     }
 
@@ -123,7 +255,7 @@ export function mapHistoryMessages(
 export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement {
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const width = Math.max(20, stdout?.columns || 80);
+  const [width, setWidth] = React.useState(() => Math.max(20, stdout?.columns || 80));
   const border = "─".repeat(width);
 
   const [state, dispatch] = useReducer(
@@ -135,6 +267,10 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
   const socketRef = useRef<CLISocket | null>(null);
   const blinkRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionRef = useRef({ id: "", name: "" });
+  const liveAssistantRef = useRef("");
+  const planModeRef = useRef(false);
+  const planStartedRef = useRef(false);
+  const preambleShownRef = useRef("");
   const clearScreenDeferred = useCallback(() => {
     setImmediate(() => clearScreen());
   }, []);
@@ -150,6 +286,14 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
   useEffect(() => {
     sessionRef.current = { id: state.sessionId, name: state.sessionName };
   }, [state.sessionId, state.sessionName]);
+
+  useEffect(() => {
+    liveAssistantRef.current = state.liveAssistant;
+  }, [state.liveAssistant]);
+
+  useEffect(() => {
+    planModeRef.current = state.planMode;
+  }, [state.planMode]);
 
   const refreshSessionName = useCallback(async (sessionId: string) => {
     if (!sessionId) {
@@ -183,6 +327,79 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       // Ignore when no model is configured.
     }
   }, []);
+
+  const loadApprovalMode = useCallback(async () => {
+    try {
+      const settings = await apiRef.current.getSettings();
+      const mode = settings.approvalMode || "standard";
+      dispatch({ type: "SET_APPROVAL_MODE", mode } as AppAction);
+    } catch {
+      // Ignore
+    }
+  }, []);
+
+  const loadThinkingLevel = useCallback(async () => {
+    try {
+      const settings = await apiRef.current.getSettings();
+      const level = (settings as Record<string, unknown>).thinkingLevel as string || "off";
+      if ((THINKING_LEVELS as readonly string[]).includes(level)) {
+        dispatch({ type: "SET_THINKING_LEVEL", level } as AppAction);
+      }
+    } catch {
+      // Ignore
+    }
+  }, []);
+
+  const toggleApprovalMode = useCallback(async () => {
+    try {
+      const settings = await apiRef.current.getSettings();
+      const current = settings.approvalMode || "standard";
+      const next = current === "auto" ? "standard" : "auto";
+      await apiRef.current.updateSettings({ approvalMode: next });
+      dispatch({ type: "SET_APPROVAL_MODE", mode: next } as AppAction);
+      const label = next === "auto" ? "Auto Execute" : "Standard";
+      appendSystem(`Approval mode switched to: ${label}`);
+    } catch (error) {
+      appendSystem(`Failed to switch approval mode: ${(error as Error).message}`);
+    }
+  }, [appendSystem]);
+
+  const THINGKING_LEVEL_DESC: Record<string, string> = {
+    off: "No extended thinking",
+    low: "Light reasoning (8K budget)",
+    medium: "Moderate reasoning (16K budget)",
+    high: "Deep reasoning (32K budget)",
+  };
+
+  const toggleThinkingLevel = useCallback(() => {
+    const items: MenuItem[] = THINKING_LEVELS.map((level) => ({
+      title: level,
+      desc: (level === state.thinkingLevel ? "current · " : "") + (THINGKING_LEVEL_DESC[level] || ""),
+      data: level,
+    }));
+    dispatch({
+      type: "SET_MENU",
+      kind: "effort",
+      title: "Thinking Level",
+      items,
+      hint: "Arrow keys to navigate, Enter to select, Esc to cancel",
+    } as AppAction);
+  }, [state.thinkingLevel]);
+
+  const setThinkingLevel = useCallback(async (level: string) => {
+    const normalized = level.toLowerCase().trim();
+    if (!(THINKING_LEVELS as readonly string[]).includes(normalized)) {
+      appendSystem(`Invalid thinking level: ${level}. Use: ${THINKING_LEVELS.join(", ")}`);
+      return;
+    }
+    dispatch({ type: "SET_THINKING_LEVEL", level: normalized } as AppAction);
+    appendSystem(`Thinking level set to: ${normalized}`);
+    try {
+      await apiRef.current.updateSettings({ thinkingLevel: normalized });
+    } catch {
+      // Silently ignore persistence failures.
+    }
+  }, [appendSystem]);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -271,6 +488,8 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       { title: "/new", desc: "Create a new chat (lazy session creation)", data: null },
       { title: "/session", desc: "Browse, switch, or delete sessions", data: null },
       { title: "/model", desc: "Switch default model", data: null },
+      { title: "/mode", desc: "Toggle approval mode (standard/auto)", data: null },
+      { title: "/effort", desc: "Toggle thinking level (off/low/medium/high)", data: null },
       { title: "/skills", desc: "Browse and delete installed skills", data: null },
       { title: "/mcp", desc: "Manage MCP configs", data: null },
       { title: "/help", desc: "Show available commands", data: null },
@@ -296,6 +515,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         entries: mapHistoryMessages(
           history.messages,
           history.toolCallsByAssistantMessageId || {},
+          history.thinkingByAssistantMessageId || {},
         ),
       } as AppAction);
     } catch (error) {
@@ -321,6 +541,18 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         } as AppAction);
         dispatch({ type: "CLOSE_MENU" } as AppAction);
         appendSystem(`Model switched to ${model.name}.`);
+        return;
+      }
+      if (state.menuKind === "effort") {
+        const level = item.data as string;
+        dispatch({ type: "SET_THINKING_LEVEL", level } as AppAction);
+        dispatch({ type: "CLOSE_MENU" } as AppAction);
+        appendSystem(`Thinking level set to: ${level}`);
+        try {
+          await apiRef.current.updateSettings({ thinkingLevel: level });
+        } catch {
+          // Silently ignore persistence failures.
+        }
         return;
       }
       if (state.menuKind === "mcp") {
@@ -480,7 +712,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     dispatch({ type: "STREAM_START" } as AppAction);
 
     const sendToSocket = (sid: string): boolean => {
-      return socketRef.current?.send(content, sid, state.modelId) || false;
+      return socketRef.current?.send(content, sid, state.modelId, state.thinkingLevel, state.planMode) || false;
     };
 
     if (!state.sessionId) {
@@ -503,7 +735,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     if (!sendToSocket(state.sessionId)) {
       dispatch({ type: "STREAM_DONE", error: "WebSocket is not connected." } as AppAction);
     }
-  }, [appendSystem, applyTerminalTitle, state.modelId, state.sessionId]);
+  }, [appendSystem, applyTerminalTitle, state.modelId, state.sessionId, state.planMode, state.thinkingLevel]);
 
   const handleCommand = useCallback(async (raw: string) => {
     const cmd = raw.trim();
@@ -521,6 +753,19 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       await loadModels();
       return;
     }
+    if (cmd === "/mode") {
+      await toggleApprovalMode();
+      return;
+    }
+    if (cmd === "/effort") {
+      toggleThinkingLevel();
+      return;
+    }
+    if (cmd.startsWith("/effort ")) {
+      const level = cmd.slice(8).trim();
+      setThinkingLevel(level);
+      return;
+    }
     if (cmd === "/skills") {
       await loadSkills();
       return;
@@ -533,6 +778,10 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       showHelp();
       return;
     }
+    if (cmd === "/plan") {
+      dispatch({ type: "TOGGLE_PLAN_MODE" } as AppAction);
+      return;
+    }
     appendSystem(`Unknown command: ${cmd}`);
   }, [appendSystem, applyTerminalTitle, clearScreenDeferred, loadMCPConfigs, loadModels, loadSessions, loadSkills, showHelp]);
 
@@ -541,7 +790,16 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     clearScreen();
     applyTerminalTitle("");
     void loadDefaultModel();
-  }, [applyTerminalTitle, loadDefaultModel]);
+    void loadApprovalMode();
+    void loadThinkingLevel();
+  }, [applyTerminalTitle, loadDefaultModel, loadApprovalMode]);
+
+  // Terminal resize.
+  useEffect(() => {
+    const handleResize = () => setWidth(Math.max(20, stdout?.columns || 80));
+    stdout?.on("resize", handleResize);
+    return () => { stdout?.off("resize", handleResize); };
+  }, [stdout]);
 
   // Blink timer.
   useEffect(() => {
@@ -580,6 +838,8 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         void refreshSessionName(sessionId);
       },
       onStart: () => {
+        planStartedRef.current = false;
+        preambleShownRef.current = "";
         dispatch({ type: "STREAM_START" } as AppAction);
       },
       onChunk: (chunk) => {
@@ -590,6 +850,13 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           type: "STREAM_DONE",
           error: meta?.isStopPlaceholder ? "Generation stopped." : null,
         } as AppAction);
+        if (meta?.planId) {
+          dispatch({
+            type: "SET_PLAN_CONFIRMATION",
+            planId: meta.planId,
+            content: meta.planBody || liveAssistantRef.current || "",
+          } as AppAction);
+        }
         const current = sessionRef.current;
         applyTerminalTitle(current.name);
         if (current.id) {
@@ -600,6 +867,19 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         dispatch({ type: "STREAM_DONE", error } as AppAction);
       },
       onToolCallStart: (data: ToolCallStartData) => {
+        // Flush preamble text to timeline before tool entry
+        const hadLiveText = !!liveAssistantRef.current.trim();
+        const preamble = data.preamble?.trim() || "";
+        const preambleAlreadyShown = preamble && preamble === preambleShownRef.current;
+        dispatch({ type: "FLUSH_AND_WAIT" } as AppAction);
+        // Fallback: if streamed text was incomplete/missing, use preamble from tool_call_start
+        if (!hadLiveText && preamble && !preambleAlreadyShown) {
+          dispatch({
+            type: "APPEND_ENTRY",
+            entry: { kind: "assistant", content: preamble },
+          } as AppAction);
+          preambleShownRef.current = preamble;
+        }
         dispatch({
           type: "UPSERT_TOOL_ENTRY",
           entry: {
@@ -651,6 +931,22 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           content: data.content,
         } as AppAction);
       },
+      onThinkingStart: () => {
+        dispatch({ type: "THINKING_START" } as AppAction);
+      },
+      onThinkingChunk: (chunk) => {
+        dispatch({ type: "THINKING_CHUNK", chunk } as AppAction);
+      },
+      onThinkingDone: () => {
+        dispatch({ type: "THINKING_DONE", finishedAt: Date.now() } as AppAction);
+      },
+      onPlanBody: (content: string) => {
+        dispatch({ type: "PLAN_BODY", planBody: content } as AppAction);
+      },
+      onPlanStart: () => {
+        planStartedRef.current = true;
+        dispatch({ type: "PLAN_START" } as AppAction);
+      },
     });
 
     return () => {
@@ -660,8 +956,20 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
   useInput((input, key) => {
     if (key.ctrl && input === "c") {
+      if (state.streaming) {
+        const sent = state.sessionId && socketRef.current?.sendStop(state.sessionId) || false;
+        if (!sent) {
+          dispatch({ type: "STREAM_DONE", error: "Generation stopped (disconnected)." } as AppAction);
+        }
+        return;
+      }
       socketRef.current?.close();
       exit();
+      return;
+    }
+
+    if (key.tab && key.shift && state.view === "chat") {
+      dispatch({ type: "TOGGLE_PLAN_MODE" } as AppAction);
       return;
     }
 
@@ -693,6 +1001,53 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           },
         } as AppAction);
         dispatch({ type: "CLEAR_APPROVAL" } as AppAction);
+      }
+      return;
+    }
+
+    if (state.view === "plan-confirm") {
+      // When input is focused (cursor=1), TextInput handles keys except nav
+      if (state.planConfirmCursor === 1) {
+        if (key.upArrow) {
+          dispatch({ type: "PLAN_CONFIRM_NAV", delta: -1 } as AppAction);
+          return;
+        }
+        // Let TextInput handle Enter, Escape, and typing
+        return;
+      }
+      if (key.upArrow) {
+        dispatch({ type: "PLAN_CONFIRM_NAV", delta: -1 } as AppAction);
+        return;
+      }
+      if (key.downArrow) {
+        dispatch({ type: "PLAN_CONFIRM_NAV", delta: 1 } as AppAction);
+        return;
+      }
+      if (key.return) {
+        // cursor=0: Execute Plan
+        const displayContent = "Execute this plan";
+        dispatch({ type: "APPEND_ENTRY", entry: { kind: "user", content: displayContent } } as AppAction);
+        socketRef.current?.sendPlanApprove(
+          state.pendingPlanId, state.sessionId, state.modelId, displayContent,
+        );
+        if (state.planMode) {
+          dispatch({ type: "TOGGLE_PLAN_MODE" } as AppAction);
+        }
+        dispatch({ type: "CLEAR_PLAN_CONFIRMATION" } as AppAction);
+        return;
+      }
+      if (key.escape) {
+        socketRef.current?.sendPlanReject(
+          state.pendingPlanId, state.sessionId,
+        );
+        dispatch({ type: "CLEAR_PLAN_CONFIRMATION" } as AppAction);
+      }
+      return;
+    }
+
+    if (state.view === "thinking-detail") {
+      if (key.escape) {
+        dispatch({ type: "SET_VIEW", view: "chat" } as AppAction);
       }
       return;
     }
@@ -808,12 +1163,20 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
     if (state.view !== "chat") return;
 
-    if (state.streaming) return;
+    if (state.streaming) {
+      if (key.escape) {
+        const sent = state.sessionId && socketRef.current?.sendStop(state.sessionId) || false;
+        if (!sent) {
+          dispatch({ type: "STREAM_DONE", error: "Generation stopped (disconnected)." } as AppAction);
+        }
+      }
+      return;
+    }
   });
 
   return (
     <Box flexDirection="column">
-      <Banner version={state.version} modelName={state.modelName} cwd={state.cwd} />
+      <Banner version={state.version} modelName={state.modelName} cwd={state.cwd} approvalMode={state.approvalMode} thinkingLevel={state.thinkingLevel} />
       <Text> </Text>
       {(state.timeline.length > 0 || state.streaming) && (
         <>
@@ -826,6 +1189,9 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
             maxWidth={width}
             compact={state.compact}
             toolOutputExpanded={state.toolOutputExpanded}
+            thinkingEntryIndex={state.timeline.filter((e) => e.kind === "thinking").length}
+            planGenerating={state.planGenerating}
+            planReceived={state.planReceived}
           />
           <Text> </Text>
         </>
@@ -845,6 +1211,20 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
               const value = rawValue.trim();
               if (!value) return;
               dispatch({ type: "SET_INPUT", value: "" } as AppAction);
+
+              // Check if input is a number → view thinking detail
+              const num = parseInt(value, 10);
+              if (!isNaN(num) && String(num) === value && num > 0) {
+                const thinkingEntries = state.timeline.filter((e) => e.kind === "thinking");
+                if (num <= thinkingEntries.length) {
+                  dispatch({
+                    type: "VIEW_THINKING_DETAIL",
+                    content: thinkingEntries[num - 1].content || "(empty)",
+                  } as AppAction);
+                  return;
+                }
+              }
+
               if (isCommand(value)) {
                 void handleCommand(value);
               } else {
@@ -894,6 +1274,45 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           command={state.approvalCommand}
           params={state.approvalParams}
         />
+      )}
+
+      {state.view === "plan-confirm" && (
+        <PlanConfirmView
+          cursor={state.planConfirmCursor}
+          feedback={state.planModifyInput}
+          feedbackKey={state.planModifyInputKey}
+          onFeedbackChange={(value) => dispatch({ type: "SET_PLAN_MODIFY_INPUT", value } as AppAction)}
+          onFeedbackSubmit={(rawValue) => {
+            const feedback = rawValue.trim();
+            if (!feedback) return;
+            dispatch({ type: "APPEND_ENTRY", entry: { kind: "user", content: feedback } } as AppAction);
+            socketRef.current?.sendPlanModify(
+              state.pendingPlanId, state.sessionId, state.modelId,
+              feedback, state.thinkingLevel,
+            );
+            dispatch({ type: "CLEAR_PLAN_CONFIRMATION" } as AppAction);
+          }}
+          onEscape={() => {
+            socketRef.current?.sendPlanReject(
+              state.pendingPlanId, state.sessionId,
+            );
+            dispatch({ type: "CLEAR_PLAN_CONFIRMATION" } as AppAction);
+          }}
+          columns={width}
+        />
+      )}
+
+      {state.view === "thinking-detail" && (
+        <Box flexDirection="column">
+          <Text bold color="magenta">{"Thinking Detail"}</Text>
+          <Text color="gray">Press Esc to return</Text>
+          <Text> </Text>
+          <Box flexDirection="column">
+            {state.thinkingDetailContent.split("\n").map((line, i) => (
+              <Text key={i} dimColor>{line}</Text>
+            ))}
+          </Box>
+        </Box>
       )}
 
       {state.view === "mcp-editor" && (
@@ -953,20 +1372,33 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         <Box flexDirection="column">
           <CommandHints input={state.inputValue} />
           <Text color="gray" dimColor>
-            Tab to autocomplete, Enter to run, Esc to clear.
+            Tab autocomplete | Enter run | Esc clear
           </Text>
         </Box>
       )}
 
       {state.view === "chat" && !state.streaming && !state.inputValue.startsWith("/") && (
-        <Text color="gray" dimColor>
-          Enter to send | / for commands | Tab to autocomplete | Ctrl+K compact | Ctrl+O expand output | Esc to cancel
-        </Text>
+        <Box>
+          {state.planMode && <Text color="#22d3ee" bold>◆ Plan </Text>}
+          {state.approvalMode === "auto" && <Text color="#eab308" bold>◆ Auto </Text>}
+          <Text color="gray" dimColor>
+            {state.planMode || state.approvalMode === "auto"
+              ? "/ commands | Shift+Tab toggle | Esc to cancel"
+              : "/ for commands | Tab autocomplete | Shift+Tab plan mode | Esc to cancel"
+            }
+          </Text>
+        </Box>
       )}
 
       {state.view === "approval" && (
         <Text color="gray" dimColor>
           Y to approve | N/Esc to reject
+        </Text>
+      )}
+
+      {state.view === "plan-confirm" && (
+        <Text color="gray" dimColor>
+          Arrow keys to navigate | Enter to select | Esc to cancel
         </Text>
       )}
 

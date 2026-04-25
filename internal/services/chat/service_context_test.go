@@ -11,7 +11,7 @@ import (
 
 func TestBuildContextMessages_SystemPrefixStableAndNoLocalDateTime(t *testing.T) {
 	repo := newTestRepo(t)
-	svc := NewChatService(repo, nil, nil, nil, nil)
+	svc := NewChatService(repo, nil, nil, nil, nil, nil)
 	ctx := context.Background()
 
 	msgs1, err := svc.BuildContextMessages(ctx, "session-1", llmsvc.ModelRuntimeConfig{})
@@ -60,7 +60,7 @@ func TestBuildContextMessages_SystemPrefixStableAndNoLocalDateTime(t *testing.T)
 
 func TestBuildContextMessages_IncludesConfigDirInCLI(t *testing.T) {
 	repo := newTestRepo(t)
-	svc := NewChatService(repo, nil, nil, nil, nil)
+	svc := NewChatService(repo, nil, nil, nil, nil, nil)
 	svc.SetRunContext(RunContext{
 		ConfigHomeDir:        "/home/user/.slimebot",
 		ConfigDirDescription: "/home/user/.slimebot/\n  skills/\n  storage/\n",
@@ -97,7 +97,7 @@ func TestBuildContextMessages_IncludesConfigDirInCLI(t *testing.T) {
 
 func TestBuildContextMessages_ServerMode_NoWorkingDir(t *testing.T) {
 	repo := newTestRepo(t)
-	svc := NewChatService(repo, nil, nil, nil, nil)
+	svc := NewChatService(repo, nil, nil, nil, nil, nil)
 	svc.SetRunContext(RunContext{
 		ConfigHomeDir: "/home/user/.slimebot",
 		IsCLI:         false,
@@ -120,7 +120,7 @@ func TestBuildContextMessages_ServerMode_NoWorkingDir(t *testing.T) {
 
 func TestBuildContextMessages_NoRunContext_OmitsConfigDir(t *testing.T) {
 	repo := newTestRepo(t)
-	svc := NewChatService(repo, nil, nil, nil, nil)
+	svc := NewChatService(repo, nil, nil, nil, nil, nil)
 	// Do not set RunContext (zero value)
 	ctx := context.Background()
 
