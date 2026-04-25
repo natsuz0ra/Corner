@@ -32,7 +32,6 @@ function toggleExpand() {
     class="plan-block"
     :class="{
       'plan-block--generating': generating,
-      'plan-block--sticky': generating && expanded,
       'plan-block--clickable': headerClickable,
     }"
     aria-label="Plan"
@@ -88,12 +87,6 @@ function toggleExpand() {
 .plan-block--clickable:hover {
   border-color: rgba(245, 158, 11, 0.5);
   border-left-color: #f59e0b;
-}
-
-.plan-block--sticky {
-  position: sticky;
-  bottom: 0;
-  z-index: 10;
 }
 
 .plan-block-header {

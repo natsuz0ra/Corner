@@ -3,8 +3,10 @@ import test from 'node:test'
 import type { AssistantReplyBatch } from '../src/utils/replyBatchBuilder'
 import {
   appendPlanBodyToBatch,
+  appendPlanChunkToBatch,
   appendTextChunkToBatch,
   finishOpenThinkingEntries,
+  getLiveReplyContentSignature,
 } from '../src/utils/liveReplyTimeline'
 
 test('appendTextChunkToBatch finishes open thinking before text is appended', () => {
@@ -72,4 +74,24 @@ test('finishOpenThinkingEntries is a no-op when all thinking entries are done', 
   finishOpenThinkingEntries(batch)
 
   assert.deepEqual(batch.timeline, [{ id: 'thinking-1', kind: 'thinking', content: 'done', done: true, durationMs: 500 }])
+})
+
+test('getLiveReplyContentSignature changes when streaming plan content grows in place', () => {
+  const batch: AssistantReplyBatch = {
+    id: 'batch-1',
+    sessionId: 'session-1',
+    assistantMessageId: 'assistant-1',
+    toolCalls: [],
+    timeline: [],
+    collapsed: false,
+  }
+
+  appendPlanChunkToBatch(batch, '# Plan')
+  const before = getLiveReplyContentSignature(batch)
+
+  appendPlanChunkToBatch(batch, '\n\n- More detail')
+  const after = getLiveReplyContentSignature(batch)
+
+  assert.notEqual(after, before)
+  assert.match(after, /plan:21:1/)
 })
