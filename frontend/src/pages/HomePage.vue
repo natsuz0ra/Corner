@@ -13,7 +13,6 @@ import HomeDialogs from '@/components/home/HomeDialogs.vue'
 import HomeHeaderBar from '@/components/home/HomeHeaderBar.vue'
 import HomeSidebar from '@/components/home/HomeSidebar.vue'
 import AppLogo from '@/components/ui/AppLogo.vue'
-import ApprovalDrawer from '@/components/chat/ApprovalDrawer.vue'
 import { provideChatContext } from '@/composables/chat/useChatContext'
 import { useHomeChatPage } from '@/composables/home/useHomeChatPage'
 import { useHomeTransitions } from '@/composables/home/useHomeTransitions'
@@ -343,15 +342,6 @@ provideChatContext({
       @account-updated="onAccountUpdated"
     />
 
-    <ApprovalDrawer
-      v-if="store.pendingApproval"
-      :visible="!!store.pendingApproval"
-      :tool-name="store.pendingApproval.toolName"
-      :command="store.pendingApproval.command"
-      :params="store.pendingApproval.params"
-      @approve="store.approveToolCall(store.pendingApproval!.toolCallId, true)"
-      @reject="store.approveToolCall(store.pendingApproval!.toolCallId, false)"
-    />
   </div>
 </template>
 

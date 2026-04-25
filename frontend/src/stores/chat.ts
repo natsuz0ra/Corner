@@ -43,13 +43,6 @@ export const useChatStore = defineStore('chat', () => {
   const currentBatchId = ref<string>('')
   const assistantErrorIds = ref(new Set<string>())
   const failedUserMessageIds = ref(new Set<string>())
-  const pendingApproval = ref<{
-    toolCallId: string
-    toolName: string
-    command: string
-    params: Record<string, string>
-  } | null>(null)
-
   const pendingPlanConfirmation = ref<{ planId: string; content: string } | null>(null)
 
   const ws = new ChatSocket()
@@ -472,14 +465,6 @@ export const useChatStore = defineStore('chat', () => {
           parentToolCallId: data.parentToolCallId,
           subagentRunId: data.subagentRunId,
         })
-        if (data.requiresApproval) {
-          pendingApproval.value = {
-            toolCallId: data.toolCallId,
-            toolName: data.toolName,
-            command: data.command,
-            params: data.params,
-          }
-        }
         if (!data.parentToolCallId) {
           batch.timeline.push({
             id: crypto.randomUUID(),
@@ -687,12 +672,7 @@ export const useChatStore = defineStore('chat', () => {
     if (item) {
       item.status = approved ? 'executing' : 'rejected'
     }
-    pendingApproval.value = null
     ws.sendToolApproval(toolCallId, approved)
-  }
-
-  function dismissApproval() {
-    pendingApproval.value = null
   }
 
   function disconnectSocket(options?: { silentConnectionNotice?: boolean }) {
@@ -792,8 +772,6 @@ export const useChatStore = defineStore('chat', () => {
     sendMessage,
     stopCurrentResponse,
     approveToolCall,
-    pendingApproval,
-    dismissApproval,
     disconnectSocket,
     consumeSuppressNextConnectionNotice,
     planMode,

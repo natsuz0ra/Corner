@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { mdiConsoleLine, mdiWeb } from '@mdi/js'
 import MdiIcon from '@/components/ui/MdiIcon.vue'
 import type { ToolCallItem } from '@/api/chat'
 import { buildToolResultDisplay, formatDisplayText, formatToolParams } from '@/utils/toolDisplay'
+import { shouldAutoExpandToolCall } from '@/utils/toolApprovalExpansion'
 
 const props = withDefaults(defineProps<{
   item: ToolCallItem
@@ -78,6 +79,19 @@ const showPreamble = computed(() => !!props.item.preamble && props.item.preamble
 
 const showActions = computed(() => props.item.status === 'pending')
 const showNested = computed(() => props.nestedTools.length > 0)
+const shouldAutoExpand = computed(() => shouldAutoExpandToolCall(props.item, props.nestedTools))
+
+watch(
+  shouldAutoExpand,
+  (value) => {
+    if (value) expanded.value = true
+  },
+  { immediate: true },
+)
+
+function toggleExpanded() {
+  expanded.value = shouldAutoExpand.value ? true : !expanded.value
+}
 </script>
 
 <template>
@@ -88,7 +102,7 @@ const showNested = computed(() => props.nestedTools.length > 0)
         type="button"
         class="inline-tool-row"
         :aria-expanded="expanded"
-        @click="expanded = !expanded"
+        @click="toggleExpanded"
       >
         <MdiIcon :path="toolIcon" :size="14" class="inline-tool-icon" />
 
