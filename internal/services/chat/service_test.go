@@ -442,6 +442,38 @@ func TestHandleChatStream_StartsTitleGenerationBeforeAssistantChunk(t *testing.T
 	}
 }
 
+func TestRunAgentLoopPreservesThinkingBlocksAcrossToolIterations(t *testing.T) {
+	provider := &thinkingToolIterationProvider{}
+	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil, nil)
+
+	answer, err := agent.RunAgentLoop(
+		context.Background(),
+		llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI},
+		"session-1",
+		[]llmsvc.ChatMessage{{Role: "user", Content: "inspect"}},
+		nil,
+		map[string]struct{}{},
+		AgentCallbacks{},
+		AgentLoopOptions{},
+	)
+	if err != nil {
+		t.Fatalf("RunAgentLoop failed: %v", err)
+	}
+	if answer != "done" {
+		t.Fatalf("answer = %q, want done", answer)
+	}
+	if provider.secondCallAssistant == nil {
+		t.Fatal("expected second model call to include prior assistant message")
+	}
+	blocks := provider.secondCallAssistant.ThinkingBlocks
+	if len(blocks) != 1 {
+		t.Fatalf("expected one thinking block, got %d: %+v", len(blocks), blocks)
+	}
+	if blocks[0].Thinking != "Need a tool." || blocks[0].Signature != "sig-1" {
+		t.Fatalf("thinking block was not preserved: %+v", blocks[0])
+	}
+}
+
 type captureMessagesProvider struct {
 	messages []llmsvc.ChatMessage
 }
@@ -482,6 +514,58 @@ func (p *fakeThinkingProvider) StreamChatWithTools(
 		}
 	}
 	return &llmsvc.StreamResult{Type: llmsvc.StreamResultText}, nil
+}
+
+type thinkingToolIterationProvider struct {
+	call                int
+	secondCallAssistant *llmsvc.ChatMessage
+}
+
+func (p *thinkingToolIterationProvider) StreamChatWithTools(
+	_ context.Context,
+	_ llmsvc.ModelRuntimeConfig,
+	messages []llmsvc.ChatMessage,
+	_ []llmsvc.ToolDef,
+	callbacks llmsvc.StreamCallbacks,
+) (*llmsvc.StreamResult, error) {
+	p.call++
+	switch p.call {
+	case 1:
+		return &llmsvc.StreamResult{
+			Type: llmsvc.StreamResultToolCalls,
+			ToolCalls: []llmsvc.ToolCallInfo{{
+				ID:        "plan-start-call",
+				Name:      constants.PlanStartTool,
+				Arguments: "{}",
+			}},
+			AssistantMessage: llmsvc.ChatMessage{
+				Role: "assistant",
+				ThinkingBlocks: []llmsvc.ThinkingBlockInfo{{
+					Thinking:  "Need a tool.",
+					Signature: "sig-1",
+				}},
+				ToolCalls: []llmsvc.ToolCallInfo{{
+					ID:        "plan-start-call",
+					Name:      constants.PlanStartTool,
+					Arguments: "{}",
+				}},
+			},
+		}, nil
+	default:
+		for i := len(messages) - 1; i >= 0; i-- {
+			if messages[i].Role == "assistant" {
+				msg := messages[i]
+				p.secondCallAssistant = &msg
+				break
+			}
+		}
+		if callbacks.OnChunk != nil {
+			if err := callbacks.OnChunk("done"); err != nil {
+				return nil, err
+			}
+		}
+		return &llmsvc.StreamResult{Type: llmsvc.StreamResultText}, nil
+	}
 }
 
 type fakePlanModeProvider struct {
