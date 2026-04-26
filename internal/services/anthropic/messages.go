@@ -68,6 +68,16 @@ func buildAnthropicMessages(messages []llmsvc.ChatMessage) ([]anthropic.TextBloc
 func buildAssistantBlocks(msg llmsvc.ChatMessage) []anthropic.ContentBlockParamUnion {
 	var blocks []anthropic.ContentBlockParamUnion
 
+	for _, tb := range msg.ThinkingBlocks {
+		if strings.TrimSpace(tb.RedactedData) != "" {
+			blocks = append(blocks, anthropic.NewRedactedThinkingBlock(tb.RedactedData))
+			continue
+		}
+		if strings.TrimSpace(tb.Thinking) != "" {
+			blocks = append(blocks, anthropic.NewThinkingBlock(tb.Signature, tb.Thinking))
+		}
+	}
+
 	if strings.TrimSpace(msg.Content) != "" {
 		blocks = append(blocks, anthropic.NewTextBlock(msg.Content))
 	}

@@ -86,19 +86,49 @@ func (c *AnthropicClient) StreamChatWithTools(
 	// Streaming accumulation state
 	var (
 		textBuilder       strings.Builder
+		thinkingBlocks    []llmsvc.ThinkingBlockInfo
+		thinkingBuilder   strings.Builder
+		thinkingSignature strings.Builder
+		redactedThinking  string
 		toolUseBlocks     []pendingToolUse
 		currentToolUseIdx = -1
 		inThinkingBlock   = false
 	)
+
+	finishThinkingBlock := func() {
+		if !inThinkingBlock {
+			return
+		}
+		thinking := thinkingBuilder.String()
+		signature := thinkingSignature.String()
+		if redactedThinking != "" || thinking != "" || signature != "" {
+			thinkingBlocks = append(thinkingBlocks, llmsvc.ThinkingBlockInfo{
+				Thinking:     thinking,
+				Signature:    signature,
+				RedactedData: redactedThinking,
+			})
+		}
+		thinkingBuilder.Reset()
+		thinkingSignature.Reset()
+		redactedThinking = ""
+		inThinkingBlock = false
+	}
 
 	for stream.Next() {
 		event := stream.Current()
 
 		switch event.Type {
 		case "content_block_start":
+			finishThinkingBlock()
 			if event.ContentBlock.Type == "thinking" || event.ContentBlock.Type == "redacted_thinking" {
 				inThinkingBlock = true
 				currentToolUseIdx = -1
+				if event.ContentBlock.Type == "thinking" {
+					thinkingBuilder.WriteString(event.ContentBlock.Thinking)
+					thinkingSignature.WriteString(event.ContentBlock.Signature)
+				} else {
+					redactedThinking = event.ContentBlock.Data
+				}
 			} else if event.ContentBlock.Type == "tool_use" {
 				toolUseBlocks = append(toolUseBlocks, pendingToolUse{
 					ID:   event.ContentBlock.ID,
@@ -112,12 +142,16 @@ func (c *AnthropicClient) StreamChatWithTools(
 			}
 
 		case "content_block_delta":
-			if inThinkingBlock && event.Delta.Type == "thinking_delta" && event.Delta.Text != "" {
+			if inThinkingBlock && event.Delta.Type == "thinking_delta" && event.Delta.Thinking != "" {
+				thinkingBuilder.WriteString(event.Delta.Thinking)
 				if callbacks.OnThinkingChunk != nil {
-					if err := callbacks.OnThinkingChunk(event.Delta.Text); err != nil {
+					if err := callbacks.OnThinkingChunk(event.Delta.Thinking); err != nil {
 						return nil, err
 					}
 				}
+			}
+			if inThinkingBlock && event.Delta.Type == "signature_delta" && event.Delta.Signature != "" {
+				thinkingSignature.WriteString(event.Delta.Signature)
 			}
 			if !inThinkingBlock && event.Delta.Type == "text_delta" && event.Delta.Text != "" {
 				textBuilder.WriteString(event.Delta.Text)
@@ -130,10 +164,11 @@ func (c *AnthropicClient) StreamChatWithTools(
 			}
 
 		case "content_block_stop":
+			finishThinkingBlock()
 			currentToolUseIdx = -1
-			inThinkingBlock = false
 		}
 	}
+	finishThinkingBlock()
 	if err := stream.Err(); err != nil {
 		return nil, fmt.Errorf("Model request failed: %w", err)
 	}
@@ -163,9 +198,10 @@ func (c *AnthropicClient) StreamChatWithTools(
 		}
 		// Build assistant message for downstream context
 		assistantMsg := llmsvc.ChatMessage{
-			Role:      "assistant",
-			Content:   text,
-			ToolCalls: calls,
+			Role:           "assistant",
+			Content:        text,
+			ThinkingBlocks: thinkingBlocks,
+			ToolCalls:      calls,
 		}
 		return &llmsvc.StreamResult{
 			Type:             llmsvc.StreamResultToolCalls,
