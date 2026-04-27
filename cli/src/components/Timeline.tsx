@@ -37,6 +37,9 @@ interface TimelineProps {
   thinkingEntryIndex: number;
   planGenerating: boolean;
   planReceived: boolean;
+  thinkingStartIndex?: number;
+  firstAssistantContinuation?: boolean;
+  liveAssistantContinuation?: boolean;
 }
 
 function toolDotState(status: ToolCallStatus): { color: string; blink: boolean } {
@@ -268,6 +271,7 @@ function TimelineBlock({
   toolOutputExpanded,
   nestedUnderParent,
   thinkingNumber,
+  assistantContinuation = false,
 }: {
   entry: TimelineEntry;
   blinkOn: boolean;
@@ -276,6 +280,7 @@ function TimelineBlock({
   toolOutputExpanded: boolean;
   nestedUnderParent?: boolean;
   thinkingNumber?: number;
+  assistantContinuation?: boolean;
 }): React.ReactElement {
   if (entry.kind === "plan") {
     return <PlanBlock content={entry.content} maxWidth={maxWidth} />;
@@ -306,7 +311,7 @@ function TimelineBlock({
         maxWidth={Math.max(1, maxWidth - 2)}
         compact={compact}
         renderPrefix={(index) =>
-          index === 0 ? (
+          index === 0 && !assistantContinuation ? (
             <Text bold color="white">
               {DOT}{" "}
             </Text>
@@ -427,9 +432,12 @@ export function Timeline({
   thinkingEntryIndex,
   planGenerating,
   planReceived,
+  thinkingStartIndex = 0,
+  firstAssistantContinuation = false,
+  liveAssistantContinuation = false,
 }: TimelineProps): React.ReactElement {
   const displayRows = useMemo(() => buildTimelineDisplayRows(entries), [entries]);
-  let thinkingCounter = 0;
+  let thinkingCounter = thinkingStartIndex;
 
   return (
     <Box flexDirection="column">
@@ -443,6 +451,7 @@ export function Timeline({
             compact={compact}
             toolOutputExpanded={toolOutputExpanded}
             thinkingNumber={row.entry.kind === "thinking" ? ++thinkingCounter : undefined}
+            assistantContinuation={index === 0 && row.entry.kind === "assistant" && firstAssistantContinuation}
           />
           {row.nestedTools && row.nestedTools.length > 0 ? (
             <Box flexDirection="column" marginLeft={2}>
@@ -475,9 +484,13 @@ export function Timeline({
                 compact={compact}
                 renderPrefix={(index) =>
                   index === 0 ? (
-                    <Text bold color="white">
-                      {DOT}{" "}
-                    </Text>
+                    liveAssistantContinuation ? (
+                      <Text>{"  "}</Text>
+                    ) : (
+                      <Text bold color="white">
+                        {DOT}{" "}
+                      </Text>
+                    )
                   ) : (
                     <Text>{"  "}</Text>
                   )
