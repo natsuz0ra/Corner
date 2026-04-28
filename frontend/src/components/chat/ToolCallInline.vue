@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { mdiBrain, mdiConsoleLine, mdiHelpCircleOutline, mdiWeb } from '@mdi/js'
+import { mdiBrain, mdiConsoleLine, mdiHelpCircleOutline, mdiSourceBranch, mdiWeb } from '@mdi/js'
 import MdiIcon from '@/components/ui/MdiIcon.vue'
 import ThinkingBlock from '@/components/chat/ThinkingBlock.vue'
 import type { ToolCallItem } from '@/api/chat'
@@ -31,6 +31,7 @@ const toolIcon = computed(() => {
   if (props.item.toolName === 'web_search') return mdiWeb
   if (props.item.toolName === 'search_memory') return mdiBrain
   if (props.item.toolName === 'ask_questions') return mdiHelpCircleOutline
+  if (props.item.toolName === 'run_subagent') return mdiSourceBranch
   return mdiConsoleLine
 })
 

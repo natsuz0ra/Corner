@@ -28,18 +28,19 @@ type Controller struct {
 
 // chatIncoming is the client WebSocket message shape.
 type chatIncoming struct {
-	Type           string   `json:"type"`           // Message type: chat, ping, tool_approve, etc.
-	SessionID      string   `json:"sessionId"`      // Session ID
-	Content        string   `json:"content"`        // User input text
-	DisplayContent string   `json:"displayContent"` // Optional user-visible text when content is an internal prompt
-	ModelID        string   `json:"modelId"`        // LLM config ID
-	AttachmentIDs  []string `json:"attachmentIds"`  // Attachment IDs
-	ToolCallID     string   `json:"toolCallId"`     // Tool call ID (for approval flow)
-	Approved       *bool    `json:"approved"`       // Approval outcome
-	Answers        string   `json:"answers"`        // JSON-encoded answers for ask_questions tool
-	ThinkingLevel  string   `json:"thinkingLevel"`  // Thinking level: off, low, medium, high
-	PlanMode       bool     `json:"planMode"`       // Plan mode: LLM generates plan instead of executing
-	PlanID         string   `json:"planId"`         // Plan ID (for approve/reject)
+	Type            string   `json:"type"`            // Message type: chat, ping, tool_approve, etc.
+	SessionID       string   `json:"sessionId"`       // Session ID
+	Content         string   `json:"content"`         // User input text
+	DisplayContent  string   `json:"displayContent"`  // Optional user-visible text when content is an internal prompt
+	ModelID         string   `json:"modelId"`         // LLM config ID
+	AttachmentIDs   []string `json:"attachmentIds"`   // Attachment IDs
+	ToolCallID      string   `json:"toolCallId"`      // Tool call ID (for approval flow)
+	Approved        *bool    `json:"approved"`        // Approval outcome
+	Answers         string   `json:"answers"`         // JSON-encoded answers for ask_questions tool
+	ThinkingLevel   string   `json:"thinkingLevel"`   // Thinking level: off, low, medium, high
+	PlanMode        bool     `json:"planMode"`        // Plan mode: LLM generates plan instead of executing
+	PlanID          string   `json:"planId"`          // Plan ID (for approve/reject)
+	SubagentModelID string   `json:"subagentModelId"` // User-selected subagent model override (empty = inherit)
 }
 
 type wsOutChunk struct {
@@ -371,6 +372,7 @@ func (w *Controller) handleChatIncoming(
 		incoming.AttachmentIDs,
 		incoming.ThinkingLevel,
 		incoming.PlanMode,
+		incoming.SubagentModelID,
 		callbacks,
 	)
 	cancel()

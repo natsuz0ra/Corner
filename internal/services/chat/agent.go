@@ -76,11 +76,12 @@ type AgentCallbacks struct {
 
 // AgentLoopOptions configures nested agent execution.
 type AgentLoopOptions struct {
-	Depth        int
-	ApprovalMode string
-	PlanMode     bool
-	PlanStarted  *bool // set to true when plan_start tool is called
-	PlanComplete *bool // set to true when plan_complete tool is called
+	Depth           int
+	ApprovalMode    string
+	PlanMode        bool
+	PlanStarted     *bool  // set to true when plan_start tool is called
+	PlanComplete    *bool  // set to true when plan_complete tool is called
+	SubagentModelID string // user-selected subagent model override (empty = inherit)
 }
 
 // AgentService runs the LLM loop with tools, approvals, and MCP/skill loading.
@@ -506,7 +507,7 @@ func (a *AgentService) RunAgentLoop(
 			}
 
 			if tc.Name == constants.RunSubagentTool {
-				if err := a.handleRunSubagentTool(ctx, modelConfig, sessionID, mcpConfigs, activatedSkills, callbacks, opts, tc, invocation, params, "", &messages); err != nil {
+				if err := a.handleRunSubagentTool(ctx, modelConfig, sessionID, mcpConfigs, activatedSkills, callbacks, opts, tc, invocation, params, opts.SubagentModelID, "", &messages); err != nil {
 					return "", err
 				}
 				continue

@@ -79,6 +79,9 @@ const {
   thinkingLevel,
   thinkingSelectOptions,
   onThinkingLevelChange,
+  subagentModelId,
+  subagentModelSelectOptions,
+  onSubagentModelChange,
   planMode,
   onPlanToggle,
 } = useHomeChatPage()
@@ -226,6 +229,8 @@ provideChatContext({
                   :model-select-options="modelSelectOptions"
                   :selected-thinking-level="thinkingLevel"
                   :thinking-select-options="thinkingSelectOptions"
+                  :selected-subagent-model-id="subagentModelId"
+                  :subagent-model-select-options="subagentModelSelectOptions"
                   :model-options-count="modelOptions.length"
                   :send-disabled="sendDisabled"
                   :stop-disabled="stopDisabled"
@@ -240,6 +245,7 @@ provideChatContext({
                   @remove-file="removePendingFile"
                   @model-change="onModelChange"
                 @thinking-change="onThinkingLevelChange"
+                @subagent-model-change="onSubagentModelChange"
                 @plan-toggle="onPlanToggle"
                 @plan-execute="store.approvePlan(selectedModelId, t('planExecuteUserMessage'))"
                 @plan-cancel="store.rejectPlan()"
@@ -273,6 +279,8 @@ provideChatContext({
                 :model-select-options="modelSelectOptions"
                 :selected-thinking-level="thinkingLevel"
                 :thinking-select-options="thinkingSelectOptions"
+                :selected-subagent-model-id="subagentModelId"
+                :subagent-model-select-options="subagentModelSelectOptions"
                 :model-options-count="modelOptions.length"
                 :send-disabled="sendDisabled"
                 :stop-disabled="stopDisabled"
@@ -287,6 +295,7 @@ provideChatContext({
                 @remove-file="removePendingFile"
                 @model-change="onModelChange"
               @thinking-change="onThinkingLevelChange"
+              @subagent-model-change="onSubagentModelChange"
               @plan-toggle="onPlanToggle"
               @plan-execute="store.approvePlan(selectedModelId, t('planExecuteUserMessage'))"
               @plan-cancel="store.rejectPlan()"

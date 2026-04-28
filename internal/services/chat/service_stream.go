@@ -64,6 +64,7 @@ func (s *ChatService) HandleChatStream(
 	attachmentIDs []string,
 	thinkingLevel string,
 	planMode bool,
+	subagentModelID string,
 	callbacks AgentCallbacks,
 ) (*ChatStreamResult, error) {
 	if strings.TrimSpace(content) == "" && len(attachmentIDs) == 0 {
@@ -84,7 +85,7 @@ func (s *ChatService) HandleChatStream(
 		})
 	}
 
-	result, err := s.executeChatTurn(ctx, sessionID, requestID, state, callbacks, planMode)
+	result, err := s.executeChatTurn(ctx, sessionID, requestID, state, callbacks, planMode, subagentModelID)
 	if err != nil {
 		return nil, err
 	}
@@ -213,6 +214,7 @@ func (s *ChatService) executeChatTurn(
 	state *chatTurnState,
 	callbacks AgentCallbacks,
 	planMode bool,
+	subagentModelID string,
 ) (*chatTurnResult, error) {
 	parser := newTitleStreamParser(true)
 	accumulator := &chatStreamAccumulator{}
@@ -390,7 +392,7 @@ func (s *ChatService) executeChatTurn(
 
 	agentStart := time.Now()
 	var planCompleted bool
-	answer, err := s.agent.RunAgentLoop(ctx, state.modelConfig, sessionID, state.contextMessages, state.enabledMCPConfigs, activatedSkills, agentCallbacks, AgentLoopOptions{ApprovalMode: approvalMode, PlanMode: planMode, PlanComplete: &planCompleted})
+	answer, err := s.agent.RunAgentLoop(ctx, state.modelConfig, sessionID, state.contextMessages, state.enabledMCPConfigs, activatedSkills, agentCallbacks, AgentLoopOptions{ApprovalMode: approvalMode, PlanMode: planMode, PlanComplete: &planCompleted, SubagentModelID: subagentModelID})
 	logging.Span("agent_loop", agentStart)
 	s.mergeSessionActivatedSkills(sessionID, activatedSkills)
 	if finishErr := finishActiveThinking(time.Now()); finishErr != nil && err == nil {

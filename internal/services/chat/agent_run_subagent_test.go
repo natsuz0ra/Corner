@@ -28,6 +28,7 @@ func TestHandleRunSubagentTool_PlanModeChildKeepsReadOnlyToolFilter(t *testing.T
 		resolvedToolInvocation{toolName: constants.RunSubagentTool, command: "run"},
 		map[string]string{"task": "Inspect read-only context"},
 		"",
+		"",
 		&messages,
 	)
 	if err != nil {
@@ -148,6 +149,7 @@ func TestHandleRunSubagentTool_InheritsParentModelForEmptyOrDefaultModelID(t *te
 				resolvedToolInvocation{toolName: constants.RunSubagentTool, command: "run"},
 				tt.params,
 				"",
+				"",
 				&messages,
 			)
 			if err != nil {
@@ -198,6 +200,7 @@ func TestHandleRunSubagentTool_ModelOverrideKeepsParentThinkingLevel(t *testing.
 		resolvedToolInvocation{toolName: constants.RunSubagentTool, command: "run"},
 		map[string]string{"task": "Inspect override", "model_id": "child-config"},
 		"",
+		"",
 		&messages,
 	)
 	if err != nil {
@@ -233,6 +236,7 @@ func TestHandleRunSubagentTool_PreservesChildReasoningAcrossToolIterations(t *te
 		llmsvc.ToolCallInfo{ID: "call-subagent", Name: constants.RunSubagentTool},
 		resolvedToolInvocation{toolName: constants.RunSubagentTool, command: "run"},
 		map[string]string{"task": "Inspect with reasoning"},
+		"",
 		"",
 		&messages,
 	)

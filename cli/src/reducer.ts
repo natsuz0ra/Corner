@@ -24,6 +24,8 @@ export function createInitialState(
     sessionName: "",
     modelId: "",
     modelName: "(none)",
+    subagentModelId: "",
+    subagentModelName: "(follow main)",
     thinkingLevel: "off",
     approvalMode: "standard",
     timeline: [],
@@ -381,6 +383,9 @@ export function reducer(state: AppState, action: AppAction): AppState {
 
     case "SET_THINKING_LEVEL":
       return { ...state, thinkingLevel: action.level };
+
+    case "SET_SUBAGENT_MODEL":
+      return { ...state, subagentModelId: action.modelId, subagentModelName: action.modelName };
 
     case "LOAD_HISTORY":
       return {

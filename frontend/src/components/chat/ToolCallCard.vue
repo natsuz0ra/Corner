@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { mdiBrain, mdiCheck, mdiClose, mdiConsoleLine, mdiHelpCircleOutline, mdiWeb } from '@mdi/js'
+import { mdiBrain, mdiCheck, mdiClose, mdiConsoleLine, mdiHelpCircleOutline, mdiSourceBranch, mdiWeb } from '@mdi/js'
 import { useI18n } from 'vue-i18n'
 import MdiIcon from '@/components/ui/MdiIcon.vue'
 import ThinkingBlock from '@/components/chat/ThinkingBlock.vue'
@@ -30,6 +30,7 @@ const isCollapsed = ref(props.item.toolName === 'ask_questions')
 const subagentTimelineExpanded = ref(false)
 
 const toolIcon = computed(() => {
+  if (props.item.toolName === 'run_subagent') return mdiSourceBranch
   if (props.item.toolName === 'exec') return mdiConsoleLine
   if (props.item.toolName === 'http_request') return mdiWeb
   if (props.item.toolName === 'web_search') return mdiWeb

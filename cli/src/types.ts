@@ -141,6 +141,7 @@ export type MenuKind =
   | "skills"
   | "mcp"
   | "effort"
+  | "subagent_model"
   | "help";
 
 // ===== MCP Template types =====
@@ -232,6 +233,7 @@ export const SUPPORTED_COMMANDS: CommandMeta[] = [
   { command: "/new", description: "Create a new chat session" },
   { command: "/session", description: "Open session menu to switch or delete" },
   { command: "/model", description: "Choose the default model" },
+  { command: "/subagent_model", description: "Choose sub-agent model" },
   { command: "/approval", description: "Toggle approval mode (standard/auto)" },
   { command: "/effort", description: "Toggle thinking level (off/low/medium/high)" },
   { command: "/skills", description: "View and manage installed skills" },
@@ -250,6 +252,8 @@ export interface AppState {
   sessionName: string;
   modelId: string;
   modelName: string;
+  subagentModelId: string;
+  subagentModelName: string;
   thinkingLevel: string;
   approvalMode: string;
   timeline: TimelineEntry[];
@@ -369,6 +373,7 @@ export type AppAction =
   | { type: "CLEAR_APPROVAL" }
   | { type: "SET_APPROVAL_MODE"; mode: string }
   | { type: "SET_THINKING_LEVEL"; level: string }
+  | { type: "SET_SUBAGENT_MODEL"; modelId: string; modelName: string }
   | { type: "LOAD_HISTORY"; entries: TimelineEntry[] }
   | { type: "THINKING_START"; parentToolCallId?: string; subagentRunId?: string; startedAt?: number }
   | { type: "THINKING_CHUNK"; chunk: string; parentToolCallId?: string; subagentRunId?: string }
