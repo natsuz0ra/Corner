@@ -34,6 +34,7 @@ export interface ToolCallStartData {
   params: Record<string, string>
   requiresApproval: boolean
   preamble?: string
+  startedAt?: string
   parentToolCallId?: string
   subagentRunId?: string
 }
@@ -46,6 +47,7 @@ export interface ToolCallResultData {
   status: ToolCallStatus
   output: string
   error: string
+  finishedAt?: string
   parentToolCallId?: string
   subagentRunId?: string
 }
@@ -70,6 +72,8 @@ export interface SubagentDoneData {
 
 export interface ThinkingEventData {
   content?: string
+  startedAt?: string
+  finishedAt?: string
   parentToolCallId?: string
   subagentRunId?: string
 }
@@ -89,6 +93,8 @@ type WSIncoming = {
   status?: ToolCallStatus
   preamble?: string
   output?: string
+  startedAt?: string
+  finishedAt?: string
   isInterrupted?: boolean
   isStopPlaceholder?: boolean
   parentToolCallId?: string
@@ -248,6 +254,7 @@ export class ChatSocket {
           params: data.params || {},
           requiresApproval: !!data.requiresApproval,
           preamble: data.preamble || '',
+          startedAt: data.startedAt,
           parentToolCallId: data.parentToolCallId,
           subagentRunId: data.subagentRunId,
         }, data.sessionId)
@@ -262,6 +269,7 @@ export class ChatSocket {
           status: data.status || 'completed',
           output: data.output || '',
           error: data.error || '',
+          finishedAt: data.finishedAt,
           parentToolCallId: data.parentToolCallId,
           subagentRunId: data.subagentRunId,
         }, data.sessionId)
@@ -292,15 +300,18 @@ export class ChatSocket {
       }
 
       if (data.type === 'thinking_start') this.handlers?.onThinkingStart?.({
+        startedAt: data.startedAt,
         parentToolCallId: data.parentToolCallId,
         subagentRunId: data.subagentRunId,
       }, data.sessionId)
       if (data.type === 'thinking_chunk') this.handlers?.onThinkingChunk?.({
         content: data.content || '',
+        startedAt: data.startedAt,
         parentToolCallId: data.parentToolCallId,
         subagentRunId: data.subagentRunId,
       }, data.sessionId)
       if (data.type === 'thinking_done') this.handlers?.onThinkingDone?.({
+        finishedAt: data.finishedAt,
         parentToolCallId: data.parentToolCallId,
         subagentRunId: data.subagentRunId,
       }, data.sessionId)

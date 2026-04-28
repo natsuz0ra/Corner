@@ -75,6 +75,20 @@ test('chat socket done event forwards plan metadata while plan_body stays separa
   assert.match(chatSocketSource, /if \(data\.type === 'plan_body'\) this\.handlers\?\.onPlanBody\?\.\(data\.content \|\| '', data\.sessionId\)/)
 })
 
+test('chat socket forwards backend event timestamps for tool and thinking ordering', () => {
+  const chatSocketSource = readFileSync(resolve(import.meta.dirname, '../src/api/chatSocket.ts'), 'utf8')
+  const chatStoreSource = readFileSync(resolve(import.meta.dirname, '../src/stores/chat.ts'), 'utf8')
+
+  assert.match(chatSocketSource, /startedAt\?: string/)
+  assert.match(chatSocketSource, /finishedAt\?: string/)
+  assert.match(chatSocketSource, /startedAt: data\.startedAt/)
+  assert.match(chatSocketSource, /finishedAt: data\.finishedAt/)
+  assert.match(chatStoreSource, /function parseSocketTimestamp/)
+  assert.match(chatStoreSource, /startedAt: parseSocketTimestamp\(data\.startedAt\)/)
+  assert.match(chatStoreSource, /startSubagentThinking\(batch, data\.parentToolCallId, parseSocketTimestamp\(data\.startedAt\)\)/)
+  assert.match(chatStoreSource, /finishSubagentThinking\(batch, data\.parentToolCallId, parseSocketTimestamp\(data\.finishedAt\)\)/)
+})
+
 test('ThinkingBlock supports live subagent reasoning content before completion', () => {
   const thinkingBlockSource = readFileSync(resolve(import.meta.dirname, '../src/components/chat/ThinkingBlock.vue'), 'utf8')
 
@@ -115,6 +129,15 @@ test('ToolCallCard renders subagent thinking entries with the shared ThinkingBlo
   assert.match(toolCallCardSource, /\.tool-subagent-expand-enter-active\s*\{[\s\S]*opacity 180ms ease, max-height 250ms ease/)
 })
 
+test('ToolCallCard collapses subagent tool calls and thinking when the outer card collapses', () => {
+  const toolCallCardSource = readFileSync(resolve(import.meta.dirname, '../src/components/chat/ToolCallCard.vue'), 'utf8')
+
+  assert.match(
+    toolCallCardSource,
+    /function toggleCollapse\(\) \{[\s\S]*isCollapsed\.value = !isCollapsed\.value[\s\S]*if \(isCollapsed\.value\) subagentTimelineExpanded\.value = false[\s\S]*\}/,
+  )
+})
+
 test('ToolCallInline keeps subagent tool calls collapsed by default with the shared chevron style', () => {
   const toolCallInlineSource = readFileSync(resolve(import.meta.dirname, '../src/components/chat/ToolCallInline.vue'), 'utf8')
 
@@ -127,6 +150,15 @@ test('ToolCallInline keeps subagent tool calls collapsed by default with the sha
   assert.match(toolCallInlineSource, /\.inline-tool-chevron\s*\{[\s\S]*width:\s*14px[\s\S]*height:\s*14px[\s\S]*rotate\(-90deg\)/)
   assert.match(toolCallInlineSource, /\.inline-tool-chevron--open\s*\{[\s\S]*rotate\(0deg\)/)
   assert.match(toolCallInlineSource, /\.inline-subagent-chevron--open\s*\{[\s\S]*rotate\(0deg\)/)
+})
+
+test('ToolCallInline collapses subagent tool calls and thinking when the outer card collapses', () => {
+  const toolCallInlineSource = readFileSync(resolve(import.meta.dirname, '../src/components/chat/ToolCallInline.vue'), 'utf8')
+
+  assert.match(
+    toolCallInlineSource,
+    /function toggleExpanded\(\) \{[\s\S]*expanded\.value = shouldAutoExpand\.value \? true : !expanded\.value[\s\S]*if \(!expanded\.value\) subagentTimelineExpanded\.value = false[\s\S]*\}/,
+  )
 })
 
 test('PlanBlock uses the shared chevron size and right-closed/down-open direction', () => {

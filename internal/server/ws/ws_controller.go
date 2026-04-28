@@ -444,7 +444,7 @@ func (w *Controller) buildCallbacks(
 			return nil
 		},
 		OnThinkingStart: func(meta chatsvc.ThinkingEventMeta) error {
-			payload := map[string]any{"type": "thinking_start", "sessionId": sessionID}
+			payload := map[string]any{"type": "thinking_start", "sessionId": sessionID, "startedAt": time.Now().Format(time.RFC3339Nano)}
 			if meta.ParentToolCallID != "" {
 				payload["parentToolCallId"] = meta.ParentToolCallID
 			}
@@ -457,7 +457,7 @@ func (w *Controller) buildCallbacks(
 			return nil
 		},
 		OnThinkingChunk: func(chunk string, meta chatsvc.ThinkingEventMeta) error {
-			payload := map[string]any{"type": "thinking_chunk", "sessionId": sessionID, "content": chunk}
+			payload := map[string]any{"type": "thinking_chunk", "sessionId": sessionID, "content": chunk, "startedAt": time.Now().Format(time.RFC3339Nano)}
 			if meta.ParentToolCallID != "" {
 				payload["parentToolCallId"] = meta.ParentToolCallID
 			}
@@ -470,7 +470,7 @@ func (w *Controller) buildCallbacks(
 			return nil
 		},
 		OnThinkingDone: func(meta chatsvc.ThinkingEventMeta) error {
-			payload := map[string]any{"type": "thinking_done", "sessionId": sessionID}
+			payload := map[string]any{"type": "thinking_done", "sessionId": sessionID, "finishedAt": time.Now().Format(time.RFC3339Nano)}
 			if meta.ParentToolCallID != "" {
 				payload["parentToolCallId"] = meta.ParentToolCallID
 			}
@@ -492,6 +492,7 @@ func (w *Controller) buildCallbacks(
 				"params":           req.Params,
 				"requiresApproval": req.RequiresApproval,
 				"preamble":         req.Preamble,
+				"startedAt":        time.Now().Format(time.RFC3339Nano),
 			}
 			if req.ParentToolCallID != "" {
 				payload["parentToolCallId"] = req.ParentToolCallID
@@ -525,6 +526,7 @@ func (w *Controller) buildCallbacks(
 				"status":           result.Status,
 				"output":           result.Output,
 				"error":            result.Error,
+				"finishedAt":       time.Now().Format(time.RFC3339Nano),
 			}
 			if result.ParentToolCallID != "" {
 				payload["parentToolCallId"] = result.ParentToolCallID
