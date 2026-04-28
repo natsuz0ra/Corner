@@ -239,6 +239,7 @@ function onOutputToggle(event: Event) {
         :content="item.subagentThinking.content"
         :done="item.subagentThinking.done"
         :duration-ms="item.subagentThinking.durationMs"
+        variant="subagent"
       />
     </section>
 

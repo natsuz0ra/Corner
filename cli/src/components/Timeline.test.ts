@@ -3,6 +3,7 @@ import test from "node:test";
 import type { TimelineEntry } from "../types";
 import {
   PLAN_GOLD,
+  formatSubagentThinkingLines,
   formatPlanningIndicatorParts,
   formatThinkingLabel,
   formatToolOutputLines,
@@ -122,6 +123,43 @@ test("formatThinkingLabel uses fixed duration after thinking completes", () => {
   });
 
   assert.equal(label, "Thought for 1.8s");
+});
+
+test("formatSubagentThinkingLines shows live child reasoning while sub-agent is still running", () => {
+  const entry: TimelineEntry = {
+    kind: "tool",
+    content: "",
+    toolName: "run_subagent",
+    status: "executing",
+    subagentThinking: {
+      content: "checking files before answering",
+      thinkingDone: false,
+    },
+  };
+
+  const lines = formatSubagentThinkingLines(entry, 80, false);
+
+  assert.equal(lines[0], "   Sub-agent thinking...");
+  assert.ok(lines.some((line) => line.includes("checking files before answering")));
+});
+
+test("formatSubagentThinkingLines collapses completed child reasoning by default", () => {
+  const entry: TimelineEntry = {
+    kind: "tool",
+    content: "",
+    toolName: "run_subagent",
+    status: "completed",
+    subagentThinking: {
+      content: Array.from({ length: 8 }, (_, i) => `child reason ${i + 1}`).join("\n"),
+      thinkingDone: true,
+      thinkingDurationMs: 1200,
+    },
+  };
+
+  const lines = formatSubagentThinkingLines(entry, 80, false);
+
+  assert.equal(lines[0], "   Sub-agent thought for 1.2s");
+  assert.ok(lines.some((line) => line.includes("ctrl+o to expand")));
 });
 
 test("PLAN_GOLD matches the frontend plan card gold", () => {

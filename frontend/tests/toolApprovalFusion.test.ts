@@ -75,3 +75,11 @@ test('chat socket done event forwards plan metadata while plan_body stays separa
   assert.match(chatSocketSource, /if \(data\.type === 'done'\) \{[\s\S]*planId: data\.planId,[\s\S]*planBody: data\.planBody,/s)
   assert.match(chatSocketSource, /if \(data\.type === 'plan_body'\) this\.handlers\?\.onPlanBody\?\.\(data\.content \|\| '', data\.sessionId\)/)
 })
+
+test('ThinkingBlock supports live subagent reasoning content before completion', () => {
+  const thinkingBlockSource = readFileSync(resolve(import.meta.dirname, '../src/components/chat/ThinkingBlock.vue'), 'utf8')
+
+  assert.match(thinkingBlockSource, /variant\?: 'default' \| 'subagent'/)
+  assert.match(thinkingBlockSource, /v-if="hasVisibleContent && \(!done \|\| expanded\)"/)
+  assert.match(thinkingBlockSource, /subagentThinkingLabel/)
+})

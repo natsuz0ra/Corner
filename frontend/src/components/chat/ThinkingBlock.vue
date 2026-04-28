@@ -2,11 +2,14 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   content: string
   done: boolean
   durationMs?: number
-}>()
+  variant?: 'default' | 'subagent'
+}>(), {
+  variant: 'default',
+})
 
 const { t } = useI18n()
 const expanded = ref(false)
@@ -16,11 +19,21 @@ const durationText = computed(() => {
   return (props.durationMs / 1000).toFixed(1) + 's'
 })
 
+const hasVisibleContent = computed(() => props.content.trim() !== '')
+const subagentThinkingLabel = computed(() => (props.done ? 'Sub-agent thought' : 'Sub-agent thinking...'))
+
 const summaryText = computed(() => {
+  if (props.variant === 'subagent') {
+    if (!props.done) return subagentThinkingLabel.value
+    if (durationText.value) return `Sub-agent thought for ${durationText.value}`
+    return subagentThinkingLabel.value
+  }
   if (!props.done) return t('thinkingLabel')
   if (durationText.value) return t('thoughtFor', { duration: durationText.value })
   return t('thinkingLabel')
 })
+
+const canToggle = computed(() => props.done && hasVisibleContent.value)
 </script>
 
 <template>
@@ -28,8 +41,8 @@ const summaryText = computed(() => {
     <button
       type="button"
       class="thinking-summary"
-      :aria-expanded="done && expanded"
-      @click="done && (expanded = !expanded)"
+      :aria-expanded="canToggle ? expanded : undefined"
+      @click="canToggle && (expanded = !expanded)"
     >
       <svg
         class="thinking-dot"
@@ -45,7 +58,7 @@ const summaryText = computed(() => {
       <span class="thinking-summary-text">{{ summaryText }}</span>
 
       <svg
-        v-if="done"
+        v-if="canToggle"
         class="thinking-chevron"
         :class="{ 'thinking-chevron--open': expanded }"
         viewBox="0 0 16 16"
@@ -63,7 +76,7 @@ const summaryText = computed(() => {
     </button>
 
     <Transition name="thinking-expand">
-      <div v-if="done && expanded" class="thinking-content">
+      <div v-if="hasVisibleContent && (!done || expanded)" class="thinking-content">
         <pre class="thinking-content-text sb-scrollbar">{{ content }}</pre>
       </div>
     </Transition>
