@@ -99,6 +99,8 @@ export interface ToolCallItem {
   status: ToolCallStatus
   output?: string
   error?: string
+  /** Millisecond timestamp used to interleave sub-agent thinking and nested tools. */
+  startedAt?: number
   /** Present on tools invoked inside a sub-agent run */
   parentToolCallId?: string
   subagentRunId?: string

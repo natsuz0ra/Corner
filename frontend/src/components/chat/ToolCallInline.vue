@@ -5,6 +5,7 @@ import { mdiBrain, mdiConsoleLine, mdiHelpCircleOutline, mdiWeb } from '@mdi/js'
 import MdiIcon from '@/components/ui/MdiIcon.vue'
 import ThinkingBlock from '@/components/chat/ThinkingBlock.vue'
 import type { ToolCallItem } from '@/api/chat'
+import { buildSubagentTimeline } from '@/utils/subagentTimeline'
 import { buildToolResultDisplay, formatDisplayText, formatToolParams, parseAskQuestionsReadableAnswers } from '@/utils/toolDisplay'
 import { shouldAutoExpandToolCall } from '@/utils/toolApprovalExpansion'
 
@@ -22,6 +23,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const expanded = ref(false)
+const subagentTimelineExpanded = ref(false)
 
 const toolIcon = computed(() => {
   if (props.item.toolName === 'exec') return mdiConsoleLine
@@ -65,7 +67,12 @@ const statusIcon = computed(() => {
 
 const showPendingLabel = computed(() => props.item.status === 'pending')
 
-const paramsDisplay = computed(() => formatToolParams(props.item.params))
+const isRunSubagent = computed(() => props.item.toolName === 'run_subagent')
+const paramsDisplay = computed(() => {
+  if (!isRunSubagent.value) return formatToolParams(props.item.params)
+  const { context: _context, task: _task, ...rest } = props.item.params || {}
+  return formatToolParams(rest)
+})
 
 const showResult = computed(() =>
   props.item.status === 'completed' || props.item.status === 'error',
@@ -82,13 +89,22 @@ const errorDisplay = computed(() =>
 const showPreamble = computed(() => !!props.item.preamble && props.item.preamble.trim() !== '')
 
 const showActions = computed(() => props.item.status === 'pending')
-const showNested = computed(() => props.nestedTools.length > 0)
 const subagentThinkingItems = computed(() => {
   if (props.item.toolName !== 'run_subagent') return []
   return props.item.subagentThinkings ?? (props.item.subagentThinking ? [props.item.subagentThinking] : [])
 })
-const showSubagentThinking = computed(() => subagentThinkingItems.value.length > 0)
-const showSubagentToolCallsThinking = computed(() => showSubagentThinking.value || showNested.value)
+const subagentTimelineItems = computed(() => buildSubagentTimeline(subagentThinkingItems.value, props.nestedTools))
+const showSubagentToolCallsThinking = computed(() => subagentTimelineItems.value.length > 0)
+const subagentContextSummary = computed(() => {
+  if (!isRunSubagent.value) return ''
+  return formatDisplayText(String(props.item.params?.context ?? '')).trim()
+})
+const subagentTaskSummary = computed(() => {
+  if (!isRunSubagent.value) return ''
+  return formatDisplayText(String(props.item.subagentTask || props.item.params?.task || '')).trim()
+})
+const showSubagentContext = computed(() => subagentContextSummary.value !== '')
+const showSubagentTask = computed(() => subagentTaskSummary.value !== '')
 const shouldAutoExpand = computed(() => shouldAutoExpandToolCall(props.item, props.nestedTools))
 const isAskQuestions = computed(() => props.item.toolName === 'ask_questions')
 
@@ -111,6 +127,10 @@ watch(
 
 function toggleExpanded() {
   expanded.value = shouldAutoExpand.value ? true : !expanded.value
+}
+
+function toggleSubagentTimeline() {
+  subagentTimelineExpanded.value = !subagentTimelineExpanded.value
 }
 </script>
 
@@ -161,27 +181,14 @@ function toggleExpanded() {
 
     <Transition name="inline-expand">
       <div v-if="expanded" class="inline-tool-detail">
-        <section v-if="showSubagentToolCallsThinking" class="inline-section inline-subagent-tool-calls-thinking">
-          <p class="inline-section-title">{{ t('subagentToolCallsThinkingTitle') }}</p>
-          <div v-if="showSubagentThinking" class="inline-subagent-thinking-list">
-            <ThinkingBlock
-              v-for="thinking in subagentThinkingItems"
-              :key="`${item.toolCallId}-thinking-${thinking.startedAt ?? thinking.content.length}`"
-              :content="thinking.content"
-              :done="thinking.done"
-              :duration-ms="thinking.durationMs"
-              variant="subagent"
-            />
-          </div>
-          <div v-if="showNested" class="inline-nested-list">
-            <ToolCallInline
-              v-for="nested in nestedTools"
-              :key="nested.toolCallId"
-              :item="nested"
-              @approve="emit('approve', $event)"
-              @reject="emit('reject', $event)"
-            />
-          </div>
+        <section v-if="showSubagentContext" class="inline-section">
+          <p class="inline-section-title">{{ t('subagentContextLabel') }}</p>
+          <pre class="inline-output-text">{{ subagentContextSummary }}</pre>
+        </section>
+
+        <section v-if="showSubagentTask" class="inline-section">
+          <p class="inline-section-title">{{ t('subagentTaskLabel') }}</p>
+          <pre class="inline-output-text">{{ subagentTaskSummary }}</pre>
         </section>
 
         <section v-if="!isAskQuestions && paramsDisplay.length > 0" class="inline-section">
@@ -192,6 +199,55 @@ function toggleExpanded() {
               <pre class="inline-kv-value">{{ row.value }}</pre>
             </div>
           </div>
+        </section>
+
+        <section
+          v-if="showSubagentToolCallsThinking"
+          class="inline-section inline-subagent-tool-calls-thinking"
+        >
+          <button
+            type="button"
+            class="inline-subagent-summary"
+            :aria-expanded="subagentTimelineExpanded ? 'true' : 'false'"
+            @click="toggleSubagentTimeline"
+          >
+            <span class="inline-section-title">{{ t('subagentToolCallsThinkingTitle') }}</span>
+            <span class="inline-subagent-count">{{ subagentTimelineItems.length }}</span>
+            <svg
+              class="inline-subagent-chevron"
+              :class="{ 'inline-subagent-chevron--open': subagentTimelineExpanded }"
+              viewBox="0 0 16 16"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M4 6l4 4 4-4" />
+            </svg>
+          </button>
+          <Transition name="inline-expand">
+            <div v-if="subagentTimelineExpanded" class="inline-subagent-timeline-list">
+              <template v-for="timelineItem in subagentTimelineItems" :key="timelineItem.id">
+                <ThinkingBlock
+                  v-if="timelineItem.kind === 'thinking'"
+                  :content="timelineItem.thinking.content"
+                  :done="timelineItem.thinking.done"
+                  :duration-ms="timelineItem.thinking.durationMs"
+                  variant="subagent"
+                />
+                <ToolCallInline
+                  v-else
+                  :item="timelineItem.tool"
+                  @approve="emit('approve', $event)"
+                  @reject="emit('reject', $event)"
+                />
+              </template>
+            </div>
+          </Transition>
         </section>
 
         <section v-if="showResult" class="inline-section">
@@ -205,7 +261,7 @@ function toggleExpanded() {
             </div>
           </template>
           <template v-else>
-            <p class="inline-section-title">{{ t('toolCallResult') }}</p>
+            <p class="inline-section-title">{{ isRunSubagent ? t('subagentResultLabel') : t('toolCallResult') }}</p>
             <div v-if="item.output" class="inline-output sb-scrollbar">
               <template v-if="resultDisplay.mode === 'exec' && resultDisplay.exec">
                 <div class="inline-kv-grid">
@@ -386,15 +442,59 @@ function toggleExpanded() {
   transform: rotate(180deg);
 }
 
-.inline-subagent-thinking-list {
+.inline-subagent-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  list-style: none;
+  cursor: pointer;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+}
+
+.inline-subagent-summary::-webkit-details-marker {
+  display: none;
+}
+
+.inline-subagent-summary .inline-section-title {
+  margin-bottom: 0;
+}
+
+.inline-subagent-count {
+  color: var(--tool-summary-text, #94a3b8);
+  background: var(--tool-summary-bg, rgba(100, 116, 139, 0.06));
+  border: 1px solid var(--tool-section-border, rgba(100, 116, 139, 0.15));
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.inline-subagent-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  color: var(--tool-summary-text, #94a3b8);
+  font-size: 0;
+  transition: transform 150ms ease;
+  transform: rotate(-90deg);
+}
+
+.inline-subagent-chevron--open {
+  transform: rotate(0deg);
+}
+
+.inline-subagent-timeline-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 8px;
-}
-
-.inline-subagent-thinking-list:last-child {
-  margin-bottom: 0;
+  margin-top: 8px;
 }
 
 /* --- Expanded detail --- */
@@ -597,13 +697,7 @@ function toggleExpanded() {
   font-style: italic;
 }
 
-.inline-nested-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.inline-nested-list :deep(.inline-tool) {
+.inline-subagent-timeline-list :deep(.inline-tool) {
   border-color: var(--tool-section-border, rgba(100, 116, 139, 0.12));
 }
 
@@ -680,7 +774,8 @@ function toggleExpanded() {
   .inline-spinner {
     animation: none;
   }
-  .inline-tool-chevron {
+  .inline-tool-chevron,
+  .inline-subagent-chevron {
     transition: none;
   }
   .inline-expand-enter-active,

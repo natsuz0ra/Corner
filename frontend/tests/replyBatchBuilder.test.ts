@@ -134,3 +134,54 @@ test('buildReplyBatchesFromHistory attaches ordered subagent thinking entries to
   ])
   assert.deepEqual(batch.toolCalls[0]!.subagentThinkings?.map((item) => item.done), [true, true])
 })
+
+test('buildReplyBatchesFromHistory preserves nested tool start times for subagent timelines', async () => {
+  const { buildReplyBatchesFromHistory } = await import('../src/utils/replyBatchBuilder')
+  const batches = buildReplyBatchesFromHistory('session-1', {
+    messages: [{
+      id: 'assistant-1',
+      role: 'assistant',
+      content: '<!-- TOOL_CALL:parent-tool -->',
+      seq: 1,
+    }],
+    toolCallsByAssistantMessageId: {
+      'assistant-1': [
+        {
+          toolCallId: 'parent-tool',
+          toolName: 'run_subagent',
+          command: 'delegate',
+          params: {},
+          requiresApproval: false,
+          status: 'completed',
+          startedAt: '2026-04-28T00:00:00.000Z',
+        },
+        {
+          toolCallId: 'child-tool',
+          toolName: 'exec',
+          command: 'run',
+          params: {},
+          requiresApproval: false,
+          status: 'completed',
+          parentToolCallId: 'parent-tool',
+          subagentRunId: 'sub-run',
+          startedAt: '2026-04-28T00:00:02.000Z',
+        },
+      ],
+    },
+    thinkingByAssistantMessageId: {
+      'assistant-1': [{
+        thinkingId: 'child-think',
+        content: 'child reasoning',
+        status: 'completed',
+        startedAt: '2026-04-28T00:00:01.000Z',
+        parentToolCallId: 'parent-tool',
+        subagentRunId: 'sub-run',
+      }],
+    },
+    hasMore: false,
+  })
+
+  const batch = batches[0]!
+  assert.equal(batch.toolCalls.find((item) => item.toolCallId === 'child-tool')?.startedAt, Date.parse('2026-04-28T00:00:02.000Z'))
+  assert.equal(batch.toolCalls.find((item) => item.toolCallId === 'parent-tool')?.subagentThinkings?.[0]?.startedAt, Date.parse('2026-04-28T00:00:01.000Z'))
+})
