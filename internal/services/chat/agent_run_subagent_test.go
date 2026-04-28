@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"slimebot/internal/constants"
@@ -11,7 +12,7 @@ import (
 func TestHandleRunSubagentTool_PlanModeChildKeepsReadOnlyToolFilter(t *testing.T) {
 	provider := &captureToolDefsProvider{}
 	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil, nil)
-	agent.SetSubagentHost(stubSubagentHost{})
+	agent.SetSubagentHost(&stubSubagentHost{})
 
 	messages := []llmsvc.ChatMessage{{Role: "user", Content: "make a plan"}}
 	err := agent.handleRunSubagentTool(
@@ -89,17 +90,19 @@ func TestWrapSubagentCallbacksTagsThinkingEvents(t *testing.T) {
 }
 
 type captureToolDefsProvider struct {
-	toolDefs []llmsvc.ToolDef
+	toolDefs     []llmsvc.ToolDef
+	modelConfigs []llmsvc.ModelRuntimeConfig
 }
 
 func (p *captureToolDefsProvider) StreamChatWithTools(
 	_ context.Context,
-	_ llmsvc.ModelRuntimeConfig,
+	modelConfig llmsvc.ModelRuntimeConfig,
 	_ []llmsvc.ChatMessage,
 	toolDefs []llmsvc.ToolDef,
 	callbacks llmsvc.StreamCallbacks,
 ) (*llmsvc.StreamResult, error) {
 	p.toolDefs = append([]llmsvc.ToolDef{}, toolDefs...)
+	p.modelConfigs = append(p.modelConfigs, modelConfig)
 	if callbacks.OnChunk != nil {
 		if err := callbacks.OnChunk("child answer"); err != nil {
 			return nil, err
@@ -108,12 +111,209 @@ func (p *captureToolDefsProvider) StreamChatWithTools(
 	return &llmsvc.StreamResult{Type: llmsvc.StreamResultText}, nil
 }
 
-type stubSubagentHost struct{}
+func TestHandleRunSubagentTool_InheritsParentModelForEmptyOrDefaultModelID(t *testing.T) {
+	tests := []struct {
+		name   string
+		params map[string]string
+	}{
+		{name: "empty", params: map[string]string{"task": "Inspect inherited model"}},
+		{name: "default", params: map[string]string{"task": "Inspect inherited model", "model_id": "default"}},
+	}
 
-func (stubSubagentHost) BuildSubagentMessages(_ context.Context, _, task, parentContext string) ([]llmsvc.ChatMessage, error) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := &captureToolDefsProvider{}
+			agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil, nil)
+			host := &stubSubagentHost{}
+			agent.SetSubagentHost(host)
+
+			parentModel := llmsvc.ModelRuntimeConfig{
+				Provider:      llmsvc.ProviderOpenAI,
+				BaseURL:       "https://parent.example/v1",
+				APIKey:        "parent-key",
+				Model:         "parent-model",
+				ThinkingLevel: "high",
+			}
+			messages := []llmsvc.ChatMessage{{Role: "user", Content: "delegate"}}
+			err := agent.handleRunSubagentTool(
+				context.Background(),
+				parentModel,
+				"session-1",
+				nil,
+				map[string]struct{}{},
+				AgentCallbacks{},
+				AgentLoopOptions{},
+				llmsvc.ToolCallInfo{ID: "call-subagent", Name: constants.RunSubagentTool},
+				resolvedToolInvocation{toolName: constants.RunSubagentTool, command: "run"},
+				tt.params,
+				"",
+				&messages,
+			)
+			if err != nil {
+				t.Fatalf("handleRunSubagentTool failed: %v", err)
+			}
+			if host.resolveCalls != 0 {
+				t.Fatalf("expected inherited model without resolving override, got %d resolve calls", host.resolveCalls)
+			}
+			if len(provider.modelConfigs) != 1 {
+				t.Fatalf("expected one child model config, got %d", len(provider.modelConfigs))
+			}
+			if got := provider.modelConfigs[0]; got != parentModel {
+				t.Fatalf("child model did not inherit parent config:\n got=%+v\nwant=%+v", got, parentModel)
+			}
+		})
+	}
+}
+
+func TestHandleRunSubagentTool_ModelOverrideKeepsParentThinkingLevel(t *testing.T) {
+	provider := &captureToolDefsProvider{}
+	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil, nil)
+	host := &stubSubagentHost{
+		resolved: llmsvc.ModelRuntimeConfig{
+			Provider: llmsvc.ProviderAnthropic,
+			BaseURL:  "https://child.example/v1",
+			APIKey:   "child-key",
+			Model:    "child-model",
+		},
+	}
+	agent.SetSubagentHost(host)
+
+	messages := []llmsvc.ChatMessage{{Role: "user", Content: "delegate"}}
+	err := agent.handleRunSubagentTool(
+		context.Background(),
+		llmsvc.ModelRuntimeConfig{
+			Provider:      llmsvc.ProviderOpenAI,
+			BaseURL:       "https://parent.example/v1",
+			APIKey:        "parent-key",
+			Model:         "parent-model",
+			ThinkingLevel: "medium",
+		},
+		"session-1",
+		nil,
+		map[string]struct{}{},
+		AgentCallbacks{},
+		AgentLoopOptions{},
+		llmsvc.ToolCallInfo{ID: "call-subagent", Name: constants.RunSubagentTool},
+		resolvedToolInvocation{toolName: constants.RunSubagentTool, command: "run"},
+		map[string]string{"task": "Inspect override", "model_id": "child-config"},
+		"",
+		&messages,
+	)
+	if err != nil {
+		t.Fatalf("handleRunSubagentTool failed: %v", err)
+	}
+	if host.resolveCalls != 1 || host.lastModelID != "child-config" {
+		t.Fatalf("expected one override resolve for child-config, got calls=%d id=%q", host.resolveCalls, host.lastModelID)
+	}
+	if len(provider.modelConfigs) != 1 {
+		t.Fatalf("expected one child model config, got %d", len(provider.modelConfigs))
+	}
+	want := host.resolved
+	want.ThinkingLevel = "medium"
+	if got := provider.modelConfigs[0]; got != want {
+		t.Fatalf("child override did not keep parent thinking level:\n got=%+v\nwant=%+v", got, want)
+	}
+}
+
+func TestHandleRunSubagentTool_PreservesChildReasoningAcrossToolIterations(t *testing.T) {
+	provider := &subagentReasoningIterationProvider{}
+	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil, nil)
+	agent.SetSubagentHost(&stubSubagentHost{})
+
+	messages := []llmsvc.ChatMessage{{Role: "user", Content: "delegate"}}
+	err := agent.handleRunSubagentTool(
+		context.Background(),
+		llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI},
+		"session-1",
+		nil,
+		map[string]struct{}{},
+		AgentCallbacks{},
+		AgentLoopOptions{},
+		llmsvc.ToolCallInfo{ID: "call-subagent", Name: constants.RunSubagentTool},
+		resolvedToolInvocation{toolName: constants.RunSubagentTool, command: "run"},
+		map[string]string{"task": "Inspect with reasoning"},
+		"",
+		&messages,
+	)
+	if err != nil {
+		t.Fatalf("handleRunSubagentTool failed: %v", err)
+	}
+	if provider.secondCallAssistant == nil {
+		t.Fatal("expected child second model call to include prior assistant message")
+	}
+	if got := provider.secondCallAssistant.ReasoningContent; got != "Child needs a tool." {
+		t.Fatalf("child reasoning content was not preserved: %q", got)
+	}
+}
+
+type stubSubagentHost struct {
+	resolved     llmsvc.ModelRuntimeConfig
+	resolveErr   error
+	resolveCalls int
+	lastModelID  string
+}
+
+type subagentReasoningIterationProvider struct {
+	call                int
+	secondCallAssistant *llmsvc.ChatMessage
+}
+
+func (p *subagentReasoningIterationProvider) StreamChatWithTools(
+	_ context.Context,
+	_ llmsvc.ModelRuntimeConfig,
+	messages []llmsvc.ChatMessage,
+	_ []llmsvc.ToolDef,
+	callbacks llmsvc.StreamCallbacks,
+) (*llmsvc.StreamResult, error) {
+	p.call++
+	switch p.call {
+	case 1:
+		return &llmsvc.StreamResult{
+			Type: llmsvc.StreamResultToolCalls,
+			ToolCalls: []llmsvc.ToolCallInfo{{
+				ID:        "plan-start-call",
+				Name:      constants.PlanStartTool,
+				Arguments: "{}",
+			}},
+			AssistantMessage: llmsvc.ChatMessage{
+				Role:             "assistant",
+				ReasoningContent: "Child needs a tool.",
+				ToolCalls: []llmsvc.ToolCallInfo{{
+					ID:        "plan-start-call",
+					Name:      constants.PlanStartTool,
+					Arguments: "{}",
+				}},
+			},
+		}, nil
+	default:
+		for i := len(messages) - 1; i >= 0; i-- {
+			if messages[i].Role == "assistant" {
+				msg := messages[i]
+				p.secondCallAssistant = &msg
+				break
+			}
+		}
+		if callbacks.OnChunk != nil {
+			if err := callbacks.OnChunk("child done"); err != nil {
+				return nil, err
+			}
+		}
+		return &llmsvc.StreamResult{Type: llmsvc.StreamResultText}, nil
+	}
+}
+
+func (*stubSubagentHost) BuildSubagentMessages(_ context.Context, _, task, parentContext string) ([]llmsvc.ChatMessage, error) {
 	return []llmsvc.ChatMessage{{Role: "user", Content: task + parentContext}}, nil
 }
 
-func (stubSubagentHost) ResolveModelRuntimeConfig(_ context.Context, _ string) (llmsvc.ModelRuntimeConfig, error) {
-	return llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, nil
+func (h *stubSubagentHost) ResolveModelRuntimeConfig(_ context.Context, modelID string) (llmsvc.ModelRuntimeConfig, error) {
+	h.resolveCalls++
+	h.lastModelID = modelID
+	if h.resolveErr != nil {
+		return llmsvc.ModelRuntimeConfig{}, h.resolveErr
+	}
+	if h.resolved.Model == "" {
+		return llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI, Model: fmt.Sprintf("resolved-%s", modelID)}, nil
+	}
+	return h.resolved, nil
 }

@@ -64,7 +64,7 @@ func (a *AgentService) handleRunSubagentTool(
 	parentCtx := strings.TrimSpace(params["context"])
 	modelOverride := strings.TrimSpace(params["model_id"])
 	subModel := parentModel
-	if modelOverride != "" {
+	if shouldResolveSubagentModelOverride(modelOverride) {
 		resolved, err := a.subagentHost.ResolveModelRuntimeConfig(ctx, modelOverride)
 		if err != nil {
 			msg := fmt.Sprintf("failed to resolve model_id: %s", err.Error())
@@ -80,6 +80,7 @@ func (a *AgentService) handleRunSubagentTool(
 			*messages = appendToolMessage(*messages, tc.ID, msg)
 			return nil
 		}
+		resolved.ThinkingLevel = parentModel.ThinkingLevel
 		subModel = resolved
 	}
 
@@ -133,4 +134,13 @@ func (a *AgentService) handleRunSubagentTool(
 
 	*messages = appendToolMessage(*messages, tc.ID, buildToolResultContent(execResult))
 	return nil
+}
+
+func shouldResolveSubagentModelOverride(modelID string) bool {
+	switch strings.ToLower(strings.TrimSpace(modelID)) {
+	case "", "default", "current", "parent", "inherit":
+		return false
+	default:
+		return true
+	}
 }

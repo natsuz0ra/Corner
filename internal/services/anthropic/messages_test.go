@@ -51,6 +51,42 @@ func TestBuildAssistantBlocksPreservesThinkingBeforeToolUse(t *testing.T) {
 	}
 }
 
+func TestBuildAssistantBlocksPreservesThinkingWithoutSignature(t *testing.T) {
+	blocks := buildAssistantBlocks(llmsvc.ChatMessage{
+		Role: "assistant",
+		ThinkingBlocks: []llmsvc.ThinkingBlockInfo{{
+			Thinking: "DeepSeek-style thinking without an Anthropic signature.",
+		}},
+		ToolCalls: []llmsvc.ToolCallInfo{{
+			ID:        "toolu_1",
+			Name:      "exec__run",
+			Arguments: `{"command":"pwd"}`,
+		}},
+	})
+
+	raw, err := json.Marshal(blocks)
+	if err != nil {
+		t.Fatalf("marshal blocks failed: %v", err)
+	}
+
+	var got []map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal blocks failed: %v\njson=%s", err, raw)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected thinking and tool_use blocks, got %d: %s", len(got), raw)
+	}
+	if got[0]["type"] != "thinking" {
+		t.Fatalf("expected first block to be thinking, got %v: %s", got[0]["type"], raw)
+	}
+	if got[0]["thinking"] != "DeepSeek-style thinking without an Anthropic signature." {
+		t.Fatalf("thinking content was not preserved: %#v", got[0])
+	}
+	if _, ok := got[0]["signature"]; ok {
+		t.Fatalf("signature should be omitted when unavailable for compatible providers: %#v", got[0])
+	}
+}
+
 func TestBuildAnthropicToolsUsesToolParametersAsInputSchema(t *testing.T) {
 	tools := buildAnthropicTools([]llmsvc.ToolDef{{
 		Name:        "activate_skill",

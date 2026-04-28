@@ -8,6 +8,7 @@ import (
 	llmsvc "slimebot/internal/services/llm"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/packages/param"
 )
 
 // buildAnthropicMessages converts ChatMessage slices to Anthropic system blocks and messages.
@@ -74,7 +75,7 @@ func buildAssistantBlocks(msg llmsvc.ChatMessage) []anthropic.ContentBlockParamU
 			continue
 		}
 		if strings.TrimSpace(tb.Thinking) != "" {
-			blocks = append(blocks, anthropic.NewThinkingBlock(tb.Signature, tb.Thinking))
+			blocks = append(blocks, newThinkingBlock(tb.Signature, tb.Thinking))
 		}
 	}
 
@@ -100,6 +101,17 @@ func buildAssistantBlocks(msg llmsvc.ChatMessage) []anthropic.ContentBlockParamU
 	}
 
 	return blocks
+}
+
+func newThinkingBlock(signature string, thinking string) anthropic.ContentBlockParamUnion {
+	block := anthropic.ThinkingBlockParam{
+		Signature: strings.TrimSpace(signature),
+		Thinking:  thinking,
+	}
+	if block.Signature == "" {
+		block.SetExtraFields(map[string]any{"signature": param.Omit})
+	}
+	return anthropic.ContentBlockParamUnion{OfThinking: &block}
 }
 
 // buildContentParts converts multimodal ContentParts to Anthropic content blocks.
