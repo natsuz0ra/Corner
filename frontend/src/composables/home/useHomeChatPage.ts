@@ -53,6 +53,7 @@ export function useHomeChatPage() {
     modelState: {
       selectedModelId: modelState.selectedModelId,
       thinkingLevel: modelState.thinkingLevel,
+      subagentModelId: modelState.subagentModelId,
       refreshModelOptions: modelState.refreshModelOptions,
     },
     scrollState: {
@@ -139,6 +140,9 @@ export function useHomeChatPage() {
     renameFromFloatingMenu: sessionActions.renameFromFloatingMenu,
     deleteFromFloatingMenu: sessionActions.deleteFromFloatingMenu,
     onModelChange: modelState.onModelChange,
+    subagentModelId: modelState.subagentModelId,
+    subagentModelSelectOptions: modelState.subagentModelSelectOptions,
+    onSubagentModelChange: modelState.onSubagentModelChange,
     planMode: computed(() => store.planMode),
     onPlanToggle: store.togglePlanMode,
   }

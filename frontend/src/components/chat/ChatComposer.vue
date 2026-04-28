@@ -14,6 +14,8 @@ const props = defineProps<{
   modelSelectOptions: SelectOption[]
   selectedThinkingLevel: string
   thinkingSelectOptions: SelectOption[]
+  selectedSubagentModelId: string
+  subagentModelSelectOptions: SelectOption[]
   modelOptionsCount: number
   sendDisabled: boolean
   stopDisabled: boolean
@@ -32,6 +34,7 @@ const emit = defineEmits<{
   removeFile: [index: number]
   modelChange: [modelId: string]
   thinkingChange: [level: string]
+  subagentModelChange: [modelId: string]
   planToggle: []
   planExecute: []
   planCancel: []
@@ -104,6 +107,11 @@ const currentThinkingLabel = computed(() => {
   return found?.label || props.selectedThinkingLevel
 })
 
+const currentSubagentModelLabel = computed(() => {
+  const found = props.subagentModelSelectOptions.find((o) => o.value === props.selectedSubagentModelId)
+  return found?.label || props.selectedSubagentModelId
+})
+
 function calcMenuStyle() {
   if (!menuTriggerRef.value) return
   const rect = menuTriggerRef.value.getBoundingClientRect()
@@ -134,6 +142,11 @@ function onSelectModel(value: string) {
 
 function onSelectThinking(value: string) {
   emit('thinkingChange', value)
+  closeMenu()
+}
+
+function onSelectSubagentModel(value: string) {
+  emit('subagentModelChange', value)
   closeMenu()
 }
 
@@ -338,6 +351,30 @@ onUnmounted(() => {
           </div>
         </Transition>
 
+        <!-- Submenu: subagent model -->
+        <Transition name="composer-submenu">
+          <div v-if="submenuKey === 'subagent'" class="composer-submenu sb-scrollbar">
+            <button type="button" class="composer-submenu-header" @click="submenuKey = null">
+              <MdiIcon :path="mdiChevronLeft" :size="16" />
+              <span>{{ t('subagentModelLabel') }}</span>
+            </button>
+            <button
+              v-for="opt in subagentModelSelectOptions"
+              :key="opt.value"
+              type="button"
+              class="composer-submenu-option"
+              :class="opt.value === selectedSubagentModelId ? 'composer-submenu-option-active' : ''"
+              @click="onSelectSubagentModel(opt.value)"
+            >
+              <span
+                class="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                :class="opt.value === selectedSubagentModelId ? 'bg-indigo-500' : 'bg-transparent'"
+              />
+              {{ opt.label }}
+            </button>
+          </div>
+        </Transition>
+
         <!-- Submenu: thinking -->
         <Transition name="composer-submenu">
           <div v-if="submenuKey === 'thinking'" class="composer-submenu sb-scrollbar">
@@ -373,6 +410,19 @@ onUnmounted(() => {
             <div>
               <div class="composer-menu-item-label">{{ t('model') }}</div>
               <div class="composer-menu-item-value">{{ currentModelLabel }}</div>
+            </div>
+            <MdiIcon :path="mdiChevronRight" :size="14" class="sb-text-muted" />
+          </button>
+          <div class="composer-menu-divider" />
+          <button
+            type="button"
+            class="composer-menu-item"
+            :disabled="modelOptionsCount === 0"
+            @click="submenuKey = 'subagent'"
+          >
+            <div>
+              <div class="composer-menu-item-label">{{ t('subagentModelLabel') }}</div>
+              <div class="composer-menu-item-value">{{ currentSubagentModelLabel }}</div>
             </div>
             <MdiIcon :path="mdiChevronRight" :size="14" class="sb-text-muted" />
           </button>

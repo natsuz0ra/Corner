@@ -483,6 +483,29 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     }
   }, [appendSystem]);
 
+  const loadSubagentModels = useCallback(async () => {
+    try {
+      const configs = await apiRef.current.listLLMConfigs();
+      const items: MenuItem[] = [
+        { title: "Follow Main Agent", desc: "Inherit parent model", data: { id: "", name: "Follow Main Agent" } },
+        ...configs.map((c) => ({
+          title: c.name,
+          desc: c.model,
+          data: c,
+        })),
+      ];
+      dispatch({
+        type: "SET_MENU",
+        kind: "subagent_model",
+        title: "Sub-agent Model",
+        items,
+        hint: "Arrow keys to navigate | Enter to select | Esc to close",
+      } as AppAction);
+    } catch (error) {
+      appendSystem(`Failed to load subagent models: ${(error as Error).message}`);
+    }
+  }, [appendSystem]);
+
   const loadSkills = useCallback(async () => {
     try {
       const skills = await apiRef.current.listSkills();
@@ -581,6 +604,17 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         } as AppAction);
         dispatch({ type: "CLOSE_MENU" } as AppAction);
         appendSystem(`Model switched to ${model.name}.`);
+        return;
+      }
+      if (state.menuKind === "subagent_model") {
+        const model = item.data as { id: string; name: string };
+        dispatch({
+          type: "SET_SUBAGENT_MODEL",
+          modelId: model.id,
+          modelName: model.id ? model.name : "Follow Main Agent",
+        } as AppAction);
+        dispatch({ type: "CLOSE_MENU" } as AppAction);
+        appendSystem(model.id ? `Sub-agent model set to ${model.name}.` : `Sub-agent model set to follow main agent.`);
         return;
       }
       if (state.menuKind === "effort") {
@@ -752,7 +786,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     dispatch({ type: "STREAM_START" } as AppAction);
 
     const sendToSocket = (sid: string): boolean => {
-      return socketRef.current?.send(content, sid, state.modelId, state.thinkingLevel, state.planMode) || false;
+      return socketRef.current?.send(content, sid, state.modelId, state.thinkingLevel, state.planMode, state.subagentModelId) || false;
     };
 
     if (!state.sessionId) {
@@ -791,6 +825,10 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     }
     if (cmd === "/model") {
       await loadModels();
+      return;
+    }
+    if (cmd === "/subagent_model") {
+      await loadSubagentModels();
       return;
     }
     if (cmd === "/approval") {

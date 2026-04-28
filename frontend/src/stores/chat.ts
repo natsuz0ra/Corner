@@ -654,7 +654,7 @@ export const useChatStore = defineStore('chat', () => {
     return response.items || []
   }
 
-  async function sendMessage(content: string, modelId: string, files: File[] = [], thinkingLevel: string = 'off') {
+  async function sendMessage(content: string, modelId: string, files: File[] = [], thinkingLevel: string = 'off', subagentModelId: string = '') {
     const trimmed = content.trim()
     if (!trimmed && files.length === 0) {
       return false
@@ -677,7 +677,7 @@ export const useChatStore = defineStore('chat', () => {
     if (files.length > 0) {
       uploaded = await uploadAttachmentsForCurrentSession(files)
     }
-    const sent = ws.send(trimmed, currentSessionId.value, modelId, uploaded.map((item) => item.id), thinkingLevel, planMode.value)
+    const sent = ws.send(trimmed, currentSessionId.value, modelId, uploaded.map((item) => item.id), thinkingLevel, planMode.value, subagentModelId)
     if (!sent) {
       const error = 'socket is not connected'
       connectionError.value = error
