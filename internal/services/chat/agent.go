@@ -183,7 +183,7 @@ func buildRunSubagentToolDef() llmsvc.ToolDef {
 				},
 				"model_id": map[string]any{
 					"type":        "string",
-					"description": "Optional LLM config id for the sub-agent; omit to inherit the current model.",
+					"description": "Optional real LLM config id for the sub-agent. Omit this field to inherit the current model.",
 				},
 			},
 			"required": []string{"task"},

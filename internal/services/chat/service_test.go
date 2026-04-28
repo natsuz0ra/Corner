@@ -474,6 +474,34 @@ func TestRunAgentLoopPreservesThinkingBlocksAcrossToolIterations(t *testing.T) {
 	}
 }
 
+func TestRunAgentLoopPreservesReasoningContentAcrossToolIterations(t *testing.T) {
+	provider := &reasoningToolIterationProvider{}
+	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil, nil)
+
+	answer, err := agent.RunAgentLoop(
+		context.Background(),
+		llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI},
+		"session-1",
+		[]llmsvc.ChatMessage{{Role: "user", Content: "inspect"}},
+		nil,
+		map[string]struct{}{},
+		AgentCallbacks{},
+		AgentLoopOptions{},
+	)
+	if err != nil {
+		t.Fatalf("RunAgentLoop failed: %v", err)
+	}
+	if answer != "done" {
+		t.Fatalf("answer = %q, want done", answer)
+	}
+	if provider.secondCallAssistant == nil {
+		t.Fatal("expected second model call to include prior assistant message")
+	}
+	if got := provider.secondCallAssistant.ReasoningContent; got != "Need a tool." {
+		t.Fatalf("reasoning content was not preserved: %q", got)
+	}
+}
+
 type captureMessagesProvider struct {
 	messages []llmsvc.ChatMessage
 }
@@ -519,6 +547,55 @@ func (p *fakeThinkingProvider) StreamChatWithTools(
 type thinkingToolIterationProvider struct {
 	call                int
 	secondCallAssistant *llmsvc.ChatMessage
+}
+
+type reasoningToolIterationProvider struct {
+	call                int
+	secondCallAssistant *llmsvc.ChatMessage
+}
+
+func (p *reasoningToolIterationProvider) StreamChatWithTools(
+	_ context.Context,
+	_ llmsvc.ModelRuntimeConfig,
+	messages []llmsvc.ChatMessage,
+	_ []llmsvc.ToolDef,
+	callbacks llmsvc.StreamCallbacks,
+) (*llmsvc.StreamResult, error) {
+	p.call++
+	switch p.call {
+	case 1:
+		return &llmsvc.StreamResult{
+			Type: llmsvc.StreamResultToolCalls,
+			ToolCalls: []llmsvc.ToolCallInfo{{
+				ID:        "plan-start-call",
+				Name:      constants.PlanStartTool,
+				Arguments: "{}",
+			}},
+			AssistantMessage: llmsvc.ChatMessage{
+				Role:             "assistant",
+				ReasoningContent: "Need a tool.",
+				ToolCalls: []llmsvc.ToolCallInfo{{
+					ID:        "plan-start-call",
+					Name:      constants.PlanStartTool,
+					Arguments: "{}",
+				}},
+			},
+		}, nil
+	default:
+		for i := len(messages) - 1; i >= 0; i-- {
+			if messages[i].Role == "assistant" {
+				msg := messages[i]
+				p.secondCallAssistant = &msg
+				break
+			}
+		}
+		if callbacks.OnChunk != nil {
+			if err := callbacks.OnChunk("done"); err != nil {
+				return nil, err
+			}
+		}
+		return &llmsvc.StreamResult{Type: llmsvc.StreamResultText}, nil
+	}
 }
 
 func (p *thinkingToolIterationProvider) StreamChatWithTools(

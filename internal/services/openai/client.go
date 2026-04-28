@@ -256,7 +256,7 @@ func buildAssistantMessageParam(msg llmsvc.ChatMessage, content string) *openai.
 		return ap
 	}
 
-	if content == "" {
+	if content == "" && msg.ReasoningContent == "" {
 		return nil
 	}
 	ap := &openai.ChatCompletionAssistantMessageParam{

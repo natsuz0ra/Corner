@@ -124,7 +124,10 @@ func (c *AnthropicClient) StreamChatWithTools(
 				inThinkingBlock = true
 				currentToolUseIdx = -1
 				if event.ContentBlock.Type == "thinking" {
-					thinkingBuilder.WriteString(event.ContentBlock.Thinking)
+					thinkingBuilder.WriteString(firstNonEmpty(
+						event.ContentBlock.Thinking,
+						extractRawStringField(event.ContentBlock.RawJSON(), "reasoning_content", "reasoning"),
+					))
 					thinkingSignature.WriteString(event.ContentBlock.Signature)
 				} else {
 					redactedThinking = event.ContentBlock.Data
@@ -142,11 +145,17 @@ func (c *AnthropicClient) StreamChatWithTools(
 			}
 
 		case "content_block_delta":
-			if inThinkingBlock && event.Delta.Type == "thinking_delta" && event.Delta.Thinking != "" {
-				thinkingBuilder.WriteString(event.Delta.Thinking)
-				if callbacks.OnThinkingChunk != nil {
-					if err := callbacks.OnThinkingChunk(event.Delta.Thinking); err != nil {
-						return nil, err
+			if inThinkingBlock && event.Delta.Type == "thinking_delta" {
+				thinkingDelta := firstNonEmpty(
+					event.Delta.Thinking,
+					extractNestedRawStringField(event.RawJSON(), "delta", "reasoning_content", "reasoning"),
+				)
+				if thinkingDelta != "" {
+					thinkingBuilder.WriteString(thinkingDelta)
+					if callbacks.OnThinkingChunk != nil {
+						if err := callbacks.OnThinkingChunk(thinkingDelta); err != nil {
+							return nil, err
+						}
 					}
 				}
 			}
@@ -230,4 +239,44 @@ func normalizeInputJSON(raw string) string {
 		return "{}"
 	}
 	return s
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func extractRawStringField(raw string, keys ...string) string {
+	if raw == "" {
+		return ""
+	}
+	var data map[string]any
+	if err := json.Unmarshal([]byte(raw), &data); err != nil {
+		return ""
+	}
+	for _, key := range keys {
+		if value, ok := data[key].(string); ok && value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func extractNestedRawStringField(raw string, objectKey string, keys ...string) string {
+	if raw == "" {
+		return ""
+	}
+	var data map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &data); err != nil {
+		return ""
+	}
+	nested, ok := data[objectKey]
+	if !ok {
+		return ""
+	}
+	return extractRawStringField(string(nested), keys...)
 }
