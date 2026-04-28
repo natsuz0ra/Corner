@@ -128,6 +128,7 @@ watch(
 
 function toggleExpanded() {
   expanded.value = shouldAutoExpand.value ? true : !expanded.value
+  if (!expanded.value) subagentTimelineExpanded.value = false
 }
 
 function toggleSubagentTimeline() {

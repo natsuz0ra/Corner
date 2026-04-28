@@ -103,6 +103,12 @@ export const useChatStore = defineStore('chat', () => {
     return replyBatches.value.find((item) => item.id === currentBatchId.value)
   }
 
+  function parseSocketTimestamp(value: string | undefined, fallback = Date.now()) {
+    if (!value) return fallback
+    const parsed = Date.parse(value)
+    return Number.isFinite(parsed) ? parsed : fallback
+  }
+
   function isStreamingMessage(messageId: string): boolean {
     if (!currentBatchId.value) return false
     const batch = getCurrentBatch()
@@ -481,7 +487,7 @@ export const useChatStore = defineStore('chat', () => {
           preamble: data.preamble,
           requiresApproval: data.requiresApproval,
           status: data.requiresApproval ? 'pending' : 'executing',
-          startedAt: Date.now(),
+          startedAt: parseSocketTimestamp(data.startedAt),
           parentToolCallId: data.parentToolCallId,
           subagentRunId: data.subagentRunId,
         })
@@ -503,6 +509,7 @@ export const useChatStore = defineStore('chat', () => {
           item.output = data.output
           item.error = data.error
           item.requiresApproval = data.requiresApproval
+          item.finishedAt = parseSocketTimestamp(data.finishedAt)
           if (data.parentToolCallId) item.parentToolCallId = data.parentToolCallId
           if (data.subagentRunId) item.subagentRunId = data.subagentRunId
           // Auto-close ask_questions drawer when tool times out or is rejected
@@ -548,7 +555,7 @@ export const useChatStore = defineStore('chat', () => {
         const batch = getCurrentBatch()
         if (!batch) return
         if (data.parentToolCallId && data.subagentRunId) {
-          startSubagentThinking(batch, data.parentToolCallId)
+          startSubagentThinking(batch, data.parentToolCallId, parseSocketTimestamp(data.startedAt))
           return
         }
         batch.timeline.push({
@@ -556,7 +563,7 @@ export const useChatStore = defineStore('chat', () => {
           kind: 'thinking',
           content: '',
           done: false,
-          startedAt: Date.now(),
+          startedAt: parseSocketTimestamp(data.startedAt),
         })
       },
       onThinkingChunk: (data, sessionId) => {
@@ -564,7 +571,7 @@ export const useChatStore = defineStore('chat', () => {
         const batch = getCurrentBatch()
         if (!batch) return
         if (data.parentToolCallId && data.subagentRunId) {
-          appendSubagentThinkingChunk(batch, data.parentToolCallId, data.content || '')
+          appendSubagentThinkingChunk(batch, data.parentToolCallId, data.content || '', parseSocketTimestamp(data.startedAt))
           return
         }
         const entries = [...batch.timeline]
@@ -584,10 +591,10 @@ export const useChatStore = defineStore('chat', () => {
         const batch = getCurrentBatch()
         if (!batch) return
         if (data.parentToolCallId && data.subagentRunId) {
-          finishSubagentThinking(batch, data.parentToolCallId)
+          finishSubagentThinking(batch, data.parentToolCallId, parseSocketTimestamp(data.finishedAt))
           return
         }
-        batch.timeline = markLastThinkingDone(batch.timeline)
+        batch.timeline = markLastThinkingDone(batch.timeline, parseSocketTimestamp(data.finishedAt))
       },
       onPlanStart: (sessionId) => {
         if (!sessionId || sessionId !== currentSessionId.value) return

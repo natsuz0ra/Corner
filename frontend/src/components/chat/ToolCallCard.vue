@@ -133,6 +133,7 @@ const askQuestionsData = computed(() => {
 
 function toggleCollapse() {
   if (isAskQuestions.value) isCollapsed.value = !isCollapsed.value
+  if (isCollapsed.value) subagentTimelineExpanded.value = false
 }
 
 function onOutputToggle(event: Event) {
