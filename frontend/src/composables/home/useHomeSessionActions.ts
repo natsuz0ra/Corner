@@ -21,6 +21,7 @@ type UiState = {
 type ModelState = {
   selectedModelId: Ref<string>
   thinkingLevel: Ref<string>
+  subagentModelId: Ref<string>
   refreshModelOptions: (useRemembered?: boolean) => Promise<void>
 }
 

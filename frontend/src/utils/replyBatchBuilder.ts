@@ -33,6 +33,75 @@ export interface AssistantReplyBatch {
   toolCalls: ToolCallItem[]
   timeline: AssistantReplyTimelineItem[]
   collapsed: boolean
+  startedAt?: number
+  finishedAt?: number
+  durationMs?: number
+}
+
+function parseTimestamp(value?: string) {
+  if (!value) return undefined
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function finishFromDuration(startedAt: number | undefined, durationMs: number | undefined) {
+  if (typeof startedAt !== 'number' || typeof durationMs !== 'number') return undefined
+  return startedAt + Math.max(0, durationMs)
+}
+
+function deriveReplyTiming(
+  messageCreatedAt: string | undefined,
+  toolCalls: SessionHistoryToolCallItem[],
+  thinkingRecords: SessionHistoryThinkingItem[],
+) {
+  const starts: number[] = []
+  const finishes: number[] = []
+
+  const messageStartedAt = parseTimestamp(messageCreatedAt)
+  if (typeof messageStartedAt === 'number') starts.push(messageStartedAt)
+
+  for (const item of toolCalls) {
+    const startedAt = parseTimestamp(item.startedAt)
+    const finishedAt = parseTimestamp(item.finishedAt)
+    if (typeof startedAt === 'number') starts.push(startedAt)
+    if (typeof finishedAt === 'number') finishes.push(finishedAt)
+  }
+
+  for (const item of thinkingRecords) {
+    const startedAt = parseTimestamp(item.startedAt)
+    const finishedAt = parseTimestamp(item.finishedAt) ?? finishFromDuration(startedAt, item.durationMs)
+    if (typeof startedAt === 'number') starts.push(startedAt)
+    if (typeof finishedAt === 'number') finishes.push(finishedAt)
+  }
+
+  const startedAt = starts.length > 0 ? Math.min(...starts) : undefined
+  const finishedAt = finishes.length > 0 ? Math.max(...finishes) : undefined
+  const durationMs =
+    typeof startedAt === 'number' && typeof finishedAt === 'number'
+      ? Math.max(0, finishedAt - startedAt)
+      : undefined
+
+  return { startedAt, finishedAt, durationMs }
+}
+
+export function getCollapsedReplyTimeline(timeline: AssistantReplyTimelineItem[]) {
+  let lastTextIndex = -1
+  for (let i = timeline.length - 1; i >= 0; i--) {
+    const entry = timeline[i]
+    if (entry?.kind === 'text' && entry.content.trim() !== '') {
+      lastTextIndex = i
+      break
+    }
+  }
+
+  return timeline.filter((entry, index) => entry.kind === 'plan' || index === lastTextIndex)
+}
+
+export function hasCollapsibleReplyContent(timeline: AssistantReplyTimelineItem[], toolCalls: ToolCallItem[]) {
+  if (toolCalls.some((item) => item.preamble && item.preamble.trim() !== '')) return true
+  const collapsed = getCollapsedReplyTimeline(timeline)
+  if (collapsed.length !== timeline.length) return true
+  return collapsed.some((entry, index) => entry.id !== timeline[index]?.id)
 }
 
 export function normalizeToolStatus(status?: string, fallbackError?: string): ToolCallStatus {
@@ -176,7 +245,8 @@ export function buildReplyBatchesFromHistory(sessionId: string, history: Session
       status: normalizeToolStatus(item.status, item.error),
       output: item.output,
       error: item.error,
-      startedAt: item.startedAt ? new Date(item.startedAt).getTime() : undefined,
+      startedAt: parseTimestamp(item.startedAt),
+      finishedAt: parseTimestamp(item.finishedAt),
       parentToolCallId: item.parentToolCallId,
       subagentRunId: item.subagentRunId,
     }))
@@ -197,7 +267,8 @@ export function buildReplyBatchesFromHistory(sessionId: string, history: Session
         content: thinking.content || '',
         done: thinking.status !== 'streaming',
         durationMs: thinking.durationMs,
-        startedAt: thinking.startedAt ? new Date(thinking.startedAt).getTime() : undefined,
+        startedAt: parseTimestamp(thinking.startedAt),
+        finishedAt: parseTimestamp(thinking.finishedAt),
       }
       parent.subagentThinkings = [...(parent.subagentThinkings ?? (parent.subagentThinking ? [parent.subagentThinking] : [])), entry]
       parent.subagentThinking = entry
@@ -217,6 +288,7 @@ export function buildReplyBatchesFromHistory(sessionId: string, history: Session
       toolCalls,
       timeline,
       collapsed: true,
+      ...deriveReplyTiming(message.createdAt, historyToolCalls, historyThinking),
     })
   }
   return nextBatches

@@ -4,6 +4,7 @@ import type { AssistantReplyBatch } from '../src/utils/replyBatchBuilder'
 import {
   startSubagentThinking,
   appendSubagentThinkingChunk,
+  finalizeReplyBatchTiming,
   finishSubagentThinking,
   appendPlanBodyToBatch,
   appendPlanChunkToBatch,
@@ -154,4 +155,22 @@ test('getLiveReplyContentSignature changes when streaming plan content grows in 
 
   assert.notEqual(after, before)
   assert.match(after, /plan:21:1/)
+})
+
+test('finalizeReplyBatchTiming records duration and collapses the completed live reply', () => {
+  const batch: AssistantReplyBatch = {
+    id: 'batch-1',
+    sessionId: 'session-1',
+    assistantMessageId: 'assistant-1',
+    toolCalls: [],
+    timeline: [],
+    collapsed: false,
+    startedAt: 1000,
+  }
+
+  finalizeReplyBatchTiming(batch, 2750)
+
+  assert.equal(batch.collapsed, true)
+  assert.equal(batch.finishedAt, 2750)
+  assert.equal(batch.durationMs, 1750)
 })
