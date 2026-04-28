@@ -101,6 +101,8 @@ export interface ToolCallItem {
   error?: string
   /** Millisecond timestamp used to interleave sub-agent thinking and nested tools. */
   startedAt?: number
+  /** Millisecond timestamp used to derive completed reply duration. */
+  finishedAt?: number
   /** Present on tools invoked inside a sub-agent run */
   parentToolCallId?: string
   subagentRunId?: string
@@ -118,6 +120,7 @@ export interface SubagentThinkingItem {
   content: string
   done: boolean
   startedAt?: number
+  finishedAt?: number
   durationMs?: number
 }
 

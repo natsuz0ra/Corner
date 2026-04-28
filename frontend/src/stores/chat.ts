@@ -14,7 +14,7 @@ import {
   type AssistantReplyTimelineItem,
 } from '@/utils/replyBatchBuilder'
 import { hasContentMarkers, parseContentMarkers, stripContentMarkers } from '@/utils/contentMarkers'
-import { appendPlanBodyToBatch, appendPlanChunkToBatch, appendSubagentThinkingChunk, appendTextChunkToBatch, finishOpenThinkingEntries, finishSubagentThinking, markLastThinkingDone, startSubagentThinking } from '@/utils/liveReplyTimeline'
+import { appendPlanBodyToBatch, appendPlanChunkToBatch, appendSubagentThinkingChunk, appendTextChunkToBatch, finalizeReplyBatchTiming, finishOpenThinkingEntries, finishSubagentThinking, markLastThinkingDone, startSubagentThinking } from '@/utils/liveReplyTimeline'
 
 const HISTORY_PAGE_SIZE = 10
 const MAX_SESSION_PAGE_SIZE = 100
@@ -197,7 +197,7 @@ export const useChatStore = defineStore('chat', () => {
         rebuiltTimeline.push(textEntry)
       }
       batch.timeline = rebuiltTimeline
-      batch.collapsed = true
+      finalizeReplyBatchTiming(batch)
       currentBatchId.value = ''
       return
     }
@@ -396,6 +396,7 @@ export const useChatStore = defineStore('chat', () => {
           toolCalls: [],
           timeline: [],
           collapsed: false,
+          startedAt: Date.now(),
         })
       },
       onChunk: (chunk, sessionId) => {
@@ -440,7 +441,7 @@ export const useChatStore = defineStore('chat', () => {
               ? buildInterleavedTimeline(batch.toolCalls, finalAnswer, liveThinking)
               : buildLegacyTimeline(batch.toolCalls, stripContentMarkers(finalAnswer))
           }
-          batch.collapsed = true
+          finalizeReplyBatchTiming(batch)
         }
         currentBatchId.value = ''
         if (meta?.planId) {

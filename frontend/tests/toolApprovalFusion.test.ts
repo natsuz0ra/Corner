@@ -138,6 +138,29 @@ test('PlanBlock uses the shared chevron size and right-closed/down-open directio
   assert.match(planBlockSource, /\.plan-block-chevron--open\s*\{[\s\S]*rotate\(0deg\)/)
 })
 
+test('AssistantMessageBody renders the parent reply collapse bar and visible timeline', () => {
+  const assistantBodySource = readFileSync(resolve(import.meta.dirname, '../src/components/chat/AssistantMessageBody.vue'), 'utf8')
+
+  assert.match(assistantBodySource, /reply-collapse-bar/)
+  assert.match(assistantBodySource, /<TransitionGroup name="reply-segment" tag="div" class="assistant-reply-timeline">/)
+  assert.match(assistantBodySource, /getCollapsedReplyTimeline/)
+  assert.match(assistantBodySource, /v-for="\((entry, index|entry,\s*index)\) in renderedTimeline"/)
+  assert.match(assistantBodySource, /assistant-reply-segment--first-visible/)
+  assert.match(assistantBodySource, /assistant-reply-segment-inner/)
+  assert.match(assistantBodySource, /ctx\.toggleReplyCollapsed\(item\.id\)/)
+  assert.match(assistantBodySource, /ctx\.getReplyElapsedMs\((props\.)?item\.id\)/)
+  assert.match(assistantBodySource, /reply-collapse-arrow/)
+  assert.match(assistantBodySource, /\.reply-collapse-arrow\s*\{[\s\S]*rotate\(-90deg\)/)
+  assert.match(assistantBodySource, /\.reply-collapse-arrow--open\s*\{[\s\S]*rotate\(0deg\)/)
+  assert.match(assistantBodySource, /\.assistant-reply-segment\s*\{[\s\S]*grid-template-rows:\s*1fr/)
+  assert.match(assistantBodySource, /\.assistant-reply-segment\s*\{[\s\S]*margin-top:\s*10px/)
+  assert.match(assistantBodySource, /\.assistant-reply-segment:first-child,\s*\.assistant-reply-segment--first-visible\s*\{[\s\S]*margin-top:\s*0/)
+  assert.match(assistantBodySource, /\.reply-segment-enter-active\s*,[\s\S]*grid-template-rows 300ms cubic-bezier\(0\.22, 1, 0\.36, 1\)/)
+  assert.match(assistantBodySource, /\.reply-segment-enter-active\s*,[\s\S]*margin-top 300ms cubic-bezier\(0\.22, 1, 0\.36, 1\)/)
+  assert.match(assistantBodySource, /\.reply-segment-enter-from,\s*\.reply-segment-leave-to[\s\S]*grid-template-rows:\s*0fr[\s\S]*margin-top:\s*0/)
+  assert.match(assistantBodySource, /\.reply-segment-move\s*\{[\s\S]*transform 300ms cubic-bezier\(0\.22, 1, 0\.36, 1\)/)
+})
+
 test('i18n includes subagent thinking and combined tool-call labels', () => {
   const i18nSource = readFileSync(resolve(import.meta.dirname, '../src/i18n.ts'), 'utf8')
 
@@ -151,4 +174,5 @@ test('i18n includes subagent thinking and combined tool-call labels', () => {
   assert.match(i18nSource, /subagentThoughtFor:\s*'Thought for \{duration\}'/)
   assert.match(i18nSource, /subagentToolCallsThinkingTitle:\s*'Tool calls & thinking'/)
   assert.match(i18nSource, /subagentResultLabel:\s*'Execution result'/)
+  assert.match(i18nSource, /replyElapsed:\s*'.*\{duration\}/)
 })

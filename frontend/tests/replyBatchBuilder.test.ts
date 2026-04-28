@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { SessionHistoryThinkingItem, ToolCallItem } from '../src/api/chat'
-import { buildInterleavedTimeline } from '../src/utils/replyBatchBuilder'
+import {
+  buildInterleavedTimeline,
+  getCollapsedReplyTimeline,
+  hasCollapsibleReplyContent,
+} from '../src/utils/replyBatchBuilder'
 
 test('buildInterleavedTimeline renders plan marker content as a plan item', () => {
   const timeline = buildInterleavedTimeline(
@@ -77,6 +81,59 @@ test('buildInterleavedTimeline preserves thinking and tool ordering around plans
   assert.deepEqual(
     timeline.map((entry) => entry.kind),
     ['thinking', 'plan', 'tool_start', 'tool_result', 'text'],
+  )
+})
+
+test('getCollapsedReplyTimeline keeps every plan and only the final text segment', () => {
+  const timeline = [
+    { id: 'text-before', kind: 'text' as const, content: 'I will inspect first.' },
+    { id: 'thinking-1', kind: 'thinking' as const, content: 'reasoning', done: true },
+    { id: 'plan-1', kind: 'plan' as const, content: '# Plan' },
+    { id: 'tool-1', kind: 'tool_start' as const, toolCallId: 'tool-1' },
+    { id: 'tool-result-1', kind: 'tool_result' as const, toolCallId: 'tool-1' },
+    { id: 'text-final', kind: 'text' as const, content: 'Final answer.' },
+  ]
+
+  assert.deepEqual(
+    getCollapsedReplyTimeline(timeline).map((entry) => entry.id),
+    ['plan-1', 'text-final'],
+  )
+})
+
+test('hasCollapsibleReplyContent ignores plain final text and detects hidden process content', () => {
+  assert.equal(
+    hasCollapsibleReplyContent(
+      [{ id: 'text-final', kind: 'text', content: 'Final answer.' }],
+      [],
+    ),
+    false,
+  )
+
+  assert.equal(
+    hasCollapsibleReplyContent(
+      [
+        { id: 'text-before', kind: 'text', content: 'Checking.' },
+        { id: 'text-final', kind: 'text', content: 'Final answer.' },
+      ],
+      [],
+    ),
+    true,
+  )
+
+  assert.equal(
+    hasCollapsibleReplyContent(
+      [{ id: 'text-final', kind: 'text', content: 'Final answer.' }],
+      [{
+        toolCallId: 'tool-1',
+        toolName: 'exec',
+        command: 'run',
+        params: {},
+        preamble: 'I will run a command.',
+        requiresApproval: false,
+        status: 'completed',
+      }],
+    ),
+    true,
   )
 })
 
@@ -184,4 +241,44 @@ test('buildReplyBatchesFromHistory preserves nested tool start times for subagen
   const batch = batches[0]!
   assert.equal(batch.toolCalls.find((item) => item.toolCallId === 'child-tool')?.startedAt, Date.parse('2026-04-28T00:00:02.000Z'))
   assert.equal(batch.toolCalls.find((item) => item.toolCallId === 'parent-tool')?.subagentThinkings?.[0]?.startedAt, Date.parse('2026-04-28T00:00:01.000Z'))
+})
+
+test('buildReplyBatchesFromHistory derives reply timing from persisted timestamps', async () => {
+  const { buildReplyBatchesFromHistory } = await import('../src/utils/replyBatchBuilder')
+  const batches = buildReplyBatchesFromHistory('session-1', {
+    messages: [{
+      id: 'assistant-1',
+      role: 'assistant',
+      content: '<!-- TOOL_CALL:tool-1 -->\nDone.',
+      createdAt: '2026-04-28T00:00:00.000Z',
+      seq: 1,
+    }],
+    toolCallsByAssistantMessageId: {
+      'assistant-1': [{
+        toolCallId: 'tool-1',
+        toolName: 'web_search',
+        command: 'search',
+        params: {},
+        requiresApproval: false,
+        status: 'completed',
+        output: 'ok',
+        startedAt: '2026-04-28T00:00:01.000Z',
+        finishedAt: '2026-04-28T00:00:04.000Z',
+      }],
+    },
+    thinkingByAssistantMessageId: {
+      'assistant-1': [{
+        thinkingId: 'think-1',
+        content: 'reasoning',
+        status: 'completed',
+        startedAt: '2026-04-28T00:00:00.500Z',
+        finishedAt: '2026-04-28T00:00:02.000Z',
+      }],
+    },
+    hasMore: false,
+  })
+
+  assert.equal(batches[0]!.startedAt, Date.parse('2026-04-28T00:00:00.000Z'))
+  assert.equal(batches[0]!.finishedAt, Date.parse('2026-04-28T00:00:04.000Z'))
+  assert.equal(batches[0]!.durationMs, 4000)
 })
