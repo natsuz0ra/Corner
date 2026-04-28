@@ -176,6 +176,7 @@ export function buildReplyBatchesFromHistory(sessionId: string, history: Session
       status: normalizeToolStatus(item.status, item.error),
       output: item.output,
       error: item.error,
+      startedAt: item.startedAt ? new Date(item.startedAt).getTime() : undefined,
       parentToolCallId: item.parentToolCallId,
       subagentRunId: item.subagentRunId,
     }))

@@ -480,6 +480,7 @@ export const useChatStore = defineStore('chat', () => {
           preamble: data.preamble,
           requiresApproval: data.requiresApproval,
           status: data.requiresApproval ? 'pending' : 'executing',
+          startedAt: Date.now(),
           parentToolCallId: data.parentToolCallId,
           subagentRunId: data.subagentRunId,
         })

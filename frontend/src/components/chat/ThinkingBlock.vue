@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getThinkingPreviewLine, getThinkingPreviewLineIndex } from '@/utils/thinkingPreview'
 
@@ -186,14 +186,16 @@ const canToggle = computed(() => props.done && hasVisibleContent.value)
 }
 
 .thinking-chevron {
+  display: inline-block;
+  font-size: 12px;
   flex-shrink: 0;
   margin-left: auto;
   color: var(--text-muted, #9ca3af);
-  transition: transform 200ms ease;
+  transition: transform 150ms ease;
 }
 
 .thinking-chevron--open {
-  transform: rotate(180deg);
+  transform: rotate(90deg);
 }
 
 .thinking-content {
@@ -237,11 +239,11 @@ const canToggle = computed(() => props.done && hasVisibleContent.value)
 }
 
 .thinking-expand-enter-active {
-  transition: opacity 200ms ease, max-height 300ms ease;
+  transition: opacity 180ms ease, max-height 250ms ease;
 }
 
 .thinking-expand-leave-active {
-  transition: opacity 150ms ease, max-height 200ms ease;
+  transition: opacity 120ms ease, max-height 180ms ease;
 }
 
 .thinking-expand-enter-from,
@@ -253,7 +255,7 @@ const canToggle = computed(() => props.done && hasVisibleContent.value)
 .thinking-expand-enter-to,
 .thinking-expand-leave-from {
   opacity: 1;
-  max-height: 280px;
+  max-height: 500px;
 }
 
 .thinking-preview-slide-enter-active,
@@ -275,9 +277,11 @@ const canToggle = computed(() => props.done && hasVisibleContent.value)
   .thinking-dot--pulsing {
     animation: none;
   }
+
   .thinking-chevron {
     transition: none;
   }
+
   .thinking-preview-slide-enter-active,
   .thinking-preview-slide-leave-active,
   .thinking-expand-enter-active,
