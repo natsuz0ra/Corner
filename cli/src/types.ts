@@ -223,7 +223,7 @@ export const SUPPORTED_COMMANDS: CommandMeta[] = [
   { command: "/new", description: "Create a new chat session" },
   { command: "/session", description: "Open session menu to switch or delete" },
   { command: "/model", description: "Choose the default model" },
-  { command: "/mode", description: "Toggle approval mode (standard/auto)" },
+  { command: "/approval", description: "Toggle approval mode (standard/auto)" },
   { command: "/effort", description: "Toggle thinking level (off/low/medium/high)" },
   { command: "/skills", description: "View and manage installed skills" },
   { command: "/mcp", description: "Manage MCP configurations" },
