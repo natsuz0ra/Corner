@@ -122,7 +122,7 @@ export default function QuestionAnswerView({
         )}
       </Box>
       <Box marginTop={1}>
-        <Text color="gray">Up/Down navigate  Enter select  Esc cancel</Text>
+        <Text color="gray">Up/Down to navigate | Enter to select | Esc to cancel</Text>
       </Box>
     </Box>
   );

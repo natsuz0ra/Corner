@@ -1,4 +1,4 @@
-/**
+﻿/**
  * App — Ink CLI root component.
  * Centralizes state, WebSocket events, menu behavior, and keyboard input dispatch.
  */
@@ -74,6 +74,11 @@ function formatModelLine(model?: Pick<LLMConfig, "name" | "model">, fallback = "
   return name || actualModel || fallback;
 }
 
+export function getChatFooterHint(planMode: boolean, approvalMode: AppState["approvalMode"]): string {
+  return planMode || approvalMode === "auto"
+    ? "/ for commands | Shift+Tab to toggle | Esc to cancel"
+    : "/ for commands | Shift+Tab plan mode | Esc to cancel";
+}
 interface AppProps {
   apiURL: string;
   cliToken: string;
@@ -383,7 +388,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       kind: "effort",
       title: "Thinking Level",
       items,
-      hint: "Arrow keys to navigate, Enter to select, Esc to cancel",
+      hint: "Arrow keys to navigate | Enter to select | Esc to cancel",
     } as AppAction);
   }, [state.thinkingLevel]);
 
@@ -417,7 +422,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         kind: "session",
         title: "Session Menu",
         items,
-        hint: "Arrow keys to navigate, Enter to switch, d to delete, Esc to close",
+        hint: "Arrow keys to navigate | Enter to switch | D to delete | Esc to close",
       } as AppAction);
     } catch (error) {
       appendSystem(`Failed to load sessions: ${(error as Error).message}`);
@@ -437,7 +442,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         kind: "model",
         title: "Model Menu",
         items,
-        hint: "Arrow keys to navigate, Enter to set default, a to add, d to delete, Esc to close",
+        hint: "Arrow keys to navigate | Enter to set default | A to add | D to delete | Esc to close",
       } as AppAction);
     } catch (error) {
       appendSystem(`Failed to load models: ${(error as Error).message}`);
@@ -457,7 +462,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         kind: "skills",
         title: "Skills Menu",
         items,
-        hint: "Arrow keys to navigate, d to delete, Esc to close",
+        hint: "Arrow keys to navigate | D to delete | Esc to close",
       } as AppAction);
     } catch (error) {
       appendSystem(`Failed to load skills: ${(error as Error).message}`);
@@ -477,7 +482,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         kind: "mcp",
         title: "MCP Menu",
         items,
-        hint: "Arrow keys, Enter/e edit, a add, Space toggle, d delete, Esc close",
+        hint: "Arrow keys to navigate | Enter or E to edit | A to add | Space to toggle | D to delete | Esc to close",
       } as AppAction);
     } catch (error) {
       appendSystem(`Failed to load MCP configs: ${(error as Error).message}`);
@@ -489,7 +494,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       { title: "/new", desc: "Create a new chat (lazy session creation)", data: null },
       { title: "/session", desc: "Browse, switch, or delete sessions", data: null },
       { title: "/model", desc: "Switch default model", data: null },
-      { title: "/mode", desc: "Toggle approval mode (standard/auto)", data: null },
+      { title: "/approval", desc: "Toggle approval mode (standard/auto)", data: null },
       { title: "/effort", desc: "Toggle thinking level (off/low/medium/high)", data: null },
       { title: "/skills", desc: "Browse and delete installed skills", data: null },
       { title: "/mcp", desc: "Manage MCP configs", data: null },
@@ -754,7 +759,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       await loadModels();
       return;
     }
-    if (cmd === "/mode") {
+    if (cmd === "/approval") {
       await toggleApprovalMode();
       return;
     }
@@ -1480,7 +1485,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
       {state.view === "chat" && state.streaming && (
         <Text color="gray" dimColor>
-          Generating response... Esc to cancel.
+          Generating response | Esc to cancel
         </Text>
       )}
 
@@ -1488,21 +1493,20 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         <Box flexDirection="column">
           <CommandHints input={state.inputValue} />
           <Text color="gray" dimColor>
-            Tab autocomplete | Enter run | Esc clear
+            Tab to autocomplete | Enter to run | Esc to clear
           </Text>
         </Box>
       )}
 
       {state.view === "chat" && !state.streaming && !state.inputValue.startsWith("/") && (
-        <Box>
-          {state.planMode && <Text color="#22d3ee" bold>◆ Plan </Text>}
-          {state.approvalMode === "auto" && <Text color="#eab308" bold>◆ Auto </Text>}
-          <Text color="gray" dimColor>
-            {state.planMode || state.approvalMode === "auto"
-              ? "/ commands | Shift+Tab toggle | Esc to cancel"
-              : "/ for commands | Tab autocomplete | Shift+Tab plan mode | Esc to cancel"
-            }
+        <Box justifyContent="space-between">
+          <Text color="#64748b">
+            {getChatFooterHint(state.planMode, state.approvalMode)}
           </Text>
+          <Box>
+            {state.planMode && <Text color="#22d3ee" bold>◆ Plan </Text>}
+            {state.approvalMode === "auto" && <Text color="#eab308" bold>◆ Auto </Text>}
+          </Box>
         </Box>
       )}
 
@@ -1520,7 +1524,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
       {state.view === "mcp-editor" && (
         <Text color="gray" dimColor>
-          Tab switch field | Ctrl+S save | Ctrl+E toggle | Esc back
+          Tab to switch field | Ctrl+S to save | Ctrl+E to toggle | Esc to go back
         </Text>
       )}
 
@@ -1532,9 +1536,10 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
       {state.view === "model-editor" && (
         <Text color="gray" dimColor>
-          Tab next field | Ctrl+S save | Esc back{state.modelEditorFocusIndex === 1 ? " | Enter change provider" : ""}
+          Tab to switch field | Ctrl+S to save | Esc to go back{state.modelEditorFocusIndex === 1 ? " | Enter to change provider" : ""}
         </Text>
       )}
     </Box>
   );
 }
+
