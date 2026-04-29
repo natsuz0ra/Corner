@@ -17,7 +17,7 @@ import { MCPTemplatePicker } from "./components/MCPTemplatePicker.js";
 import { MenuView } from "./components/MenuView.js";
 import { ModelEditor } from "./components/ModelEditor.js";
 import { TextInput } from "./components/TextInput.js";
-import { Timeline } from "./components/Timeline.js";
+import { SHOW_CLI_THINKING, Timeline } from "./components/Timeline.js";
 import { reducer, createInitialState } from "./reducer.js";
 import { completeCommand, isCommand } from "./utils/commands.js";
 import { formatTimestamp, formatWaitingStatsSuffix } from "./utils/format.js";
@@ -1402,7 +1402,6 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
             maxWidth={width}
             compact={state.compact}
             toolOutputExpanded={state.toolOutputExpanded}
-            thinkingEntryIndex={state.timeline.filter((e) => e.kind === "thinking").length}
             planGenerating={state.planGenerating}
             planReceived={state.planReceived}
             waitingStatsSuffix={state.streaming ? formatWaitingStatsSuffix({
@@ -1431,9 +1430,9 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
               if (!value) return;
               dispatch({ type: "SET_INPUT", value: "" } as AppAction);
 
-              // Check if input is a number → view thinking detail
+              // Kept behind the display flag so hidden thinking data remains recoverable later.
               const num = parseInt(value, 10);
-              if (!isNaN(num) && String(num) === value && num > 0) {
+              if (SHOW_CLI_THINKING && !isNaN(num) && String(num) === value && num > 0) {
                 const thinkingEntries = state.timeline.filter((e) => e.kind === "thinking");
                 if (num <= thinkingEntries.length) {
                   dispatch({

@@ -5,7 +5,9 @@ import test from "node:test";
 import type { TimelineEntry } from "../types";
 import {
   PLAN_GOLD,
+  SHOW_CLI_THINKING,
   WAITING_STATS_COLOR,
+  buildTimelineDisplayRows,
   formatSubagentThinkingLines,
   formatRunSubagentDetailLines,
   formatPlanningIndicatorParts,
@@ -183,6 +185,26 @@ test("formatSubagentThinkingLines collapses completed child reasoning by default
   assert.ok(lines.some((line) => line.includes("ctrl+o to expand")));
 });
 
+test("CLI thinking display is disabled by default", () => {
+  assert.equal(SHOW_CLI_THINKING, false);
+});
+
+test("buildTimelineDisplayRows hides top-level thinking entries by default", () => {
+  const rows = buildTimelineDisplayRows([
+    { kind: "user", content: "question" },
+    {
+      kind: "thinking",
+      content: "private reasoning",
+      thinkingDone: true,
+      thinkingDurationMs: 1200,
+    },
+    { kind: "assistant", content: "answer" },
+  ]);
+
+  assert.deepEqual(rows.map((row) => row.entry.kind), ["user", "assistant"]);
+  assert.ok(rows.every((row) => !row.entry.content.includes("private reasoning")));
+});
+
 function runSubagentFixture(): { parent: TimelineEntry; nested: TimelineEntry[] } {
   return {
     parent: {
@@ -241,9 +263,10 @@ test("formatRunSubagentDetailLines keeps collapsed display to one-line summaries
 
   assert.ok(lines.some((line) => line.includes("Context → repo context line 1 ... +3 more lines")));
   assert.ok(lines.some((line) => line.includes("Task → inspect the display ordering ... +1 more lines")));
-  assert.ok(lines.some((line) => line.includes("Thinking & tools: thinking complete in 1.3s · 1 tool")));
+  assert.ok(lines.some((line) => line.includes("Thinking & tools: 1 tool")));
   assert.ok(lines.some((line) => line.includes("Result → final result line 1")));
-  assert.ok(lines.every((line) => !line.includes("child reason 4")));
+  assert.ok(lines.every((line) => !line.includes("child reason")));
+  assert.ok(lines.every((line) => !line.includes("thinking complete")));
   assert.ok(lines.every((line) => !line.includes("final result line 4")));
 });
 
@@ -270,9 +293,14 @@ test("formatRunSubagentDetailLines expands full details and keeps collapse hint"
   const lines = formatRunSubagentDetailLines(parent, nested, 100, true);
 
   assert.ok(lines.some((line) => line.includes("repo context line 4")));
-  assert.ok(lines.some((line) => line.includes("child reason 4")));
   assert.ok(lines.some((line) => line.includes("final result line 4")));
+  assert.ok(lines.some((line) => line.includes("Thinking & tools")));
+  assert.ok(lines.some((line) => line.includes("1 tool")));
   assert.ok(lines.some((line) => line.includes("ctrl+o to collapse")));
+  assert.ok(lines.every((line) => !line.includes("child reason")));
+  assert.ok(lines.every((line) => !line.includes("Sub-agent thinking")));
+  assert.ok(lines.every((line) => !line.includes("Sub-agent thought")));
+  assert.ok(lines.every((line) => !line.includes("thinking complete")));
 });
 
 test("formatRunSubagentDetailLines hides context and task from extra params", () => {
