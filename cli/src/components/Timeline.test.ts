@@ -12,6 +12,8 @@ import {
   formatThinkingLabel,
   formatToolOutputLines,
   formatToolParamLines,
+  formatToolStatusPart,
+  formatToolSummaryTag,
   formatPlanFrameLines,
   formatWaitingPromptText,
   formatTodoListLines,
@@ -129,6 +131,19 @@ test("formatThinkingLabel uses fixed duration after thinking completes", () => {
   });
 
   assert.equal(label, "Thought for 1.8s");
+});
+
+test("formatToolStatusPart maps statuses to distinct colored labels", () => {
+  assert.deepEqual(formatToolStatusPart("completed"), { text: "✓ completed", color: "#2E7D32" });
+  assert.deepEqual(formatToolStatusPart("error"), { text: "✕ failed", color: "#C62828" });
+  assert.deepEqual(formatToolStatusPart("rejected"), { text: "✕ rejected", color: "#C62828" });
+  assert.deepEqual(formatToolStatusPart("pending"), { text: "? pending approval", color: "#B8860B" });
+  assert.deepEqual(formatToolStatusPart("executing"), { text: "… executing", color: "#B8860B" });
+});
+
+test("formatToolSummaryTag wraps non-empty summaries and hides empty ones", () => {
+  assert.equal(formatToolSummaryTag("查看全局安装的 opencode-ai 版本"), "[查看全局安装的 opencode-ai 版本]");
+  assert.equal(formatToolSummaryTag(""), "");
 });
 
 test("formatSubagentThinkingLines shows live child reasoning while sub-agent is still running", () => {

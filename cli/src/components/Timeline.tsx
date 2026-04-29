@@ -11,12 +11,14 @@ import { stringWidth } from "../utils/stringWidth.js";
 import type { RuntimeTodoItem, TimelineEntry, ToolCallStatus } from "../types.js";
 import {
   formatToolInvocation,
+  formatToolCallSummary,
   wrapText,
   formatCollapsedLines,
   TOOL_OUTPUT_PREVIEW_LINES,
   formatToolExecutionOutput,
   formatToolTextValue,
   formatToolParamEntries,
+  filterToolParamsForDetail,
   formatAskQuestionsDisplay,
   formatAskQuestionsPending,
   truncateText,
@@ -27,6 +29,7 @@ import { Spinner } from "./Spinner.js";
 
 export const PLAN_GOLD = "#f59e0b";
 export const WAITING_STATS_COLOR = "#64748b";
+export const TOOL_SUMMARY_TAG_COLOR = "#7dd3fc";
 
 interface TimelineProps {
   entries: TimelineEntry[];
@@ -59,21 +62,26 @@ function toolDotState(status: ToolCallStatus): { color: string; blink: boolean }
   }
 }
 
-function renderToolSuffix(status: ToolCallStatus): string {
+export function formatToolStatusPart(status: ToolCallStatus): { text: string; color: string } {
   switch (status) {
     case "pending":
-      return " pending approval...";
+      return { text: "? pending approval", color: "#B8860B" };
     case "executing":
-      return " executing...";
+      return { text: "… executing", color: "#B8860B" };
     case "completed":
-      return " completed";
+      return { text: "✓ completed", color: "#2E7D32" };
     case "error":
-      return " failed";
+      return { text: "✕ failed", color: "#C62828" };
     case "rejected":
-      return " rejected";
+      return { text: "✕ rejected", color: "#C62828" };
     default:
-      return "";
+      return { text: "", color: "white" };
   }
+}
+
+export function formatToolSummaryTag(summary: string): string {
+  const trimmed = summary.trim();
+  return trimmed ? `[${trimmed}]` : "";
 }
 
 export function formatSubagentStreamLines(stream: string, maxWidth: number, expanded: boolean): string[] {
@@ -112,7 +120,10 @@ export function formatToolOutputLines(entry: TimelineEntry, maxWidth: number, ex
 }
 
 export function formatToolParamLines(entry: TimelineEntry, maxWidth: number): string[] {
-  return formatToolParamLinesForParams(entry.params, maxWidth);
+  return formatToolParamLinesForParams(
+    filterToolParamsForDetail(entry.toolName || "", entry.command || "", entry.params),
+    maxWidth,
+  );
 }
 
 function formatToolParamLinesForParams(params: Record<string, string> | undefined, maxWidth: number): string[] {
@@ -618,10 +629,9 @@ function TimelineBlock({
       : "";
   const invocation =
     nestPrefix +
-    formatToolInvocation(
-      entry.toolName || "",
-      entry.command || "",
-    );
+    (entry.toolName || "tool").trim();
+  const summaryTag = formatToolSummaryTag(formatToolCallSummary(entry.toolName || "", entry.command || "", entry.params));
+  const statusPart = formatToolStatusPart(status);
   const isAskQuestions = (entry.toolName || "").trim().toLowerCase() === "ask_questions";
   const isRunSubagent = isRunSubagentEntry(entry);
   let qaDisplayLines: string[] | null = null;
@@ -651,7 +661,13 @@ function TimelineBlock({
           {dot.blink && !blinkOn ? " " : DOT}
         </Text>
         <Text>{" "}</Text>
-        <Text>{invocation}{renderToolSuffix(status)}</Text>
+        <Text bold>{invocation}</Text>
+        {summaryTag ? (
+          <Text color={TOOL_SUMMARY_TAG_COLOR}>{` ${summaryTag}`}</Text>
+        ) : null}
+        {statusPart.text ? (
+          <Text color={statusPart.color}>{` ${statusPart.text}`}</Text>
+        ) : null}
       </Text>
       {qaDisplayLines ? (
         qaDisplayLines.map((line, index) => (
