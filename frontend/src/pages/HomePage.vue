@@ -131,6 +131,8 @@ provideChatContext({
   isEmptyPlaceholder,
   openToolDetail,
   approveToolCall: store.approveToolCall,
+  approveAllPendingToolCalls: store.approveAllPendingToolCalls,
+  rejectAllPendingToolCalls: store.rejectAllPendingToolCalls,
   isFailedUserMessage: store.isFailedUserMessage,
   isAssistantErrorMessage: store.isAssistantErrorMessage,
   isChatAssistantAvatarAnimated,

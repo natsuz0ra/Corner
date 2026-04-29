@@ -26,6 +26,27 @@ func TestChatTimingPayloadsUseServerReceivedAndDoneTimes(t *testing.T) {
 	}
 }
 
+func TestApprovalBrokerDeliversResponseResolvedBeforeRegister(t *testing.T) {
+	broker := newApprovalBroker()
+	broker.Resolve("call-fast", chatsvc.ApprovalResponse{
+		ToolCallID: "call-fast",
+		Approved:   true,
+	})
+
+	ch := broker.Register("call-fast")
+
+	select {
+	case resp := <-ch:
+		if resp.ToolCallID != "call-fast" || !resp.Approved {
+			t.Fatalf("unexpected approval response: %+v", resp)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected queued approval response")
+	}
+
+	broker.Remove("call-fast")
+}
+
 func TestBuildTodoUpdatePayloadIncludesSessionScopedItems(t *testing.T) {
 	updatedAt := time.Date(2026, 4, 29, 1, 2, 3, 0, time.UTC)
 	payload := buildTodoUpdatePayload("session-1", chatsvc.TodoUpdate{

@@ -103,10 +103,15 @@ type approvalBroker struct {
 	mu sync.Mutex
 	// toolCallID -> channel for approval response.
 	channels map[string]chan chatsvc.ApprovalResponse
+	// toolCallID -> approval response that arrived before WaitApproval registered.
+	pending map[string]chatsvc.ApprovalResponse
 }
 
 func newApprovalBroker() *approvalBroker {
-	return &approvalBroker{channels: make(map[string]chan chatsvc.ApprovalResponse)}
+	return &approvalBroker{
+		channels: make(map[string]chan chatsvc.ApprovalResponse),
+		pending:  make(map[string]chatsvc.ApprovalResponse),
+	}
 }
 
 // Register registers an approval channel for a tool call; returns the receive channel.
@@ -114,6 +119,11 @@ func (b *approvalBroker) Register(toolCallID string) chan chatsvc.ApprovalRespon
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	ch := make(chan chatsvc.ApprovalResponse, 1)
+	if resp, ok := b.pending[toolCallID]; ok {
+		ch <- resp
+		delete(b.pending, toolCallID)
+		return ch
+	}
 	b.channels[toolCallID] = ch
 	return ch
 }
@@ -128,7 +138,9 @@ func (b *approvalBroker) Resolve(toolCallID string, resp chatsvc.ApprovalRespons
 		default:
 		}
 		delete(b.channels, toolCallID)
+		return
 	}
+	b.pending[toolCallID] = resp
 }
 
 // Remove drops the approval channel for a tool call (timeout or cancel).
@@ -136,6 +148,7 @@ func (b *approvalBroker) Remove(toolCallID string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.channels, toolCallID)
+	delete(b.pending, toolCallID)
 }
 
 // Chat handles a WebSocket: upgrades HTTP, starts read/write loops and chat loop.

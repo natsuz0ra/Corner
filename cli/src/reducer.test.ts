@@ -149,6 +149,61 @@ test("THINKING_START flushes live assistant text before new thinking block", () 
 	assert.equal(next.liveAssistant, "");
 });
 
+test("approval queue supports multiple pending approvals and cursor bounds", () => {
+	let state = initState();
+	state = reduce(state, {
+		type: "ADD_PENDING_APPROVAL",
+		item: {
+			toolCallId: "call-a",
+			toolName: "exec",
+			command: "run",
+			params: { command: "npm test" },
+		},
+	});
+	state = reduce(state, {
+		type: "ADD_PENDING_APPROVAL",
+		item: {
+			toolCallId: "call-b",
+			toolName: "exec",
+			command: "run",
+			params: { command: "go test ./..." },
+		},
+	});
+
+	assert.equal(state.view, "approval");
+	assert.deepEqual(state.pendingApprovals.map((item) => item.toolCallId), ["call-a", "call-b"]);
+
+	state = reduce(state, { type: "APPROVAL_NAV", delta: 10 });
+	assert.equal(state.approvalCursor, 1);
+
+	state = reduce(state, { type: "REMOVE_PENDING_APPROVAL", toolCallId: "call-b" });
+	assert.equal(state.view, "approval");
+	assert.equal(state.approvalCursor, 0);
+	assert.deepEqual(state.pendingApprovals.map((item) => item.toolCallId), ["call-a"]);
+
+	state = reduce(state, { type: "REMOVE_PENDING_APPROVAL", toolCallId: "call-a" });
+	assert.equal(state.view, "chat");
+	assert.deepEqual(state.pendingApprovals, []);
+});
+
+test("CLEAR_PENDING_APPROVALS returns to chat view", () => {
+	let state = reduce(initState(), {
+		type: "ADD_PENDING_APPROVAL",
+		item: {
+			toolCallId: "call-a",
+			toolName: "exec",
+			command: "run",
+			params: {},
+		},
+	});
+
+	state = reduce(state, { type: "CLEAR_PENDING_APPROVALS" });
+
+	assert.equal(state.view, "chat");
+	assert.deepEqual(state.pendingApprovals, []);
+	assert.equal(state.approvalCursor, 0);
+});
+
 test("STREAM_START initializes current turn stats", () => {
 	const state = reduce(initState(), { type: "STREAM_START", startedAt: 1_000 });
 

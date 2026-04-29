@@ -121,7 +121,12 @@ const askQuestionsData = computed(() => {
 watch(
   shouldAutoExpand,
   (value) => {
-    if (value) expanded.value = true
+    if (value) {
+      expanded.value = true
+      return
+    }
+    expanded.value = false
+    subagentTimelineExpanded.value = false
   },
   { immediate: true },
 )

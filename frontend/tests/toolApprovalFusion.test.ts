@@ -173,6 +173,15 @@ test('ToolCallInline collapses subagent tool calls and thinking when the outer c
   )
 })
 
+test('ToolCallInline collapses when approval-driven auto expansion ends', () => {
+  const toolCallInlineSource = readFileSync(resolve(import.meta.dirname, '../src/components/chat/ToolCallInline.vue'), 'utf8')
+
+  assert.match(
+    toolCallInlineSource,
+    /watch\(\s*shouldAutoExpand,\s*\(value\) => \{[\s\S]*if \(value\) \{[\s\S]*expanded\.value = true[\s\S]*return[\s\S]*\}[\s\S]*expanded\.value = false[\s\S]*subagentTimelineExpanded\.value = false[\s\S]*\}/,
+  )
+})
+
 test('PlanBlock uses the shared chevron size and right-closed/down-open direction', () => {
   const planBlockSource = readFileSync(resolve(import.meta.dirname, '../src/components/chat/PlanBlock.vue'), 'utf8')
 

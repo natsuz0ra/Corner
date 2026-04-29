@@ -15,6 +15,7 @@ import {
 } from '@/utils/replyBatchBuilder'
 import { hasContentMarkers, parseContentMarkers, stripContentMarkers } from '@/utils/contentMarkers'
 import { appendPlanBodyToBatch, appendPlanChunkToBatch, appendSubagentThinkingChunk, appendTextChunkToBatch, finalizeReplyBatchTiming, finishOpenThinkingEntries, finishSubagentThinking, markLastThinkingDone, startSubagentThinking } from '@/utils/liveReplyTimeline'
+import { getBatchApprovalToolCallIds, markToolApprovalDecision } from '@/utils/toolApprovals'
 
 const HISTORY_PAGE_SIZE = 10
 const MAX_SESSION_PAGE_SIZE = 100
@@ -48,6 +49,7 @@ export const useChatStore = defineStore('chat', () => {
   const assistantErrorIds = ref(new Set<string>())
   const failedUserMessageIds = ref(new Set<string>())
   const pendingPlanConfirmation = ref<{ planId: string; content: string } | null>(null)
+  const pendingApprovalToolCallIds = computed(() => replyBatches.value.flatMap((batch) => getBatchApprovalToolCallIds(batch.toolCalls)))
 
   interface QuestionItem {
     id: string
@@ -739,11 +741,20 @@ export const useChatStore = defineStore('chat', () => {
 
   function approveToolCall(toolCallId: string, approved: boolean) {
     const batch = replyBatches.value.find((group) => group.toolCalls.some((tc) => tc.toolCallId === toolCallId))
-    const item = batch?.toolCalls.find((tc) => tc.toolCallId === toolCallId)
-    if (item) {
-      item.status = approved ? 'executing' : 'rejected'
-    }
+    if (batch) markToolApprovalDecision(batch.toolCalls, toolCallId, approved)
     ws.sendToolApproval(toolCallId, approved)
+  }
+
+  function approveAllPendingToolCalls() {
+    for (const toolCallId of pendingApprovalToolCallIds.value) {
+      approveToolCall(toolCallId, true)
+    }
+  }
+
+  function rejectAllPendingToolCalls() {
+    for (const toolCallId of pendingApprovalToolCallIds.value) {
+      approveToolCall(toolCallId, false)
+    }
   }
 
   function submitQuestionAnswers(toolCallId: string, answers: string) {
@@ -874,12 +885,15 @@ export const useChatStore = defineStore('chat', () => {
     planGenerating,
     togglePlanMode,
     pendingPlanConfirmation,
+    pendingApprovalToolCallIds,
     approvePlan,
     rejectPlan,
     modifyPlan,
     dismissPlanConfirmation,
 
     pendingQuestions,
+    approveAllPendingToolCalls,
+    rejectAllPendingToolCalls,
     submitQuestionAnswers,
     cancelQuestionAnswers,
     runtimeTodos,

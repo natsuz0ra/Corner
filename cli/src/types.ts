@@ -223,6 +223,13 @@ export interface TimelineEntry {
   thinkingDurationMs?: number;
 }
 
+export interface PendingApprovalItem {
+  toolCallId: string;
+  toolName: string;
+  command: string;
+  params: Record<string, string>;
+}
+
 export interface MenuItem {
   title: string;
   desc: string;
@@ -327,6 +334,8 @@ export interface AppState {
   approvalCommand: string;
   approvalParams: Record<string, string>;
   approvalReplyCh: ((approved: boolean) => void) | null;
+  pendingApprovals: PendingApprovalItem[];
+  approvalCursor: number;
 
   // Plan confirmation
   pendingPlanId: string;
@@ -393,6 +402,10 @@ export type AppAction =
   | { type: "TOGGLE_MODEL_EDITOR_PROVIDER_SELECT" }
   | { type: "SET_APPROVAL"; toolCallId: string; toolName: string; command: string; params: Record<string, string>; replyCh: (approved: boolean) => void }
   | { type: "CLEAR_APPROVAL" }
+  | { type: "ADD_PENDING_APPROVAL"; item: PendingApprovalItem }
+  | { type: "REMOVE_PENDING_APPROVAL"; toolCallId: string }
+  | { type: "CLEAR_PENDING_APPROVALS" }
+  | { type: "APPROVAL_NAV"; delta: number }
   | { type: "SET_APPROVAL_MODE"; mode: string }
   | { type: "SET_THINKING_LEVEL"; level: string }
   | { type: "SET_SUBAGENT_MODEL"; modelId: string; modelName: string }
