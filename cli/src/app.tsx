@@ -996,12 +996,13 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
             } catch { /* ignore */ }
           } else {
             dispatch({
-              type: "SET_APPROVAL",
-              toolCallId: data.toolCallId,
-              toolName: data.toolName,
-              command: data.command,
-              params: data.params,
-              replyCh: () => {},
+              type: "ADD_PENDING_APPROVAL",
+              item: {
+                toolCallId: data.toolCallId,
+                toolName: data.toolName,
+                command: data.command,
+                params: data.params,
+              },
             } as AppAction);
           }
         }
@@ -1022,6 +1023,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
             subagentRunId: data.subagentRunId,
           },
         } as AppAction);
+        dispatch({ type: "REMOVE_PENDING_APPROVAL", toolCallId: data.toolCallId } as AppAction);
       },
       onSubagentChunk: (data) => {
         if (!data.parentToolCallId || !data.content) return;
@@ -1099,33 +1101,52 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     }
 
     if (state.view === "approval") {
+      const currentApproval = state.pendingApprovals[state.approvalCursor] ?? {
+        toolCallId: state.approvalToolCallId,
+        toolName: state.approvalToolName,
+        command: state.approvalCommand,
+        params: state.approvalParams,
+      };
+      const settleApproval = (toolCallId: string, approved: boolean) => {
+        socketRef.current?.sendToolApproval(toolCallId, approved);
+        dispatch({
+          type: "UPSERT_TOOL_ENTRY",
+          entry: {
+            kind: "tool",
+            toolCallId,
+            status: approved ? "executing" : "rejected",
+            error: approved ? "" : "Execution was rejected by the user.",
+            content: "",
+          },
+        } as AppAction);
+        dispatch({ type: "REMOVE_PENDING_APPROVAL", toolCallId } as AppAction);
+      };
+      if (key.upArrow) {
+        dispatch({ type: "APPROVAL_NAV", delta: -1 } as AppAction);
+        return;
+      }
+      if (key.downArrow) {
+        dispatch({ type: "APPROVAL_NAV", delta: 1 } as AppAction);
+        return;
+      }
+      if (input === "a" || input === "A") {
+        for (const item of state.pendingApprovals) {
+          settleApproval(item.toolCallId, true);
+        }
+        dispatch({ type: "CLEAR_PENDING_APPROVALS" } as AppAction);
+        return;
+      }
+      if (input === "r" || input === "R") {
+        for (const item of state.pendingApprovals) {
+          settleApproval(item.toolCallId, false);
+        }
+        dispatch({ type: "CLEAR_PENDING_APPROVALS" } as AppAction);
+        return;
+      }
       if (input === "y" || input === "Y") {
-        state.approvalReplyCh?.(true);
-        socketRef.current?.sendToolApproval(state.approvalToolCallId, true);
-        dispatch({
-          type: "UPSERT_TOOL_ENTRY",
-          entry: {
-            kind: "tool",
-            toolCallId: state.approvalToolCallId,
-            status: "executing",
-            content: "",
-          },
-        } as AppAction);
-        dispatch({ type: "CLEAR_APPROVAL" } as AppAction);
+        settleApproval(currentApproval.toolCallId, true);
       } else if (input === "n" || input === "N" || key.escape) {
-        state.approvalReplyCh?.(false);
-        socketRef.current?.sendToolApproval(state.approvalToolCallId, false);
-        dispatch({
-          type: "UPSERT_TOOL_ENTRY",
-          entry: {
-            kind: "tool",
-            toolCallId: state.approvalToolCallId,
-            status: "rejected",
-            error: "Execution was rejected by the user.",
-            content: "",
-          },
-        } as AppAction);
-        dispatch({ type: "CLEAR_APPROVAL" } as AppAction);
+        settleApproval(currentApproval.toolCallId, false);
       }
       return;
     }
@@ -1471,6 +1492,8 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           toolName={state.approvalToolName}
           command={state.approvalCommand}
           params={state.approvalParams}
+          items={state.pendingApprovals}
+          cursor={state.approvalCursor}
         />
       )}
 
@@ -1613,7 +1636,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
       {state.view === "approval" && (
         <Text color="gray" dimColor>
-          Y to approve | N/Esc to reject
+          ↑/↓ select | Y approve | N/Esc reject | A approve all | R reject all
         </Text>
       )}
 
