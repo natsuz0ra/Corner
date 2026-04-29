@@ -186,7 +186,7 @@ test('AssistantMessageBody renders the parent reply collapse bar and visible tim
   const assistantBodySource = readFileSync(resolve(import.meta.dirname, '../src/components/chat/AssistantMessageBody.vue'), 'utf8')
 
   assert.match(assistantBodySource, /reply-collapse-bar/)
-  assert.match(assistantBodySource, /<TransitionGroup name="reply-segment" tag="div" class="assistant-reply-timeline">/)
+  assert.match(assistantBodySource, /<TransitionGroup[\s\S]*name="reply-segment"[\s\S]*tag="div"[\s\S]*class="assistant-reply-timeline"/)
   assert.match(assistantBodySource, /getCollapsedReplyTimeline/)
   assert.match(assistantBodySource, /v-for="\((entry, index|entry,\s*index)\) in renderedTimeline"/)
   assert.match(assistantBodySource, /assistant-reply-segment--first-visible/)
