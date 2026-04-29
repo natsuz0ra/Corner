@@ -5,6 +5,7 @@
 
 import React from "react";
 import { Box, Text } from "ink";
+import { filterToolParamsForDetail, formatToolCallSummary } from "../utils/format.js";
 
 interface ApprovalViewProps {
   toolName: string;
@@ -35,15 +36,18 @@ export function ApprovalView({
         Tool Approval Required{approvalItems.length > 1 ? ` (${approvalItems.length})` : ""}
       </Text>
       {approvalItems.map((item, index) => {
-        const itemParamStr = Object.keys(item.params).length > 0
-          ? Object.entries(item.params).map(([k, v]) => `${k}=${v}`).join(", ")
+        const detailParams = filterToolParamsForDetail(item.toolName, item.command, item.params) || {};
+        const itemParamStr = Object.keys(detailParams).length > 0
+          ? Object.entries(detailParams).map(([k, v]) => `${k}=${v}`).join(", ")
           : "";
+        const summary = formatToolCallSummary(item.toolName, item.command, item.params);
         const selected = index === cursor;
         return (
           <Box key={item.toolCallId || `${item.toolName}-${index}`} flexDirection="column">
             <Text>
               <Text color={selected ? "cyan" : "gray"}>{selected ? "❯ " : "  "}</Text>
-              Tool: <Text bold>{item.toolName}.{item.command}</Text>
+              Tool: <Text bold>{item.toolName}</Text>
+              {summary ? <Text color="gray">{` ${summary}`}</Text> : null}
             </Text>
             {itemParamStr && (
               <Text color="gray">

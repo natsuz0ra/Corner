@@ -5,6 +5,8 @@ import {
   formatCollapsedLines,
   formatToolTextValue,
   formatToolParamEntries,
+  filterToolParamsForDetail,
+  formatToolCallSummary,
   parseExecOutputPayload,
   estimateTokens,
   formatCompactTokenCount,
@@ -72,6 +74,36 @@ test("formatToolParamEntries formats multiline JSON values", () => {
   assert.ok(entries[0]!.startsWith("a:"));
   assert.ok(entries.some((line) => line.includes("b:")));
   assert.ok(entries.some((line) => line.includes('"x": 1')));
+});
+
+test("formatToolCallSummary uses core tool parameters", () => {
+  assert.equal(
+    formatToolCallSummary("exec", "run", { command: "go test ./...", description: "Run Go tests" }),
+    "Run Go tests",
+  );
+  assert.equal(
+    formatToolCallSummary("web_search", "search", { query: "SlimeBot latest" }),
+    "query: SlimeBot latest",
+  );
+  assert.equal(
+    formatToolCallSummary("http_request", "request", { method: "post", url: "https://example.test/api" }),
+    "POST https://example.test/api",
+  );
+});
+
+test("formatToolCallSummary hides missing legacy exec description", () => {
+  assert.equal(formatToolCallSummary("exec", "run", { command: "go test ./..." }), "");
+});
+
+test("filterToolParamsForDetail removes params already shown in summary", () => {
+  assert.deepEqual(
+    filterToolParamsForDetail("exec", "run", { command: "go test ./...", description: "Run Go tests" }),
+    { command: "go test ./..." },
+  );
+  assert.deepEqual(
+    filterToolParamsForDetail("web_search", "search", { query: "SlimeBot latest" }),
+    {},
+  );
 });
 
 test("parseExecOutputPayload parses valid exec output payload", () => {
