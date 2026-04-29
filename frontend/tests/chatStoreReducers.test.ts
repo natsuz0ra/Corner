@@ -174,3 +174,21 @@ test('finalizeReplyBatchTiming records duration and collapses the completed live
   assert.equal(batch.finishedAt, 2750)
   assert.equal(batch.durationMs, 1750)
 })
+
+test('finalizeReplyBatchTiming prefers backend duration when provided', () => {
+  const batch: AssistantReplyBatch = {
+    id: 'batch-1',
+    sessionId: 'session-1',
+    assistantMessageId: 'assistant-1',
+    toolCalls: [],
+    timeline: [],
+    collapsed: false,
+    startedAt: 1000,
+  }
+
+  finalizeReplyBatchTiming(batch, 5000, 2400)
+
+  assert.equal(batch.collapsed, true)
+  assert.equal(batch.finishedAt, 5000)
+  assert.equal(batch.durationMs, 2400)
+})

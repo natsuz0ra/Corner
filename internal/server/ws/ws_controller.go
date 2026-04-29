@@ -351,7 +351,7 @@ func (w *Controller) handleChatIncoming(
 	if !enqueue(map[string]any{"type": "session", "sessionId": session.ID}) {
 		return false
 	}
-	if !enqueue(map[string]any{"type": "start", "sessionId": session.ID}) {
+	if !enqueue(buildChatStartPayload(session.ID, receivedAt)) {
 		return false
 	}
 
@@ -362,10 +362,11 @@ func (w *Controller) handleChatIncoming(
 	activeCancel.Set(cancel)
 	defer activeCancel.Clear(cancel)
 	callbacks := w.buildCallbacks(enqueue, broker, session.ID, &firstChunkSentAt)
-	streamResult, err := w.chatService.HandleChatStream(
+	streamResult, err := w.chatService.HandleChatStreamWithReceivedAt(
 		chatCtx,
 		session.ID,
 		requestID,
+		receivedAt,
 		incoming.Content,
 		incoming.DisplayContent,
 		incoming.ModelID,
@@ -393,15 +394,10 @@ func (w *Controller) handleChatIncoming(
 			return false
 		}
 	}
-	donePayload := map[string]any{"type": "done", "sessionId": session.ID}
+	doneSentAt := time.Now()
+	donePayload := buildChatDonePayload(session.ID, streamResult, receivedAt, doneSentAt)
 	if streamResult != nil {
-		donePayload["answer"] = streamResult.Answer
-		// Client uses flags for copy and rendering (e.g. i18n for "output stopped").
-		donePayload["isInterrupted"] = streamResult.IsInterrupted
-		donePayload["isStopPlaceholder"] = streamResult.IsStopPlaceholder
 		if streamResult.PlanID != "" {
-			donePayload["planId"] = streamResult.PlanID
-			donePayload["planBody"] = streamResult.PlanBody
 			donePayload["narration"] = streamResult.Narration
 		}
 	}
@@ -409,7 +405,6 @@ func (w *Controller) handleChatIncoming(
 		return false
 	}
 
-	doneSentAt := time.Now()
 	startToFirstChunkMs := int64(-1)
 	firstChunkToDoneMs := int64(-1)
 	if !firstChunkSentAt.IsZero() {
@@ -424,6 +419,38 @@ func (w *Controller) handleChatIncoming(
 		"total_ms", doneSentAt.Sub(receivedAt).Milliseconds(),
 	)
 	return true
+}
+
+func buildChatStartPayload(sessionID string, startedAt time.Time) map[string]any {
+	return map[string]any{
+		"type":      "start",
+		"sessionId": sessionID,
+		"startedAt": startedAt.Format(time.RFC3339Nano),
+	}
+}
+
+func buildChatDonePayload(sessionID string, streamResult *chatsvc.ChatStreamResult, receivedAt time.Time, doneSentAt time.Time) map[string]any {
+	durationMs := doneSentAt.Sub(receivedAt).Milliseconds()
+	if durationMs < 0 {
+		durationMs = 0
+	}
+	payload := map[string]any{
+		"type":       "done",
+		"sessionId":  sessionID,
+		"finishedAt": doneSentAt.Format(time.RFC3339Nano),
+		"durationMs": durationMs,
+	}
+	if streamResult == nil {
+		return payload
+	}
+	payload["answer"] = streamResult.Answer
+	payload["isInterrupted"] = streamResult.IsInterrupted
+	payload["isStopPlaceholder"] = streamResult.IsStopPlaceholder
+	if streamResult.PlanID != "" {
+		payload["planId"] = streamResult.PlanID
+		payload["planBody"] = streamResult.PlanBody
+	}
+	return payload
 }
 
 // buildCallbacks builds ChatService callbacks and maps them to WebSocket events.
