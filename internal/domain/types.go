@@ -12,6 +12,7 @@ type AddMessageInput struct {
 	IsInterrupted     bool
 	IsStopPlaceholder bool
 	Attachments       []MessageAttachment
+	CreatedAt         time.Time
 }
 
 type ToolCallStartRecordInput struct {

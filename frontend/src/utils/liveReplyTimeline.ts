@@ -28,9 +28,11 @@ export function finishOpenThinkingEntries(batch: AssistantReplyBatch, finishedAt
   }
 }
 
-export function finalizeReplyBatchTiming(batch: AssistantReplyBatch, finishedAt = Date.now()) {
+export function finalizeReplyBatchTiming(batch: AssistantReplyBatch, finishedAt = Date.now(), durationMs?: number) {
   batch.finishedAt = finishedAt
-  batch.durationMs = typeof batch.startedAt === 'number' ? Math.max(0, finishedAt - batch.startedAt) : batch.durationMs
+  batch.durationMs = typeof durationMs === 'number' && Number.isFinite(durationMs)
+    ? Math.max(0, durationMs)
+    : (typeof batch.startedAt === 'number' ? Math.max(0, finishedAt - batch.startedAt) : batch.durationMs)
   batch.collapsed = true
 }
 

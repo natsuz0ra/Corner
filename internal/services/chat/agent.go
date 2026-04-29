@@ -170,7 +170,7 @@ func BuildToolDefs() []llmsvc.ToolDef {
 func buildRunSubagentToolDef() llmsvc.ToolDef {
 	return llmsvc.ToolDef{
 		Name:        constants.RunSubagentTool,
-		Description: "[subagent] proactively delegate independent sub-tasks to a nested agent with isolated context (no chat history). Prefer this for multi-step research, codebase exploration, parallel verification, complex task decomposition, and tool-heavy work. The parent agent remains responsible for integrating the result.",
+		Description: "[subagent] Delegate bounded, concise, independent sub-tasks to a nested agent with isolated context (no chat history). Prefer this only when separate focused research, codebase inspection, validation, or summarization has a clear stopping point. The parent agent remains responsible for integrating the result.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

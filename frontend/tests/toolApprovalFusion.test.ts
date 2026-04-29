@@ -89,6 +89,18 @@ test('chat socket forwards backend event timestamps for tool and thinking orderi
   assert.match(chatStoreSource, /finishSubagentThinking\(batch, data\.parentToolCallId, parseSocketTimestamp\(data\.finishedAt\)\)/)
 })
 
+test('chat socket and store forward backend reply timing for live batches', () => {
+  const chatSocketSource = readFileSync(resolve(import.meta.dirname, '../src/api/chatSocket.ts'), 'utf8')
+  const chatStoreSource = readFileSync(resolve(import.meta.dirname, '../src/stores/chat.ts'), 'utf8')
+
+  assert.match(chatSocketSource, /onStart: \(sessionId\?: string, meta\?: \{ startedAt\?: string \}\) => void/)
+  assert.match(chatSocketSource, /durationMs\?: number/)
+  assert.match(chatSocketSource, /this\.handlers\?\.onStart\(data\.sessionId, \{ startedAt: data\.startedAt \}\)/)
+  assert.match(chatSocketSource, /durationMs: data\.durationMs/)
+  assert.match(chatStoreSource, /onStart: \(sessionId, meta\) => \{[\s\S]*startedAt: parseSocketTimestamp\(meta\?\.startedAt\),/s)
+  assert.match(chatStoreSource, /finalizeReplyBatchTiming\(batch, parseSocketTimestamp\(meta\?\.finishedAt\), meta\?\.durationMs\)/)
+})
+
 test('ThinkingBlock supports live subagent reasoning content before completion', () => {
   const thinkingBlockSource = readFileSync(resolve(import.meta.dirname, '../src/components/chat/ThinkingBlock.vue'), 'utf8')
 

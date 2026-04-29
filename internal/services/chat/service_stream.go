@@ -67,11 +67,45 @@ func (s *ChatService) HandleChatStream(
 	subagentModelID string,
 	callbacks AgentCallbacks,
 ) (*ChatStreamResult, error) {
+	return s.handleChatStreamWithReceivedAt(ctx, sessionID, requestID, time.Now(), content, displayContent, modelID, attachmentIDs, thinkingLevel, planMode, subagentModelID, callbacks)
+}
+
+func (s *ChatService) HandleChatStreamWithReceivedAt(
+	ctx context.Context,
+	sessionID string,
+	requestID string,
+	receivedAt time.Time,
+	content string,
+	displayContent string,
+	modelID string,
+	attachmentIDs []string,
+	thinkingLevel string,
+	planMode bool,
+	subagentModelID string,
+	callbacks AgentCallbacks,
+) (*ChatStreamResult, error) {
+	return s.handleChatStreamWithReceivedAt(ctx, sessionID, requestID, receivedAt, content, displayContent, modelID, attachmentIDs, thinkingLevel, planMode, subagentModelID, callbacks)
+}
+
+func (s *ChatService) handleChatStreamWithReceivedAt(
+	ctx context.Context,
+	sessionID string,
+	requestID string,
+	receivedAt time.Time,
+	content string,
+	displayContent string,
+	modelID string,
+	attachmentIDs []string,
+	thinkingLevel string,
+	planMode bool,
+	subagentModelID string,
+	callbacks AgentCallbacks,
+) (*ChatStreamResult, error) {
 	if strings.TrimSpace(content) == "" && len(attachmentIDs) == 0 {
 		return nil, fmt.Errorf("Message cannot be empty.")
 	}
 
-	state, err := s.prepareChatTurn(ctx, sessionID, content, displayContent, modelID, attachmentIDs, thinkingLevel)
+	state, err := s.prepareChatTurn(ctx, sessionID, receivedAt, content, displayContent, modelID, attachmentIDs, thinkingLevel)
 	if err != nil {
 		return nil, err
 	}
@@ -102,6 +136,7 @@ func (s *ChatService) HandleChatStream(
 func (s *ChatService) prepareChatTurn(
 	ctx context.Context,
 	sessionID string,
+	receivedAt time.Time,
 	content string,
 	displayContent string,
 	modelID string,
@@ -156,6 +191,7 @@ func (s *ChatService) prepareChatTurn(
 		Role:        "user",
 		Content:     userContentForDisplay,
 		Attachments: userMessageAttachments,
+		CreatedAt:   receivedAt,
 	}); err != nil {
 		return nil, err
 	}

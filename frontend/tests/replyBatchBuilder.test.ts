@@ -282,3 +282,41 @@ test('buildReplyBatchesFromHistory derives reply timing from persisted timestamp
   assert.equal(batches[0]!.finishedAt, Date.parse('2026-04-28T00:00:04.000Z'))
   assert.equal(batches[0]!.durationMs, 4000)
 })
+
+test('buildReplyBatchesFromHistory prefers backend reply timing over derived tool timing', async () => {
+  const { buildReplyBatchesFromHistory } = await import('../src/utils/replyBatchBuilder')
+  const batches = buildReplyBatchesFromHistory('session-1', {
+    messages: [{
+      id: 'assistant-1',
+      role: 'assistant',
+      content: '<!-- TOOL_CALL:tool-1 -->\nDone.',
+      createdAt: '2026-04-28T00:00:02.000Z',
+      seq: 2,
+    }],
+    toolCallsByAssistantMessageId: {
+      'assistant-1': [{
+        toolCallId: 'tool-1',
+        toolName: 'web_search',
+        command: 'search',
+        params: {},
+        requiresApproval: false,
+        status: 'completed',
+        startedAt: '2026-04-28T00:00:05.000Z',
+        finishedAt: '2026-04-28T00:00:10.000Z',
+      }],
+    },
+    thinkingByAssistantMessageId: {},
+    replyTimingByAssistantMessageId: {
+      'assistant-1': {
+        startedAt: '2026-04-28T00:00:01.000Z',
+        finishedAt: '2026-04-28T00:00:03.500Z',
+        durationMs: 2500,
+      },
+    },
+    hasMore: false,
+  })
+
+  assert.equal(batches[0]!.startedAt, Date.parse('2026-04-28T00:00:01.000Z'))
+  assert.equal(batches[0]!.finishedAt, Date.parse('2026-04-28T00:00:03.500Z'))
+  assert.equal(batches[0]!.durationMs, 2500)
+})

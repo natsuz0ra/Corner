@@ -3,10 +3,10 @@ import type { ToolCallStatus } from '@/types/chat'
 
 type Handlers = {
   onSession: (sessionId: string) => void
-  onStart: (sessionId?: string) => void
+  onStart: (sessionId?: string, meta?: { startedAt?: string }) => void
   onChunk: (chunk: string, sessionId?: string) => void
   onSessionTitle: (title: string, sessionId?: string) => void
-  onDone: (sessionId?: string, answer?: string, meta?: { isInterrupted?: boolean; isStopPlaceholder?: boolean; planId?: string; planBody?: string }) => void
+  onDone: (sessionId?: string, answer?: string, meta?: { isInterrupted?: boolean; isStopPlaceholder?: boolean; planId?: string; planBody?: string; finishedAt?: string; durationMs?: number }) => void
   onError: (error: string, sessionId?: string) => void
   onToolCallStart?: (data: ToolCallStartData, sessionId?: string) => void
   onToolCallResult?: (data: ToolCallResultData, sessionId?: string) => void
@@ -95,6 +95,7 @@ type WSIncoming = {
   output?: string
   startedAt?: string
   finishedAt?: string
+  durationMs?: number
   isInterrupted?: boolean
   isStopPlaceholder?: boolean
   parentToolCallId?: string
@@ -233,7 +234,7 @@ export class ChatSocket {
       }
 
       if (data.type === 'session' && data.sessionId) this.handlers?.onSession(data.sessionId)
-      if (data.type === 'start') this.handlers?.onStart(data.sessionId)
+      if (data.type === 'start') this.handlers?.onStart(data.sessionId, { startedAt: data.startedAt })
       if (data.type === 'chunk') this.handlers?.onChunk(data.content || '', data.sessionId)
       if (data.type === 'session_title') this.handlers?.onSessionTitle(data.title || '', data.sessionId)
       if (data.type === 'done') {
@@ -242,6 +243,8 @@ export class ChatSocket {
           isStopPlaceholder: data.isStopPlaceholder,
           planId: data.planId,
           planBody: data.planBody,
+          finishedAt: data.finishedAt,
+          durationMs: data.durationMs,
         })
       }
       if (data.type === 'error') this.handlers?.onError(data.error || 'unknown error', data.sessionId)

@@ -380,7 +380,7 @@ export const useChatStore = defineStore('chat', () => {
           currentSessionId.value = id
         }
       },
-      onStart: (sessionId) => {
+      onStart: (sessionId, meta) => {
         if (!sessionId || sessionId !== currentSessionId.value) return
         waiting.value = true
         streamingStarted.value = false
@@ -402,7 +402,7 @@ export const useChatStore = defineStore('chat', () => {
           toolCalls: [],
           timeline: [],
           collapsed: false,
-          startedAt: Date.now(),
+          startedAt: parseSocketTimestamp(meta?.startedAt),
         })
       },
       onChunk: (chunk, sessionId) => {
@@ -447,7 +447,7 @@ export const useChatStore = defineStore('chat', () => {
               ? buildInterleavedTimeline(batch.toolCalls, finalAnswer, liveThinking)
               : buildLegacyTimeline(batch.toolCalls, stripContentMarkers(finalAnswer))
           }
-          finalizeReplyBatchTiming(batch)
+          finalizeReplyBatchTiming(batch, parseSocketTimestamp(meta?.finishedAt), meta?.durationMs)
         }
         currentBatchId.value = ''
         if (meta?.planId) {

@@ -30,16 +30,22 @@ func TestBuildRuntimeToolDefs_IncludesRunSubagentAtDepth0Only(t *testing.T) {
 	}
 }
 
-func TestRunSubagentToolDef_EncouragesProactiveDelegationWithIsolation(t *testing.T) {
+func TestRunSubagentToolDef_EncouragesBoundedDelegationWithIsolation(t *testing.T) {
 	def := buildRunSubagentToolDef()
 	desc := def.Description
 	for _, want := range []string{
-		"proactively delegate independent sub-tasks",
+		"bounded",
+		"concise",
+		"independent",
 		"isolated context",
-		"parallel verification",
 	} {
 		if !containsText(desc, want) {
 			t.Fatalf("run_subagent description missing %q: %q", want, desc)
+		}
+	}
+	for _, forbidden := range []string{"tool-heavy work", "proactively delegate"} {
+		if containsText(desc, forbidden) {
+			t.Fatalf("run_subagent description should not encourage %q: %q", forbidden, desc)
 		}
 	}
 

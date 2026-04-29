@@ -63,10 +63,17 @@ export interface SessionHistoryThinkingItem {
   durationMs?: number
 }
 
+export interface SessionHistoryReplyTimingItem {
+  startedAt: string
+  finishedAt: string
+  durationMs: number
+}
+
 export interface SessionHistoryPayload {
   messages: MessageItem[]
   toolCallsByAssistantMessageId: Record<string, SessionHistoryToolCallItem[]>
   thinkingByAssistantMessageId: Record<string, SessionHistoryThinkingItem[]>
+  replyTimingByAssistantMessageId?: Record<string, SessionHistoryReplyTimingItem>
   hasMore: boolean
 }
 

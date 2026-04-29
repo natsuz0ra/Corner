@@ -1,4 +1,4 @@
-import type { SessionHistoryPayload, SessionHistoryThinkingItem, SessionHistoryToolCallItem, ToolCallItem } from '@/api/chat'
+import type { SessionHistoryPayload, SessionHistoryReplyTimingItem, SessionHistoryThinkingItem, SessionHistoryToolCallItem, ToolCallItem } from '@/api/chat'
 import type { ToolCallStatus } from '@/types/chat'
 import { hasContentMarkers, parseContentMarkers } from './contentMarkers'
 
@@ -53,7 +53,20 @@ function deriveReplyTiming(
   messageCreatedAt: string | undefined,
   toolCalls: SessionHistoryToolCallItem[],
   thinkingRecords: SessionHistoryThinkingItem[],
+  replyTiming?: SessionHistoryReplyTimingItem,
 ) {
+  const replyStartedAt = parseTimestamp(replyTiming?.startedAt)
+  const replyFinishedAt = parseTimestamp(replyTiming?.finishedAt)
+  if (typeof replyStartedAt === 'number' && typeof replyFinishedAt === 'number') {
+    return {
+      startedAt: replyStartedAt,
+      finishedAt: replyFinishedAt,
+      durationMs: typeof replyTiming?.durationMs === 'number'
+        ? Math.max(0, replyTiming.durationMs)
+        : Math.max(0, replyFinishedAt - replyStartedAt),
+    }
+  }
+
   const starts: number[] = []
   const finishes: number[] = []
 
@@ -288,7 +301,7 @@ export function buildReplyBatchesFromHistory(sessionId: string, history: Session
       toolCalls,
       timeline,
       collapsed: true,
-      ...deriveReplyTiming(message.createdAt, historyToolCalls, historyThinking),
+      ...deriveReplyTiming(message.createdAt, historyToolCalls, historyThinking, history.replyTimingByAssistantMessageId?.[message.id]),
     })
   }
   return nextBatches
