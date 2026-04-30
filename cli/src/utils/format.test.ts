@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { resolve } from "node:path";
 import {
   wrapText,
   formatCollapsedLines,
@@ -190,22 +191,23 @@ test("buildLineDiff emits concrete removed and added lines", () => {
 });
 
 test("buildFileToolDisplay formats file_write as concrete added lines", () => {
+  const filePath = "frontend/src/utils/fileToolDisplay.ts";
   const display = buildFileToolDisplay({
     toolName: "file_write",
     params: {
-      file_path: "frontend/src/utils/fileToolDisplay.ts",
+      file_path: filePath,
       content: "export const ok = true\n",
     },
   });
 
-  assert.equal(display?.summary, "Wrote 1 line to fileToolDisplay.ts");
+  assert.equal(display?.summary, `Wrote 1 line to ${resolve(filePath)}`);
   assert.equal(display?.fileName, "fileToolDisplay.ts");
   assert.deepEqual(display?.diffLines, [
     { kind: "added", newLine: 1, text: "export const ok = true" },
   ]);
 });
 
-test("buildFileToolDisplay prefers backend metadata diff and basename summary", () => {
+test("buildFileToolDisplay prefers backend metadata diff and absolute summary", () => {
   const display = buildFileToolDisplay({
     toolName: "file_edit",
     params: {
@@ -228,6 +230,7 @@ test("buildFileToolDisplay prefers backend metadata diff and basename summary", 
 
   assert.equal(display?.fileName, "fileToolDisplay.ts");
   assert.equal(display?.filePath, "cli/src/utils/fileToolDisplay.ts");
+  assert.equal(display?.summary, `Updated ${resolve("cli/src/utils/fileToolDisplay.ts")}`);
   assert.deepEqual(display?.diffLines, [
     { kind: "context", oldLine: 9, newLine: 9, text: "before" },
     { kind: "removed", oldLine: 10, text: "old" },
