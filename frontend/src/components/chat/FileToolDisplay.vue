@@ -33,7 +33,7 @@ function marker(kind: string) {
 <template>
   <section v-if="display" class="file-tool">
     <div class="file-tool-summary">
-      <div class="file-tool-tree">└─</div>
+      <div class="file-tool-badge">{{ display.operation }}</div>
       <div class="file-tool-summary-main">
         <div class="file-tool-action">{{ summaryText }}</div>
         <div v-if="display.filePath" class="file-tool-path">{{ display.filePath }}</div>
@@ -64,24 +64,35 @@ function marker(kind: string) {
 .file-tool {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  border: 1px solid var(--tool-section-border);
+  gap: 10px;
+  border: 1px solid rgba(100, 116, 139, 0.22);
   border-radius: 8px;
-  background: var(--tool-section-bg);
-  padding: 8px;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.035), transparent 42px),
+    var(--card-bg);
+  padding: 10px;
   overflow: hidden;
 }
 
 .file-tool-summary {
   display: flex;
   gap: 8px;
+  align-items: flex-start;
   min-width: 0;
 }
 
-.file-tool-tree {
-  color: var(--tool-summary-text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  line-height: 1.35;
+.file-tool-badge {
+  min-width: 56px;
+  border: 1px solid rgba(100, 116, 139, 0.24);
+  border-radius: 6px;
+  background: rgba(100, 116, 139, 0.08);
+  color: var(--text-secondary);
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.2;
+  text-align: center;
+  text-transform: uppercase;
   flex: 0 0 auto;
 }
 
@@ -108,19 +119,21 @@ function marker(kind: string) {
 .file-tool-diff {
   display: flex;
   flex-direction: column;
-  gap: 2px;
   max-width: 100%;
   overflow-x: auto;
-  padding-bottom: 2px;
+  border-top: 1px solid rgba(100, 116, 139, 0.22);
+  border-bottom: 1px solid rgba(100, 116, 139, 0.22);
+  background: rgba(2, 6, 23, 0.035);
+  padding: 6px 0;
 }
 
 .file-tool-diff-row {
   display: grid;
-  grid-template-columns: 28px 18px 42px minmax(0, 1fr);
+  grid-template-columns: 22px 18px 48px minmax(0, 1fr);
   align-items: start;
   min-width: max-content;
-  border-radius: 5px;
-  padding: 2px 8px 2px 0;
+  border-radius: 0;
+  padding: 1px 10px 1px 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 13px;
   line-height: 1.45;
@@ -138,7 +151,7 @@ function marker(kind: string) {
 }
 
 .file-tool-diff-row--context {
-  background: rgba(148, 163, 184, 0.12);
+  background: transparent;
 }
 
 .file-tool-diff-guide,
@@ -170,11 +183,16 @@ function marker(kind: string) {
 
 @media (max-width: 640px) {
   .file-tool {
-    padding: 7px;
+    padding: 8px;
+  }
+
+  .file-tool-badge {
+    min-width: 48px;
+    padding-inline: 5px;
   }
 
   .file-tool-diff-row {
-    grid-template-columns: 24px 16px 36px minmax(0, 1fr);
+    grid-template-columns: 20px 16px 40px minmax(0, 1fr);
     font-size: 12px;
   }
 }

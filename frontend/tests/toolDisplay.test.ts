@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import test from 'node:test'
 import type { ToolCallItem } from '../src/api/chat'
 import {
@@ -160,4 +162,12 @@ test('buildFileToolDisplay formats file_write as concrete added lines', () => {
   assert.deepEqual(display?.diffLines, [
     { kind: 'added', newLine: 1, text: 'export const ok = true' },
   ])
+})
+
+test('ToolCallInline routes file tools through FileToolDisplay', () => {
+  const source = readFileSync(resolve(import.meta.dirname, '../src/components/chat/ToolCallInline.vue'), 'utf8')
+
+  assert.match(source, /import FileToolDisplay/)
+  assert.match(source, /<FileToolDisplay v-if="isFileToolCall"/)
+  assert.match(source, /showResult && !isFileToolCall/)
 })

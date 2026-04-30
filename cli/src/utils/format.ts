@@ -36,6 +36,10 @@ export function getToolSummaryParamKeys(
     return keys;
   }
 
+  if (tool === "ask_questions") {
+    return [];
+  }
+
   if (tool === "exec" && cmd === "run" && normalizedParam(params, "description") !== "") {
     return ["description"];
   }
@@ -69,6 +73,10 @@ export function formatToolCallSummary(
 
   if (isFileToolName(tool)) {
     return fileToolSummaryFromParams(tool, params);
+  }
+
+  if (tool === "ask_questions") {
+    return "";
   }
 
   if (tool === "exec" && cmd === "run") {
