@@ -147,7 +147,7 @@ test("formatFileToolTimelineLines shows tree-headed concrete edit diff", () => {
 
   const lines = formatFileToolTimelineLines(entry, 120, false);
 
-  assert.equal(lines[0], "   └─ Updated toolDisplay.ts");
+  assert.equal(lines[0], `   └─ Updated ${resolve("frontend/src/utils/toolDisplay.ts")}`);
   assert.ok(lines.some((line) => line.includes("├─ +") && line.includes("file_read")));
   assert.ok(lines.some((line) => line.includes("└─") || line.includes("├─")));
 });

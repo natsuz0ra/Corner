@@ -1,4 +1,5 @@
 import type { TimelineEntry } from "../types.js";
+import { resolve } from "node:path";
 
 export type FileToolName = "file_read" | "file_edit" | "file_write";
 
@@ -33,12 +34,24 @@ function baseName(filePath: string): string {
   return normalized.split("/").filter(Boolean).pop() || filePath;
 }
 
+function isAbsoluteLike(filePath: string): boolean {
+  return filePath.startsWith("/")
+    || /^[a-zA-Z]:[\\/]/.test(filePath)
+    || filePath.startsWith("\\\\");
+}
+
+function absolutePath(filePath: string): string {
+  const trimmed = filePath.trim();
+  if (!trimmed) return "";
+  return isAbsoluteLike(trimmed) ? trimmed : resolve(trimmed);
+}
+
 function summaryForOperation(operation: FileToolDisplay["operation"], filePath: string): string {
-  const name = baseName(filePath);
-  if (operation === "Create") return `Created ${name}`;
-  if (operation === "Update") return `Updated ${name}`;
-  if (operation === "Write") return `Wrote ${name}`;
-  return `Read ${name}`;
+  const absPath = absolutePath(filePath);
+  if (operation === "Create") return `Created ${absPath}`;
+  if (operation === "Update") return `Updated ${absPath}`;
+  if (operation === "Write") return `Wrote ${absPath}`;
+  return `Read ${absPath}`;
 }
 
 export function isFileToolName(toolName: string | undefined): toolName is FileToolName {
@@ -162,7 +175,9 @@ function displayFromMetadata(toolName: FileToolName, metadata: unknown): FileToo
     filePath,
     fileName: baseName(filePath),
     operation,
-    summary: typeof raw.summary === "string" && raw.summary.trim() ? raw.summary.trim() : summaryForOperation(operation, filePath),
+    summary: operation === "Read" && typeof raw.summary === "string" && raw.summary.trim()
+      ? raw.summary.trim()
+      : summaryForOperation(operation, filePath),
     diffLines,
   };
 }
@@ -217,7 +232,7 @@ export function buildFileToolDisplay(entry: {
     filePath,
     fileName: baseName(filePath),
     operation: "Write",
-    summary: `Wrote ${lineCount} ${lineCount === 1 ? "line" : "lines"} to ${baseName(filePath)}`,
+    summary: `Wrote ${lineCount} ${lineCount === 1 ? "line" : "lines"} to ${absolutePath(filePath)}`,
     diffLines: buildLineDiff("", content),
   };
 }
