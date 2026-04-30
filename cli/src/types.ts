@@ -50,7 +50,7 @@ export interface Settings {
 }
 
 // Thinking level cycle order
-export const THINKING_LEVELS = ["off", "low", "medium", "high"] as const;
+export const THINKING_LEVELS = ["off", "low", "medium", "high", "max"] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
 // ===== API response types =====
@@ -201,7 +201,7 @@ export const MCP_TEMPLATES: MCPTemplate[] = [
 
 // ===== Model provider types =====
 
-export type ModelProvider = "openai" | "anthropic";
+export type ModelProvider = "openai" | "anthropic" | "deepseek";
 
 export interface TimelineEntry {
   kind: "user" | "assistant" | "system" | "tool" | "thinking" | "plan";

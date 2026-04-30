@@ -45,6 +45,15 @@ import type {
 } from "./types.js";
 import { MCP_TEMPLATES, THINKING_LEVELS } from "./types.js";
 
+const MODEL_PROVIDER_ORDER: ModelProvider[] = ["openai", "anthropic", "deepseek"];
+
+function moveModelProvider(current: ModelProvider, delta: number): ModelProvider {
+  const currentIndex = MODEL_PROVIDER_ORDER.indexOf(current);
+  const start = currentIndex >= 0 ? currentIndex : 0;
+  const next = (start + delta + MODEL_PROVIDER_ORDER.length) % MODEL_PROVIDER_ORDER.length;
+  return MODEL_PROVIDER_ORDER[next];
+}
+
 /** Detects ctrl+letter keypresses, with a fallback for terminals/OS
  *  combos where Ink's `key.ctrl` flag is not set (e.g. Windows).
  *  Ctrl+A–Z produce raw char codes 1–26. */
@@ -423,6 +432,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     low: "Light reasoning (8K budget)",
     medium: "Moderate reasoning (16K budget)",
     high: "Deep reasoning (32K budget)",
+    max: "Maximum reasoning (64K budget or provider max)",
   };
 
   const toggleThinkingLevel = useCallback(() => {
@@ -1374,11 +1384,11 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     if (state.view === "model-editor") {
       if (state.modelEditorProviderSelect) {
         if (key.upArrow) {
-          dispatch({ type: "SET_MODEL_EDITOR_PROVIDER", provider: "openai" as ModelProvider } as AppAction);
+          dispatch({ type: "SET_MODEL_EDITOR_PROVIDER", provider: moveModelProvider(state.modelEditorProvider, -1) } as AppAction);
           return;
         }
         if (key.downArrow) {
-          dispatch({ type: "SET_MODEL_EDITOR_PROVIDER", provider: "anthropic" as ModelProvider } as AppAction);
+          dispatch({ type: "SET_MODEL_EDITOR_PROVIDER", provider: moveModelProvider(state.modelEditorProvider, 1) } as AppAction);
           return;
         }
         if (key.return || key.escape) {
@@ -1631,7 +1641,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           model={state.modelEditorModel}
           focusIndex={state.modelEditorFocusIndex}
           providerSelect={state.modelEditorProviderSelect}
-          providerCursor={state.modelEditorProvider === "openai" ? 0 : 1}
+          providerCursor={Math.max(0, MODEL_PROVIDER_ORDER.indexOf(state.modelEditorProvider))}
           onNameChange={(name) => dispatch({ type: "SET_MODEL_EDITOR_NAME", name } as AppAction)}
           onProviderChange={(provider) => dispatch({ type: "SET_MODEL_EDITOR_PROVIDER", provider } as AppAction)}
           onBaseUrlChange={(url) => dispatch({ type: "SET_MODEL_EDITOR_BASE_URL", baseUrl: url } as AppAction)}
@@ -1701,4 +1711,3 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     </Box>
   );
 }
-
