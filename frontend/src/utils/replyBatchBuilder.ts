@@ -288,6 +288,7 @@ export function buildReplyBatchesFromHistory(sessionId: string, history: Session
       status: normalizeHistoryToolStatus(item, interrupted),
       output: item.output,
       error: normalizeHistoryToolError(item, interrupted),
+      metadata: item.metadata,
       startedAt: parseTimestamp(item.startedAt),
       finishedAt: parseTimestamp(item.finishedAt),
       parentToolCallId: item.parentToolCallId,

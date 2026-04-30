@@ -20,12 +20,26 @@ export interface FileDiffLine {
 export interface FileToolDisplay {
   toolName: FileToolName
   filePath: string
+  fileName: string
   operation: 'Read' | 'Create' | 'Update' | 'Write'
   summary: string
   diffLines: FileDiffLine[]
 }
 
 const fileToolNames = new Set(['file_read', 'file_edit', 'file_write'])
+
+function baseName(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, '/').replace(/\/+$/, '')
+  return normalized.split('/').filter(Boolean).pop() || filePath
+}
+
+function summaryForOperation(operation: FileToolDisplay['operation'], filePath: string): string {
+  const name = baseName(filePath)
+  if (operation === 'Create') return `Created ${name}`
+  if (operation === 'Update') return `Updated ${name}`
+  if (operation === 'Write') return `Wrote ${name}`
+  return `Read ${name}`
+}
 
 export function isFileToolName(toolName?: string): toolName is FileToolName {
   return fileToolNames.has((toolName || '').trim().toLowerCase())
@@ -115,14 +129,54 @@ export function buildLineDiff(oldContent: string, newContent: string): FileDiffL
   return result
 }
 
+function metadataDiffLine(value: unknown): FileDiffLine | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Record<string, unknown>
+  const kind = raw.kind
+  if (kind !== 'context' && kind !== 'added' && kind !== 'removed') return null
+  const oldLine = typeof raw.oldLine === 'number' && Number.isFinite(raw.oldLine) ? raw.oldLine : undefined
+  const newLine = typeof raw.newLine === 'number' && Number.isFinite(raw.newLine) ? raw.newLine : undefined
+  const line: FileDiffLine = {
+    kind,
+    text: typeof raw.text === 'string' ? raw.text : '',
+  }
+  if (oldLine !== undefined) line.oldLine = oldLine
+  if (newLine !== undefined) line.newLine = newLine
+  return line
+}
+
+function displayFromMetadata(toolName: FileToolName, metadata: unknown): FileToolDisplay | null {
+  if (!metadata || typeof metadata !== 'object') return null
+  const raw = metadata as Record<string, unknown>
+  const operation = raw.operation
+  if (operation !== 'Read' && operation !== 'Create' && operation !== 'Update' && operation !== 'Write') return null
+  const filePath = typeof raw.filePath === 'string' ? raw.filePath.trim() : ''
+  if (!filePath) return null
+  const diffLines = Array.isArray(raw.diffLines)
+    ? raw.diffLines.map(metadataDiffLine).filter((line): line is FileDiffLine => !!line)
+    : []
+  return {
+    toolName,
+    filePath,
+    fileName: baseName(filePath),
+    operation,
+    summary: typeof raw.summary === 'string' && raw.summary.trim() ? raw.summary.trim() : summaryForOperation(operation, filePath),
+    diffLines,
+  }
+}
+
 export function buildFileToolDisplay(item: {
   toolName?: string
   params?: Record<string, string>
   output?: string
   content?: string
+  metadata?: unknown
 }): FileToolDisplay | null {
   const toolName = (item.toolName || '').trim().toLowerCase()
   if (!isFileToolName(toolName)) return null
+
+  const metadataDisplay = displayFromMetadata(toolName, item.metadata)
+  if (metadataDisplay) return metadataDisplay
 
   const params = item.params || {}
   const filePath = String(params.file_path || '').trim()
@@ -132,6 +186,7 @@ export function buildFileToolDisplay(item: {
     return {
       toolName,
       filePath: path,
+      fileName: baseName(path),
       operation: 'Read',
       summary: parsed ? formatFileReadSummary(parsed) : 'Read file',
       diffLines: [],
@@ -145,8 +200,9 @@ export function buildFileToolDisplay(item: {
     return {
       toolName,
       filePath,
+      fileName: baseName(filePath),
       operation: creating ? 'Create' : 'Update',
-      summary: creating ? `Created ${filePath}` : `Updated ${filePath}`,
+      summary: summaryForOperation(creating ? 'Create' : 'Update', filePath),
       diffLines: buildLineDiff(oldString, newString),
     }
   }
@@ -156,8 +212,9 @@ export function buildFileToolDisplay(item: {
   return {
     toolName,
     filePath,
+    fileName: baseName(filePath),
     operation: 'Write',
-    summary: `Wrote ${lineCount} ${lineCount === 1 ? 'line' : 'lines'} to ${filePath}`,
+    summary: `Wrote ${lineCount} ${lineCount === 1 ? 'line' : 'lines'} to ${baseName(filePath)}`,
     diffLines: buildLineDiff('', content),
   }
 }
@@ -167,7 +224,7 @@ export function fileToolSummaryFromParams(toolName: string, params?: Record<stri
   if (!isFileToolName(name)) return ''
   const filePath = String(params?.file_path ?? '').trim()
   if (!filePath) return ''
-  if (name === 'file_read') return `Read ${filePath}`
-  if (name === 'file_edit') return `${String(params?.old_string ?? '') === '' ? 'Create' : 'Update'} ${filePath}`
-  return `Write ${filePath}`
+  if (name === 'file_read') return `Read ${baseName(filePath)}`
+  if (name === 'file_edit') return `${String(params?.old_string ?? '') === '' ? 'Create' : 'Update'} ${baseName(filePath)}`
+  return `Write ${baseName(filePath)}`
 }

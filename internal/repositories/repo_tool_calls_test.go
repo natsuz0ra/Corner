@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -102,6 +103,60 @@ func TestUpsertToolCallStart_PersistsParentAndSubagentRun(t *testing.T) {
 	}
 	if row.ParentToolCallID != parentID+"-updated" || row.SubagentRunID != "run-uuid-2" {
 		t.Fatalf("conflict update lost parent/subagent: %+v", row)
+	}
+}
+
+func TestUpdateToolCallResult_PersistsMetadata(t *testing.T) {
+	repo := New(NewSQLiteDBTest(t, "repo_tool_calls_metadata"))
+	session, err := repo.CreateSession(context.Background(), "s-meta")
+	if err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+	if err := repo.UpsertToolCallStart(context.Background(), domain.ToolCallStartRecordInput{
+		SessionID:        session.ID,
+		RequestID:        "r-meta",
+		ToolCallID:       "tc-meta",
+		ToolName:         "file_edit",
+		Command:          "edit",
+		Params:           map[string]string{"file_path": "a.txt"},
+		Status:           constants.ToolCallStatusExecuting,
+		RequiresApproval: true,
+		StartedAt:        time.Now(),
+	}); err != nil {
+		t.Fatalf("upsert failed: %v", err)
+	}
+
+	metadata := map[string]any{
+		"filePath":  "a.txt",
+		"operation": "Update",
+		"diffLines": []map[string]any{{
+			"kind":    "added",
+			"newLine": 1,
+			"text":    "ok",
+		}},
+	}
+	if err := repo.UpdateToolCallResult(context.Background(), domain.ToolCallResultRecordInput{
+		SessionID:  session.ID,
+		RequestID:  "r-meta",
+		ToolCallID: "tc-meta",
+		Status:     constants.ToolCallStatusCompleted,
+		Output:     "ok",
+		Metadata:   metadata,
+		FinishedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+
+	var row domain.ToolCallRecord
+	if err := repo.db.Where("session_id = ? AND tool_call_id = ?", session.ID, "tc-meta").First(&row).Error; err != nil {
+		t.Fatalf("load row: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(row.MetadataJSON), &got); err != nil {
+		t.Fatalf("metadata json: %v", err)
+	}
+	if got["filePath"] != "a.txt" || got["operation"] != "Update" {
+		t.Fatalf("unexpected metadata: %s", row.MetadataJSON)
 	}
 }
 

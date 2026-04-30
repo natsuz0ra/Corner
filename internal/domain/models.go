@@ -56,6 +56,7 @@ type ToolCallRecord struct {
 	SubagentRunID      string     `gorm:"size:128;index" json:"subagentRunId,omitempty"`
 	Output             string     `gorm:"type:text" json:"output,omitempty"`
 	Error              string     `gorm:"type:text" json:"error,omitempty"`
+	MetadataJSON       string     `gorm:"type:text" json:"metadataJson,omitempty"`
 	StartedAt          time.Time  `gorm:"index;not null" json:"startedAt"`
 	FinishedAt         *time.Time `gorm:"index" json:"finishedAt,omitempty"`
 	CreatedAt          time.Time  `json:"createdAt"`

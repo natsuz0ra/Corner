@@ -108,15 +108,15 @@ test("formatToolCallSummary uses core tool parameters", () => {
   );
   assert.equal(
     formatToolCallSummary("file_read", "read", { file_path: "frontend/src/App.vue" }),
-    "Read frontend/src/App.vue",
+    "Read App.vue",
   );
   assert.equal(
     formatToolCallSummary("file_edit", "edit", { file_path: "cli/src/utils/format.ts", old_string: "a", new_string: "b" }),
-    "Update cli/src/utils/format.ts",
+    "Update format.ts",
   );
   assert.equal(
     formatToolCallSummary("file_write", "write", { file_path: "cli/src/utils/fileToolDisplay.ts", content: "x" }),
-    "Write cli/src/utils/fileToolDisplay.ts",
+    "Write fileToolDisplay.ts",
   );
   assert.equal(
     formatToolCallSummary("ask_questions", "ask", { questions: "[{\"question\":\"Pick one\"}]" }),
@@ -198,9 +198,41 @@ test("buildFileToolDisplay formats file_write as concrete added lines", () => {
     },
   });
 
-  assert.equal(display?.summary, "Wrote 1 line to frontend/src/utils/fileToolDisplay.ts");
+  assert.equal(display?.summary, "Wrote 1 line to fileToolDisplay.ts");
+  assert.equal(display?.fileName, "fileToolDisplay.ts");
   assert.deepEqual(display?.diffLines, [
     { kind: "added", newLine: 1, text: "export const ok = true" },
+  ]);
+});
+
+test("buildFileToolDisplay prefers backend metadata diff and basename summary", () => {
+  const display = buildFileToolDisplay({
+    toolName: "file_edit",
+    params: {
+      file_path: "cli/src/utils/fileToolDisplay.ts",
+      old_string: "old",
+      new_string: "new",
+    },
+    metadata: {
+      filePath: "cli/src/utils/fileToolDisplay.ts",
+      operation: "Update",
+      summary: "Updated fileToolDisplay.ts",
+      diffLines: [
+        { kind: "context", oldLine: 9, newLine: 9, text: "before" },
+        { kind: "removed", oldLine: 10, text: "old" },
+        { kind: "added", newLine: 10, text: "new" },
+        { kind: "context", oldLine: 11, newLine: 11, text: "after" },
+      ],
+    },
+  });
+
+  assert.equal(display?.fileName, "fileToolDisplay.ts");
+  assert.equal(display?.filePath, "cli/src/utils/fileToolDisplay.ts");
+  assert.deepEqual(display?.diffLines, [
+    { kind: "context", oldLine: 9, newLine: 9, text: "before" },
+    { kind: "removed", oldLine: 10, text: "old" },
+    { kind: "added", newLine: 10, text: "new" },
+    { kind: "context", oldLine: 11, newLine: 11, text: "after" },
   ]);
 });
 

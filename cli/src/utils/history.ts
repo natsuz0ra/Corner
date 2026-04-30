@@ -50,6 +50,7 @@ function timelineToolEntry(tc: ToolCallHistoryItem, subagentThinking?: ThinkingH
     status: (tc.status || "completed") as ToolCallStatus,
     output: tc.output,
     error: tc.error,
+    metadata: tc.metadata,
     ...(tc.parentToolCallId ? { parentToolCallId: tc.parentToolCallId } : {}),
     ...(tc.subagentRunId ? { subagentRunId: tc.subagentRunId } : {}),
     ...subagentHistoryFields(tc),

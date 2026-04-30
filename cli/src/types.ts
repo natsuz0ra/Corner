@@ -80,6 +80,7 @@ export interface ToolCallHistoryItem {
   requiresApproval: boolean;
   parentToolCallId?: string;
   subagentRunId?: string;
+  metadata?: unknown;
   subagentTitle?: string;
   subagentTask?: string;
   output?: string;
@@ -127,6 +128,7 @@ export interface ToolCallResultData {
   status: ToolCallStatus;
   output: string;
   error: string;
+  metadata?: unknown;
   parentToolCallId?: string;
   subagentRunId?: string;
 }
@@ -223,6 +225,7 @@ export interface TimelineEntry {
   status?: ToolCallStatus;
   output?: string;
   error?: string;
+  metadata?: unknown;
   parentToolCallId?: string;
   subagentRunId?: string;
   subagentTitle?: string;

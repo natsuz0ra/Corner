@@ -608,6 +608,7 @@ func (w *Controller) buildCallbacks(
 				"status":           result.Status,
 				"output":           result.Output,
 				"error":            result.Error,
+				"metadata":         result.Metadata,
 				"finishedAt":       time.Now().Format(time.RFC3339Nano),
 			}
 			if result.ParentToolCallID != "" {

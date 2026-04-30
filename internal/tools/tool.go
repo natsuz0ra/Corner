@@ -19,8 +19,9 @@ type Command struct {
 
 // ExecuteResult is the outcome of a tool command.
 type ExecuteResult struct {
-	Output string `json:"output,omitempty"`
-	Error  string `json:"error,omitempty"`
+	Output   string `json:"output,omitempty"`
+	Error    string `json:"error,omitempty"`
+	Metadata any    `json:"metadata,omitempty"`
 }
 
 // Tool is the interface every built-in tool implements.

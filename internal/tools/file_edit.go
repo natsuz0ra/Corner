@@ -112,10 +112,16 @@ func (f *fileEditTool) edit(ctx context.Context, params map[string]string) (*Exe
 	}
 
 	action := "updated"
+	operation := "Update"
 	if !existed {
 		action = "created"
+		operation = "Create"
 	}
-	return &ExecuteResult{Output: fmt.Sprintf("File %s successfully: %s\nReplacements: %d", action, path, count)}, nil
+	summary := fileToolSummary(operation, path)
+	return &ExecuteResult{
+		Output:   fmt.Sprintf("File %s successfully: %s\nReplacements: %d", action, path, count),
+		Metadata: buildFileToolMetadata(path, operation, summary, original, updated),
+	}, nil
 }
 
 func parseBoolParam(raw string) (bool, error) {

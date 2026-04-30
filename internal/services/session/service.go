@@ -43,6 +43,7 @@ type ToolCallHistory struct {
 	SubagentRunID    string            `json:"subagentRunId,omitempty"`
 	Output           string            `json:"output,omitempty"`
 	Error            string            `json:"error,omitempty"`
+	Metadata         any               `json:"metadata,omitempty"`
 	StartedAt        string            `json:"startedAt"`
 	FinishedAt       string            `json:"finishedAt,omitempty"`
 }
@@ -155,6 +156,18 @@ func parseToolCallParams(raw string) map[string]string {
 	return params
 }
 
+func parseToolCallMetadata(raw string) any {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	var metadata any
+	if err := json.Unmarshal([]byte(trimmed), &metadata); err != nil {
+		return nil
+	}
+	return metadata
+}
+
 func buildToolCallHistory(records []domain.ToolCallRecord, messageIDSet, interruptedAssistantIDs map[string]struct{}) map[string][]ToolCallHistory {
 	byAssistantID := make(map[string][]ToolCallHistory)
 	for _, record := range records {
@@ -184,6 +197,7 @@ func buildToolCallHistory(records []domain.ToolCallRecord, messageIDSet, interru
 			SubagentRunID:    record.SubagentRunID,
 			Output:           record.Output,
 			Error:            errText,
+			Metadata:         parseToolCallMetadata(record.MetadataJSON),
 			StartedAt:        formatHistoryTime(record.StartedAt),
 		}
 		if record.FinishedAt != nil {
