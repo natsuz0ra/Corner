@@ -5,6 +5,7 @@ export default defineConfig({
   format: ["esm"],
   target: "node20",
   bundle: true,
+  external: ["@slimebot/color-diff-native"],
   outDir: "dist",
   clean: true,
   // ESM bundles cannot carry shebang; handle entry/bootstrap in app code.

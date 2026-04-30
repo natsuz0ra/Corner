@@ -27,7 +27,6 @@ import {
   formatSubagentStreamLines,
   formatSubagentThinkingLines,
   formatThinkingLabel,
-  formatFileToolTimelineLines,
   formatToolOutputLines,
   formatToolParamLines,
   formatToolStatusPart,
@@ -40,6 +39,7 @@ import {
   toolDotState,
 } from "../utils/timelineFormat.js";
 import { GradientFlowText } from "./GradientFlowText.js";
+import { FileToolDiffBlock } from "./FileToolDiffBlock.js";
 import { Markdown, StreamingMarkdown } from "./Markdown.js";
 import { Spinner } from "./Spinner.js";
 
@@ -243,9 +243,7 @@ function TimelineBlock({
   }
   const isFileTool = isFileToolEntry(entry);
   const paramLines = qaDisplayLines || isRunSubagent || isFileTool ? [] : formatToolParamLines(entry, maxWidth);
-  const resultLines = qaDisplayLines ? [] : isFileTool
-    ? formatFileToolTimelineLines(entry, maxWidth, toolOutputExpanded)
-    : (status === "completed" || status === "error" || status === "rejected")
+  const resultLines = qaDisplayLines || isFileTool ? [] : (status === "completed" || status === "error" || status === "rejected")
     ? formatToolOutputLines(entry, maxWidth, toolOutputExpanded)
     : [];
   const subStreamLines =
@@ -308,6 +306,13 @@ function TimelineBlock({
               {line}
             </Text>
           ))}
+          {isFileTool ? (
+            <FileToolDiffBlock
+              entry={entry}
+              maxWidth={maxWidth}
+              expanded={toolOutputExpanded}
+            />
+          ) : null}
           {resultLines.map((line, index) => (
             <Text key={`${entry.toolCallId || invocation}-result-${index}`}>{line}</Text>
           ))}

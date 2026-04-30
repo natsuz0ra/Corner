@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { mdiBrain, mdiConsoleLine, mdiHelpCircleOutline, mdiSourceBranch, mdiWeb } from '@mdi/js'
+import { mdiBrain, mdiConsoleLine, mdiFileDocumentOutline, mdiFileEditOutline, mdiFilePlusOutline, mdiHelpCircleOutline, mdiSourceBranch, mdiWeb } from '@mdi/js'
 import MdiIcon from '@/components/ui/MdiIcon.vue'
+import FileToolDisplay from '@/components/chat/FileToolDisplay.vue'
 import ThinkingBlock from '@/components/chat/ThinkingBlock.vue'
 import type { ToolCallItem } from '@/api/chat'
 import { buildSubagentTimeline } from '@/utils/subagentTimeline'
 import { buildToolCallSummary, buildToolResultDisplay, filterToolParamsForDetail, formatDisplayText, formatToolParams, parseAskQuestionsReadableAnswers } from '@/utils/toolDisplay'
 import { shouldAutoExpandToolCall } from '@/utils/toolApprovalExpansion'
+import { isFileTool } from '@/utils/fileToolDisplay'
 
 const props = withDefaults(defineProps<{
   item: ToolCallItem
@@ -32,6 +34,9 @@ const toolIcon = computed(() => {
   if (props.item.toolName === 'search_memory') return mdiBrain
   if (props.item.toolName === 'ask_questions') return mdiHelpCircleOutline
   if (props.item.toolName === 'run_subagent') return mdiSourceBranch
+  if (props.item.toolName === 'file_read') return mdiFileDocumentOutline
+  if (props.item.toolName === 'file_edit') return mdiFileEditOutline
+  if (props.item.toolName === 'file_write') return mdiFilePlusOutline
   return mdiConsoleLine
 })
 
@@ -42,6 +47,9 @@ const toolLabel = computed(() => {
   if (props.item.toolName === 'run_subagent') return t('toolRunSubagent')
   if (props.item.toolName === 'search_memory') return t('toolSearchMemory')
   if (props.item.toolName === 'ask_questions') return t('toolAskQuestions')
+  if (props.item.toolName === 'file_read') return 'file_read'
+  if (props.item.toolName === 'file_edit') return 'file_edit'
+  if (props.item.toolName === 'file_write') return 'file_write'
   return props.item.toolName
 })
 
@@ -66,7 +74,9 @@ const statusIcon = computed(() => {
 const showPendingLabel = computed(() => props.item.status === 'pending')
 
 const isRunSubagent = computed(() => props.item.toolName === 'run_subagent')
+const isFileToolCall = computed(() => isFileTool(props.item))
 const paramsDisplay = computed(() => {
+  if (isFileToolCall.value) return []
   const filtered = filterToolParamsForDetail(props.item)
   if (!isRunSubagent.value) return formatToolParams(filtered)
   const { context: _context, ...rest } = filtered
@@ -196,7 +206,9 @@ function toggleSubagentTimeline() {
           <pre class="inline-output-text">{{ subagentTaskSummary }}</pre>
         </section>
 
-        <section v-if="!isAskQuestions && paramsDisplay.length > 0" class="inline-section">
+        <FileToolDisplay v-if="isFileToolCall" :item="item" />
+
+        <section v-if="!isAskQuestions && !isFileToolCall && paramsDisplay.length > 0" class="inline-section">
           <p class="inline-section-title">{{ t('toolCallParams') }}</p>
           <div class="inline-kv-list sb-scrollbar">
             <div v-for="row in paramsDisplay" :key="row.key" class="inline-kv-row">
@@ -255,7 +267,7 @@ function toggleSubagentTimeline() {
           </Transition>
         </section>
 
-        <section v-if="showResult" class="inline-section">
+        <section v-if="showResult && !isFileToolCall" class="inline-section">
           <template v-if="isAskQuestions && askQuestionsData && askQuestionsData.length > 0">
             <div class="inline-qa-list">
               <div v-for="(qa, idx) in askQuestionsData" :key="idx" class="inline-qa-pair">

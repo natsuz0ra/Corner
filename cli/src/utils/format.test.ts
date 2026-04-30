@@ -118,6 +118,10 @@ test("formatToolCallSummary uses core tool parameters", () => {
     formatToolCallSummary("file_write", "write", { file_path: "cli/src/utils/fileToolDisplay.ts", content: "x" }),
     "Write cli/src/utils/fileToolDisplay.ts",
   );
+  assert.equal(
+    formatToolCallSummary("ask_questions", "ask", { questions: "[{\"question\":\"Pick one\"}]" }),
+    "",
+  );
 });
 
 test("formatToolCallSummary hides missing legacy exec description", () => {
@@ -150,6 +154,10 @@ test("filterToolParamsForDetail removes params already shown in summary", () => 
       replace_all: "false",
     }),
     { old_string: "old", new_string: "new", replace_all: "false" },
+  );
+  assert.deepEqual(
+    filterToolParamsForDetail("ask_questions", "ask", { questions: "[{\"question\":\"Pick one\"}]" }),
+    { questions: "[{\"question\":\"Pick one\"}]" },
   );
 });
 

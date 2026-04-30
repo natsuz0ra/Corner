@@ -22,6 +22,8 @@ __pycache__/
 *.pyc
 .claude
 cli/dist
+cli/native/color-diff/target/
+cli/native/color-diff/*.node
 CLAUDE.md
 .omx/
 .opencode/

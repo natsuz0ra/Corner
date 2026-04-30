@@ -174,6 +174,13 @@ test("formatFileToolTimelineLines collapses long file changes with concrete rows
   assert.ok(lines.at(-1)?.includes("ctrl+o to expand"));
 });
 
+test("Timeline renders file tool changes through the dedicated diff component", () => {
+  const source = readFileSync(resolve(import.meta.dirname, "Timeline.tsx"), "utf8");
+
+  assert.match(source, /<FileToolDiffBlock/);
+  assert.doesNotMatch(source, /isFileTool\s*\?\s*formatFileToolTimelineLines/);
+});
+
 test("formatToolParamLines pretty prints JSON params", () => {
   const entry: TimelineEntry = {
     kind: "tool",

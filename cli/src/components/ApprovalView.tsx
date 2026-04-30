@@ -38,8 +38,11 @@ export function ApprovalView({
       </Text>
       {approvalItems.map((item, index) => {
         const isFileTool = isFileToolName(item.toolName);
+        const isAskQuestions = item.toolName.trim().toLowerCase() === "ask_questions";
         const fileDisplay = buildFileToolDisplay(item);
-        const detailParams = isFileTool
+        const detailParams = isAskQuestions
+          ? {}
+          : isFileTool
           ? Object.fromEntries(Object.entries(filterToolParamsForDetail(item.toolName, item.command, item.params) || {})
             .filter(([key]) => key === "replace_all"))
           : filterToolParamsForDetail(item.toolName, item.command, item.params) || {};
