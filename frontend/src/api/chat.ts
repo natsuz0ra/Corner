@@ -48,6 +48,7 @@ export interface SessionHistoryToolCallItem {
   subagentRunId?: string
   output?: string
   error?: string
+  metadata?: unknown
   startedAt?: string
   finishedAt?: string
 }
@@ -106,6 +107,7 @@ export interface ToolCallItem {
   status: ToolCallStatus
   output?: string
   error?: string
+  metadata?: unknown
   /** Millisecond timestamp used to interleave sub-agent thinking and nested tools. */
   startedAt?: number
   /** Millisecond timestamp used to derive completed reply duration. */

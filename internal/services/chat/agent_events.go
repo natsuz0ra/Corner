@@ -30,6 +30,7 @@ type ToolCallResult struct {
 	Status           string `json:"status"`
 	Output           string `json:"output"`
 	Error            string `json:"error"`
+	Metadata         any    `json:"metadata,omitempty"`
 	ParentToolCallID string `json:"parentToolCallId,omitempty"`
 	SubagentRunID    string `json:"subagentRunId,omitempty"`
 }

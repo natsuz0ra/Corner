@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { TimelineEntry } from "../types.js";
+import type { FileDiffLine } from "../utils/fileToolDisplay.js";
 import { buildFileToolDisplay } from "../utils/fileToolDisplay.js";
 import { renderColorDiffRows } from "../native/colorDiff.js";
 
@@ -13,6 +14,27 @@ interface FileToolDiffBlockProps {
   entry: TimelineEntry;
   maxWidth: number;
   expanded: boolean;
+}
+
+function lineNumber(line: FileDiffLine): number | undefined {
+  return line.newLine ?? line.oldLine;
+}
+
+function chunkDiffLines(lines: FileDiffLine[]): FileDiffLine[][] {
+  const chunks: FileDiffLine[][] = [];
+  let current: FileDiffLine[] = [];
+  let previousLine: number | undefined;
+  for (const line of lines) {
+    const currentLine = lineNumber(line);
+    if (current.length > 0 && previousLine !== undefined && currentLine !== undefined && currentLine - previousLine > 1) {
+      chunks.push(current);
+      current = [];
+    }
+    current.push(line);
+    if (currentLine !== undefined) previousLine = currentLine;
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
 }
 
 export function FileToolDiffBlock({
@@ -44,10 +66,13 @@ export function FileToolDiffBlock({
   const width = Math.max(24, Math.min(maxWidth - 3, maxWidth));
   const previewLines = expanded ? display.diffLines : display.diffLines.slice(0, MAX_PREVIEW_LINES);
   const remaining = display.diffLines.length - previewLines.length;
-  const renderedRows = renderColorDiffRows({
-    filePath: display.filePath,
-    lines: previewLines,
-    width: Math.max(12, width - 2),
+  const renderedRows = chunkDiffLines(previewLines).flatMap((chunk, index) => {
+    const rows = renderColorDiffRows({
+      filePath: display.filePath,
+      lines: chunk,
+      width: Math.max(12, width - 2),
+    });
+    return index === 0 ? rows : [{ gutter: "", content: "..." }, ...rows];
   });
   return (
     <Box marginLeft={3} flexDirection="column">

@@ -46,7 +46,7 @@ test('buildToolCallSummary uses query and http request fields', () => {
 test('buildToolCallSummary uses file tool paths and operations', () => {
   assert.equal(
     buildToolCallSummary(tool({ toolName: 'file_read', command: 'read', params: { file_path: 'frontend/src/App.vue' } })),
-    'Read frontend/src/App.vue',
+    'Read App.vue',
   )
   assert.equal(
     buildToolCallSummary(tool({
@@ -54,11 +54,11 @@ test('buildToolCallSummary uses file tool paths and operations', () => {
       command: 'edit',
       params: { file_path: 'cli/src/utils/format.ts', old_string: 'old', new_string: 'new' },
     })),
-    'Update cli/src/utils/format.ts',
+    'Update format.ts',
   )
   assert.equal(
     buildToolCallSummary(tool({ toolName: 'file_write', command: 'write', params: { file_path: 'frontend/src/utils/fileToolDisplay.ts' } })),
-    'Write frontend/src/utils/fileToolDisplay.ts',
+    'Write fileToolDisplay.ts',
   )
 })
 
@@ -158,9 +158,43 @@ test('buildFileToolDisplay formats file_write as concrete added lines', () => {
     },
   }))
 
-  assert.equal(display?.summary, 'Wrote 1 line to frontend/src/utils/fileToolDisplay.ts')
+  assert.equal(display?.summary, 'Wrote 1 line to fileToolDisplay.ts')
+  assert.equal(display?.fileName, 'fileToolDisplay.ts')
   assert.deepEqual(display?.diffLines, [
     { kind: 'added', newLine: 1, text: 'export const ok = true' },
+  ])
+})
+
+test('buildFileToolDisplay prefers backend metadata diff and basename summary', () => {
+  const display = buildFileToolDisplay(tool({
+    toolName: 'file_edit',
+    command: 'edit',
+    params: {
+      file_path: 'frontend/src/utils/fileToolDisplay.ts',
+      old_string: 'old',
+      new_string: 'new',
+    },
+    metadata: {
+      filePath: 'frontend/src/utils/fileToolDisplay.ts',
+      operation: 'Update',
+      summary: 'Updated fileToolDisplay.ts',
+      diffLines: [
+        { kind: 'context', oldLine: 9, newLine: 9, text: 'before' },
+        { kind: 'removed', oldLine: 10, text: 'old' },
+        { kind: 'added', newLine: 10, text: 'new' },
+        { kind: 'context', oldLine: 11, newLine: 11, text: 'after' },
+      ],
+    },
+  }))
+
+  assert.equal(display?.fileName, 'fileToolDisplay.ts')
+  assert.equal(display?.filePath, 'frontend/src/utils/fileToolDisplay.ts')
+  assert.equal(display?.summary, 'Updated fileToolDisplay.ts')
+  assert.deepEqual(display?.diffLines, [
+    { kind: 'context', oldLine: 9, newLine: 9, text: 'before' },
+    { kind: 'removed', oldLine: 10, text: 'old' },
+    { kind: 'added', newLine: 10, text: 'new' },
+    { kind: 'context', oldLine: 11, newLine: 11, text: 'after' },
   ])
 })
 
@@ -170,4 +204,5 @@ test('ToolCallInline routes file tools through FileToolDisplay', () => {
   assert.match(source, /import FileToolDisplay/)
   assert.match(source, /<FileToolDisplay v-if="isFileToolCall"/)
   assert.match(source, /showResult && !isFileToolCall/)
+  assert.doesNotMatch(readFileSync(resolve(import.meta.dirname, '../src/components/chat/FileToolDisplay.vue'), 'utf8'), /file-tool-diff-guide|├─|└─/)
 })

@@ -36,6 +36,7 @@ type ToolCallResultRecordInput struct {
 	Status     string
 	Output     string
 	Error      string
+	Metadata   any
 	FinishedAt time.Time
 }
 

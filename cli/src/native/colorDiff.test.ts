@@ -59,3 +59,21 @@ test("renderColorDiff returns ANSI lines with plain content intact", () => {
   assert.ok(plain[1]!.includes("const newName = 1"));
   assert.ok(lines.some((line) => /\x1b\[/.test(line)));
 });
+
+test("renderColorDiffRows keeps compact marker and line-number gutters", () => {
+  setNativeColorDiffForTest(null);
+  const rows = renderColorDiffRows({
+    filePath: "src/example.ts",
+    width: 80,
+    lines: [
+      { kind: "context", oldLine: 4, newLine: 4, text: "const before = true" },
+      { kind: "removed", oldLine: 5, text: "const oldName = 1" },
+      { kind: "added", newLine: 5, text: "const newName = 1" },
+    ],
+  });
+  const gutters = rows.map((row) => stripAnsi(row.gutter).trimEnd());
+
+  assert.equal(gutters[0]!.trim(), "4");
+  assert.equal(gutters[1]!.trim(), "- 5");
+  assert.equal(gutters[2]!.trim(), "+ 5");
+});

@@ -48,6 +48,7 @@ export interface ToolCallResultData {
   status: ToolCallStatus
   output: string
   error: string
+  metadata?: unknown
   finishedAt?: string
   parentToolCallId?: string
   subagentRunId?: string
@@ -109,6 +110,7 @@ type WSIncoming = {
   status?: ToolCallStatus
   preamble?: string
   output?: string
+  metadata?: unknown
   startedAt?: string
   finishedAt?: string
   updatedAt?: string
@@ -173,6 +175,7 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
       status: data.status || 'completed',
       output: data.output || '',
       error: data.error || '',
+      metadata: data.metadata,
       finishedAt: data.finishedAt,
       parentToolCallId: data.parentToolCallId,
       subagentRunId: data.subagentRunId,

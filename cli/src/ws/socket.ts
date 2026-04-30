@@ -236,6 +236,7 @@ export function dispatchWSMessage(raw: string, handlers: WSHandlers | null): voi
         status: (msg.status as ToolCallResultData["status"]) || "completed",
         output: msg.output || "",
         error: msg.error || "",
+        metadata: msg.metadata,
         parentToolCallId: msg.parentToolCallId,
         subagentRunId: msg.subagentRunId,
       },

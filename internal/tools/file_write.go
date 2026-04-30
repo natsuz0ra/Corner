@@ -92,7 +92,13 @@ func (f *fileWriteTool) write(ctx context.Context, params map[string]string) (*E
 	}
 
 	if existed {
-		return &ExecuteResult{Output: fmt.Sprintf("File updated successfully: %s\nBytes written: %d", path, len([]byte(content)))}, nil
+		return &ExecuteResult{
+			Output:   fmt.Sprintf("File updated successfully: %s\nBytes written: %d", path, len([]byte(content))),
+			Metadata: buildFileToolMetadata(path, "Write", fileToolSummary("Write", path), original, content),
+		}, nil
 	}
-	return &ExecuteResult{Output: fmt.Sprintf("File created successfully: %s\nBytes written: %d", path, len([]byte(content)))}, nil
+	return &ExecuteResult{
+		Output:   fmt.Sprintf("File created successfully: %s\nBytes written: %d", path, len([]byte(content))),
+		Metadata: buildFileToolMetadata(path, "Create", fileToolSummary("Create", path), "", content),
+	}, nil
 }

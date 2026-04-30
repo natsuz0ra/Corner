@@ -11,12 +11,27 @@ const display = computed(() => buildFileToolDisplay(props.item))
 const summaryText = computed(() => {
   if (!display.value) return ''
   if (props.item.status === 'completed') return display.value.summary
-  return [display.value.operation, display.value.filePath].filter(Boolean).join(' ')
+  return [display.value.operation, display.value.fileName].filter(Boolean).join(' ')
 })
 const showDiff = computed(() => {
   return props.item.status === 'completed' && display.value && display.value.diffLines.length > 0
 })
 const errorText = computed(() => props.item.status === 'error' || props.item.status === 'rejected' ? (props.item.error || props.item.output || '') : '')
+
+const diffRows = computed(() => {
+  if (!display.value) return []
+  const rows: Array<{ kind: 'separator' } | (typeof display.value.diffLines[number] & { kind: 'context' | 'added' | 'removed' })> = []
+  let previousLine: number | undefined
+  for (const line of display.value.diffLines) {
+    const currentLine = line.newLine ?? line.oldLine
+    if (previousLine !== undefined && currentLine !== undefined && currentLine - previousLine > 1) {
+      rows.push({ kind: 'separator' })
+    }
+    rows.push(line)
+    if (currentLine !== undefined) previousLine = currentLine
+  }
+  return rows
+})
 
 function lineNumber(line: { kind: string; oldLine?: number; newLine?: number }) {
   const value = line.kind === 'added' ? line.newLine : line.oldLine ?? line.newLine
@@ -42,15 +57,19 @@ function marker(kind: string) {
 
     <div v-if="showDiff" class="file-tool-diff sb-scrollbar" role="list">
       <div
-        v-for="(line, index) in display.diffLines"
-        :key="`${line.kind}-${index}-${line.oldLine ?? ''}-${line.newLine ?? ''}`"
+        v-for="(line, index) in diffRows"
+        :key="`${line.kind}-${index}-${'oldLine' in line ? line.oldLine ?? '' : ''}-${'newLine' in line ? line.newLine ?? '' : ''}`"
         :class="['file-tool-diff-row', `file-tool-diff-row--${line.kind}`]"
         role="listitem"
       >
-        <span class="file-tool-diff-guide">{{ index === display.diffLines.length - 1 ? '└─' : '├─' }}</span>
-        <span class="file-tool-diff-marker">{{ marker(line.kind) }}</span>
-        <span class="file-tool-diff-line">{{ lineNumber(line) }}</span>
-        <code class="file-tool-diff-code">{{ line.text || ' ' }}</code>
+        <template v-if="line.kind === 'separator'">
+          <span class="file-tool-diff-separator">...</span>
+        </template>
+        <template v-else>
+          <span class="file-tool-diff-marker">{{ marker(line.kind) }}</span>
+          <span class="file-tool-diff-line">{{ lineNumber(line) }}</span>
+          <code class="file-tool-diff-code">{{ line.text || ' ' }}</code>
+        </template>
       </div>
     </div>
 
@@ -129,11 +148,12 @@ function marker(kind: string) {
 
 .file-tool-diff-row {
   display: grid;
-  grid-template-columns: 22px 18px 48px minmax(0, 1fr);
+  grid-template-columns: 1ch max-content minmax(0, 1fr);
+  column-gap: 1ch;
   align-items: start;
   min-width: max-content;
   border-radius: 0;
-  padding: 1px 10px 1px 0;
+  padding: 1px 8px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 13px;
   line-height: 1.45;
@@ -154,19 +174,36 @@ function marker(kind: string) {
   background: transparent;
 }
 
-.file-tool-diff-guide,
+.file-tool-diff-row--separator {
+  display: block;
+  color: var(--text-muted);
+  padding-block: 0;
+}
+
 .file-tool-diff-marker,
 .file-tool-diff-line {
   color: inherit;
   opacity: 0.92;
-  text-align: right;
   white-space: pre;
+}
+
+.file-tool-diff-marker {
+  text-align: center;
+}
+
+.file-tool-diff-line {
+  text-align: left;
+}
+
+.file-tool-diff-separator {
+  padding-left: 16px;
 }
 
 .file-tool-diff-code {
   color: inherit;
   white-space: pre;
   font: inherit;
+  padding-left: 4px;
 }
 
 .file-tool-error {
@@ -192,8 +229,13 @@ function marker(kind: string) {
   }
 
   .file-tool-diff-row {
-    grid-template-columns: 20px 16px 40px minmax(0, 1fr);
+    grid-template-columns: 1ch max-content minmax(0, 1fr);
+    column-gap: 1ch;
     font-size: 12px;
+  }
+
+  .file-tool-diff-code {
+    padding-left: 3px;
   }
 }
 </style>
