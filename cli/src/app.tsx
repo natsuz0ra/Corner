@@ -1074,6 +1074,15 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           content: data.content,
         } as AppAction);
       },
+      onSubagentDone: (data) => {
+        if (!data.parentToolCallId) return;
+        dispatch({
+          type: "SUBAGENT_DONE",
+          parentToolCallId: data.parentToolCallId,
+          error: data.error,
+          finishedAt: Date.now(),
+        } as AppAction);
+      },
       onThinkingStart: (data) => {
         dispatch({
           type: "THINKING_START",
