@@ -505,6 +505,7 @@ func (a *AgentService) RunAgentLoop(
 		//preamble := strings.TrimSpace(result.AssistantMessage.Content)
 
 		var memoryMu sync.Mutex
+		var activatedSkillsMu sync.Mutex
 		var parallelJobs []parallelToolJob
 		flushParallelJobs := func() {
 			if len(parallelJobs) == 0 {
@@ -594,14 +595,6 @@ func (a *AgentService) RunAgentLoop(
 				continue
 			}
 
-			if tc.Name == constants.RunSubagentTool {
-				flushParallelJobs()
-				if err := a.handleRunSubagentTool(ctx, modelConfig, sessionID, mcpConfigs, activatedSkills, callbacks, opts, tc, invocation, params, opts.SubagentModelID, "", &messages); err != nil {
-					return "", err
-				}
-				continue
-			}
-
 			if invocation.toolName == constants.AskQuestionsTool {
 				flushParallelJobs()
 				if callbacks.OnToolCallStart != nil {
@@ -633,7 +626,7 @@ func (a *AgentService) RunAgentLoop(
 				continue
 			}
 
-			if callbacks.OnToolCallStart != nil {
+			if callbacks.OnToolCallStart != nil && invocation.toolName != constants.RunSubagentTool {
 				if err := callbacks.OnToolCallStart(ApprovalRequest{
 					ToolCallID:       tc.ID,
 					ToolName:         invocation.toolName,
@@ -674,6 +667,22 @@ func (a *AgentService) RunAgentLoop(
 					}
 				},
 				execute: func(execCtx context.Context) *tools.ExecuteResult {
+					if invocationCopy.toolName == constants.RunSubagentTool {
+						activatedSkillsMu.Lock()
+						childActivatedSkills := cloneActivatedSkills(activatedSkills)
+						activatedSkillsMu.Unlock()
+
+						execResult, err := a.executeRunSubagentTool(execCtx, modelConfig, sessionID, mcpConfigs, childActivatedSkills, callbacks, opts, tcCopy, invocationCopy, paramsCopy, opts.SubagentModelID, "")
+
+						activatedSkillsMu.Lock()
+						mergeActivatedSkills(activatedSkills, childActivatedSkills)
+						activatedSkillsMu.Unlock()
+
+						if err != nil {
+							return &tools.ExecuteResult{Error: err.Error()}
+						}
+						return execResult
+					}
 					if (invocationCopy.toolName == "memory" && invocationCopy.command == "query") ||
 						(invocationCopy.toolName == constants.SearchMemoryTool && invocationCopy.command == "query") {
 						memoryMu.Lock()
