@@ -140,6 +140,12 @@ export interface SubagentStartData {
   task: string;
 }
 
+export interface SubagentDoneData {
+  parentToolCallId: string;
+  subagentRunId: string;
+  error?: string;
+}
+
 export type TodoItemStatus = "pending" | "in_progress" | "completed";
 
 export interface RuntimeTodoItem {
@@ -388,6 +394,7 @@ export type AppAction =
   | { type: "TOGGLE_TOOL_OUTPUT" }
   | { type: "UPSERT_TOOL_ENTRY"; entry: TimelineEntry }
   | { type: "APPEND_SUBAGENT_STREAM"; parentToolCallId: string; content: string }
+  | { type: "SUBAGENT_DONE"; parentToolCallId: string; error?: string; finishedAt?: number }
   | { type: "APPEND_ENTRY"; entry: TimelineEntry }
   | { type: "RESET_SESSION" }
   | { type: "BLINK_TOGGLE" }

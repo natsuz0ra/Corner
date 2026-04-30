@@ -4,7 +4,7 @@
  */
 
 import WebSocket from "ws";
-import type { SubagentChunkData, SubagentStartData, TodoUpdateData, ToolCallStartData, ToolCallResultData } from "../types.js";
+import type { SubagentChunkData, SubagentDoneData, SubagentStartData, TodoUpdateData, ToolCallStartData, ToolCallResultData } from "../types.js";
 
 export interface ThinkingEventData {
   content?: string;
@@ -26,6 +26,7 @@ export interface WSHandlers {
   onToolCallResult?: (data: ToolCallResultData, sessionId?: string) => void;
   onSubagentStart?: (data: SubagentStartData, sessionId?: string) => void;
   onSubagentChunk?: (data: SubagentChunkData, sessionId?: string) => void;
+  onSubagentDone?: (data: SubagentDoneData, sessionId?: string) => void;
   onThinkingStart?: (data: ThinkingEventData) => void;
   onThinkingChunk?: (data: ThinkingEventData) => void;
   onThinkingDone?: (data: ThinkingEventData) => void;
@@ -249,6 +250,17 @@ export function dispatchWSMessage(raw: string, handlers: WSHandlers | null): voi
         parentToolCallId: msg.parentToolCallId || "",
         subagentRunId: msg.subagentRunId || "",
         content: msg.content || "",
+      },
+      msg.sessionId,
+    );
+  }
+
+  if (msg.type === "subagent_done") {
+    handlers?.onSubagentDone?.(
+      {
+        parentToolCallId: msg.parentToolCallId || "",
+        subagentRunId: msg.subagentRunId || "",
+        error: msg.error,
       },
       msg.sessionId,
     );

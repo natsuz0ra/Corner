@@ -169,3 +169,40 @@ test("dispatchWSMessage routes subagent_start with title and task", () => {
     task: "Inspect UI cards and report exact files",
   }]);
 });
+
+test("dispatchWSMessage routes subagent_done with error", () => {
+  const calls: Array<{
+    sessionId?: string;
+    parentToolCallId: string;
+    subagentRunId: string;
+    error?: string;
+  }> = [];
+  const handlers: WSHandlers = {
+    onSession: () => {},
+    onStart: () => {},
+    onChunk: () => {},
+    onDone: () => {},
+    onError: () => {},
+    onSubagentDone: (data, sessionId) => {
+      calls.push({ sessionId, ...data });
+    },
+  };
+
+  dispatchWSMessage(
+    JSON.stringify({
+      type: "subagent_done",
+      sessionId: "sid-sub",
+      parentToolCallId: "parent-tool",
+      subagentRunId: "run-1",
+      error: "context canceled",
+    }),
+    handlers,
+  );
+
+  assert.deepEqual(calls, [{
+    sessionId: "sid-sub",
+    parentToolCallId: "parent-tool",
+    subagentRunId: "run-1",
+    error: "context canceled",
+  }]);
+});

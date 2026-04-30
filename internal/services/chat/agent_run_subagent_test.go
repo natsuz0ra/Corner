@@ -555,6 +555,81 @@ func TestRunAgentLoop_RunSubagentToolCallsExecuteConcurrentlyAndPreserveMessageO
 	}
 }
 
+func TestRunAgentLoop_CancelledSubagentEmitsDoneAndParentToolError(t *testing.T) {
+	provider := &cancelSubagentProvider{started: make(chan struct{})}
+	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil, nil)
+	agent.SetSubagentHost(&stubSubagentHost{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var (
+		subagentDoneErrs []error
+		toolResults      []ToolCallResult
+		mu               sync.Mutex
+	)
+	done := make(chan error, 1)
+	go func() {
+		_, err := agent.RunAgentLoop(
+			ctx,
+			llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI},
+			"session-1",
+			[]llmsvc.ChatMessage{{Role: "user", Content: "delegate cancellable subagent"}},
+			nil,
+			map[string]struct{}{},
+			AgentCallbacks{
+				OnSubagentDone: func(_ string, _ string, runErr error) error {
+					mu.Lock()
+					defer mu.Unlock()
+					subagentDoneErrs = append(subagentDoneErrs, runErr)
+					return nil
+				},
+				OnToolCallResult: func(result ToolCallResult) error {
+					mu.Lock()
+					defer mu.Unlock()
+					toolResults = append(toolResults, result)
+					return nil
+				},
+			},
+			AgentLoopOptions{},
+		)
+		done <- err
+	}()
+
+	select {
+	case <-provider.started:
+	case err := <-done:
+		t.Fatalf("agent finished before subagent started: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("subagent did not start")
+	}
+	cancel()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected canceled parent loop to return an error")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("agent did not finish after cancel")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(subagentDoneErrs) != 1 || subagentDoneErrs[0] == nil {
+		t.Fatalf("expected one subagent_done error, got %+v", subagentDoneErrs)
+	}
+	if !strings.Contains(subagentDoneErrs[0].Error(), context.Canceled.Error()) {
+		t.Fatalf("expected subagent_done context canceled error, got %v", subagentDoneErrs[0])
+	}
+	if len(toolResults) != 1 {
+		t.Fatalf("expected one parent tool result, got %+v", toolResults)
+	}
+	if got := toolResults[0]; got.ToolCallID != "call-cancel-subagent" || got.Status != constants.ToolCallStatusError || !strings.Contains(got.Error, context.Canceled.Error()) {
+		t.Fatalf("unexpected parent tool result: %+v", got)
+	}
+}
+
 func TestHandleChatStream_ParallelSubagentThinkingRecordsKeepSeparateScopes(t *testing.T) {
 	repo := newTestRepo(t)
 	ctx := context.Background()
@@ -746,6 +821,42 @@ func (p *parallelSubagentProvider) StreamChatWithTools(
 	}, nil
 }
 
+type cancelSubagentProvider struct {
+	started chan struct{}
+	once    sync.Once
+}
+
+func (p *cancelSubagentProvider) StreamChatWithTools(
+	ctx context.Context,
+	_ llmsvc.ModelRuntimeConfig,
+	messages []llmsvc.ChatMessage,
+	_ []llmsvc.ToolDef,
+	_ llmsvc.StreamCallbacks,
+) (*llmsvc.StreamResult, error) {
+	if containsMessageText(messages, "cancel-task") {
+		p.once.Do(func() { close(p.started) })
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	if hasToolMessages(messages) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	toolCalls := []llmsvc.ToolCallInfo{{
+		ID:        "call-cancel-subagent",
+		Name:      constants.RunSubagentTool,
+		Arguments: `{"title":"Cancel child","task":"cancel-task"}`,
+	}}
+	return &llmsvc.StreamResult{
+		Type:      llmsvc.StreamResultToolCalls,
+		ToolCalls: toolCalls,
+		AssistantMessage: llmsvc.ChatMessage{
+			Role:      "assistant",
+			ToolCalls: toolCalls,
+		},
+	}, nil
+}
+
 func parallelSubagentTask(messages []llmsvc.ChatMessage) (string, bool) {
 	for _, msg := range messages {
 		if msg.Role != "user" {
@@ -759,6 +870,15 @@ func parallelSubagentTask(messages []llmsvc.ChatMessage) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func containsMessageText(messages []llmsvc.ChatMessage, text string) bool {
+	for _, msg := range messages {
+		if strings.Contains(msg.Content, text) {
+			return true
+		}
+	}
+	return false
 }
 
 func hasToolMessages(messages []llmsvc.ChatMessage) bool {
