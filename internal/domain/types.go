@@ -21,7 +21,7 @@ type ToolCallStartRecordInput struct {
 	ToolCallID       string
 	ToolName         string
 	Command          string
-	Params           map[string]string
+	Params           map[string]any
 	Status           string
 	RequiresApproval bool
 	StartedAt        time.Time
@@ -36,6 +36,7 @@ type ToolCallResultRecordInput struct {
 	Status     string
 	Output     string
 	Error      string
+	Metadata   any
 	FinishedAt time.Time
 }
 

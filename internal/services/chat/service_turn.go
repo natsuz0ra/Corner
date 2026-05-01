@@ -211,6 +211,7 @@ func (s *ChatService) recordToolCallResult(
 		Status:     status,
 		Output:     result.Output,
 		Error:      result.Error,
+		Metadata:   result.Metadata,
 		FinishedAt: time.Now(),
 	})
 }

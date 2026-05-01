@@ -6,16 +6,17 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { filterToolParamsForDetail, formatToolCallSummary } from "../utils/format.js";
+import { buildFileToolDisplay, isFileToolName } from "../utils/fileToolDisplay.js";
 
 interface ApprovalViewProps {
   toolName: string;
   command: string;
-  params: Record<string, string>;
+  params: Record<string, unknown>;
   items?: Array<{
     toolCallId: string;
     toolName: string;
     command: string;
-    params: Record<string, string>;
+    params: Record<string, unknown>;
   }>;
   cursor?: number;
 }
@@ -36,7 +37,15 @@ export function ApprovalView({
         Tool Approval Required{approvalItems.length > 1 ? ` (${approvalItems.length})` : ""}
       </Text>
       {approvalItems.map((item, index) => {
-        const detailParams = filterToolParamsForDetail(item.toolName, item.command, item.params) || {};
+        const isFileTool = isFileToolName(item.toolName);
+        const isAskQuestions = item.toolName.trim().toLowerCase() === "ask_questions";
+        const fileDisplay = buildFileToolDisplay(item);
+        const detailParams = isAskQuestions
+          ? {}
+          : isFileTool
+          ? Object.fromEntries(Object.entries(filterToolParamsForDetail(item.toolName, item.command, item.params) || {})
+            .filter(([key]) => key === "replace_all"))
+          : filterToolParamsForDetail(item.toolName, item.command, item.params) || {};
         const itemParamStr = Object.keys(detailParams).length > 0
           ? Object.entries(detailParams).map(([k, v]) => `${k}=${v}`).join(", ")
           : "";
@@ -54,6 +63,12 @@ export function ApprovalView({
                 {"  "}Params: {itemParamStr}
               </Text>
             )}
+            {isFileTool && fileDisplay?.filePath ? (
+              <>
+                <Text color="gray">{"  "}File: {fileDisplay.filePath}</Text>
+                <Text color="gray">{"  "}Operation: {fileDisplay.operation}</Text>
+              </>
+            ) : null}
           </Box>
         );
       })}

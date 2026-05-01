@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ func TestUpsertToolCallStart_UpdatesExistingRow(t *testing.T) {
 		ToolCallID:       "tc1",
 		ToolName:         "exec",
 		Command:          "run",
-		Params:           map[string]string{"cmd": "echo 1"},
+		Params:           map[string]any{"cmd": "echo 1"},
 		Status:           "pending",
 		RequiresApproval: true,
 		StartedAt:        time.Now().Add(-1 * time.Minute),
@@ -36,7 +37,7 @@ func TestUpsertToolCallStart_UpdatesExistingRow(t *testing.T) {
 	second.Command = "search"
 	second.Status = "executing"
 	second.RequiresApproval = false
-	second.Params = map[string]string{"q": "golang"}
+	second.Params = map[string]any{"q": "golang"}
 	second.StartedAt = time.Now()
 	if err := repo.UpsertToolCallStart(context.Background(), second); err != nil {
 		t.Fatalf("second upsert failed: %v", err)
@@ -68,7 +69,7 @@ func TestUpsertToolCallStart_PersistsParentAndSubagentRun(t *testing.T) {
 		ToolCallID:       "child-tc",
 		ToolName:         "web_search",
 		Command:          "search",
-		Params:           map[string]string{"query": "x"},
+		Params:           map[string]any{"query": "x"},
 		Status:           "executing",
 		RequiresApproval: false,
 		StartedAt:        time.Now(),
@@ -105,6 +106,60 @@ func TestUpsertToolCallStart_PersistsParentAndSubagentRun(t *testing.T) {
 	}
 }
 
+func TestUpdateToolCallResult_PersistsMetadata(t *testing.T) {
+	repo := New(NewSQLiteDBTest(t, "repo_tool_calls_metadata"))
+	session, err := repo.CreateSession(context.Background(), "s-meta")
+	if err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+	if err := repo.UpsertToolCallStart(context.Background(), domain.ToolCallStartRecordInput{
+		SessionID:        session.ID,
+		RequestID:        "r-meta",
+		ToolCallID:       "tc-meta",
+		ToolName:         "file_edit",
+		Command:          "edit",
+		Params:           map[string]any{"file_path": "a.txt"},
+		Status:           constants.ToolCallStatusExecuting,
+		RequiresApproval: true,
+		StartedAt:        time.Now(),
+	}); err != nil {
+		t.Fatalf("upsert failed: %v", err)
+	}
+
+	metadata := map[string]any{
+		"filePath":  "a.txt",
+		"operation": "Update",
+		"diffLines": []map[string]any{{
+			"kind":    "added",
+			"newLine": 1,
+			"text":    "ok",
+		}},
+	}
+	if err := repo.UpdateToolCallResult(context.Background(), domain.ToolCallResultRecordInput{
+		SessionID:  session.ID,
+		RequestID:  "r-meta",
+		ToolCallID: "tc-meta",
+		Status:     constants.ToolCallStatusCompleted,
+		Output:     "ok",
+		Metadata:   metadata,
+		FinishedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+
+	var row domain.ToolCallRecord
+	if err := repo.db.Where("session_id = ? AND tool_call_id = ?", session.ID, "tc-meta").First(&row).Error; err != nil {
+		t.Fatalf("load row: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(row.MetadataJSON), &got); err != nil {
+		t.Fatalf("metadata json: %v", err)
+	}
+	if got["filePath"] != "a.txt" || got["operation"] != "Update" {
+		t.Fatalf("unexpected metadata: %s", row.MetadataJSON)
+	}
+}
+
 func TestFinishOpenToolCallsForRequest_MarksOnlyPendingAndExecutingAsError(t *testing.T) {
 	repo := New(NewSQLiteDBTest(t, "repo_tool_calls_finish_open"))
 	session, err := repo.CreateSession(context.Background(), "s3")
@@ -125,7 +180,7 @@ func TestFinishOpenToolCallsForRequest_MarksOnlyPendingAndExecutingAsError(t *te
 			ToolCallID:       item.id,
 			ToolName:         "run_subagent",
 			Command:          "delegate",
-			Params:           map[string]string{},
+			Params:           map[string]any{},
 			Status:           item.status,
 			RequiresApproval: false,
 			StartedAt:        time.Now().Add(-time.Second),

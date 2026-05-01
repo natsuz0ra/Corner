@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { resolve } from "node:path";
 import {
   wrapText,
   formatCollapsedLines,
@@ -8,11 +9,20 @@ import {
   filterToolParamsForDetail,
   formatToolCallSummary,
   parseExecOutputPayload,
+  summarizeExecOutput,
+  formatToolExecutionCompactOutput,
   estimateTokens,
   formatCompactTokenCount,
   formatTurnDuration,
   formatWaitingStatsSuffix,
+  formatAskQuestionsQuestionsOnly,
 } from "./format";
+import {
+  buildFileToolDisplay,
+  buildLineDiff,
+  formatFileReadSummary,
+  parseFileReadOutput,
+} from "./fileToolDisplay";
 
 test("wrapText wraps plain text with target width", () => {
   const wrapped = wrapText("1234567890", 4);
@@ -100,10 +110,43 @@ test("formatToolCallSummary uses core tool parameters", () => {
     formatToolCallSummary("run_subagent", "delegate", { task: "Inspect UI cards and report exact files" }),
     "task: Inspect UI cards and report exact files",
   );
+  assert.equal(
+    formatToolCallSummary("file_read", "read", { file_path: "frontend/src/App.vue" }),
+    "Read App.vue",
+  );
+  assert.equal(
+    formatToolCallSummary("file_edit", "edit", { file_path: "cli/src/utils/format.ts", old_string: "a", new_string: "b" }),
+    "Update format.ts",
+  );
+  assert.equal(
+    formatToolCallSummary("file_write", "write", { file_path: "cli/src/utils/fileToolDisplay.ts", content: "x" }),
+    "Write fileToolDisplay.ts",
+  );
+  assert.equal(
+    formatToolCallSummary("file_read", "read", { requests: [{ file_path: "a.ts" }, { file_path: "b.ts" }] }),
+    "Read 2 files",
+  );
+  assert.equal(
+    formatToolCallSummary("file_write", "write", { writes: [{ file_path: "a.ts", content: "a" }] }),
+    "Write 1 file",
+  );
+  assert.equal(
+    formatToolCallSummary("file_edit", "edit", {
+      edits: [
+        { file_path: "a.ts", operations: [{ old_string: "", new_string: "x" }] },
+        { file_path: "b.ts", operations: [{ old_string: "a", new_string: "b" }] },
+      ],
+    }),
+    "Update 1 file / Create 1 file",
+  );
+  assert.equal(
+    formatToolCallSummary("ask_questions", "ask", { questions: "[{\"question\":\"Pick one\"}]" }),
+    "",
+  );
 });
 
-test("formatToolCallSummary hides missing legacy exec description", () => {
-  assert.equal(formatToolCallSummary("exec", "run", { command: "go test ./..." }), "");
+test("formatToolCallSummary falls back to compact exec command text", () => {
+  assert.equal(formatToolCallSummary("exec", "run", { command: "go test ./..." }), "go test ./...");
 });
 
 test("filterToolParamsForDetail removes params already shown in summary", () => {
@@ -124,6 +167,153 @@ test("filterToolParamsForDetail removes params already shown in summary", () => 
     }),
     { context: "repo state", priority: "high" },
   );
+  assert.deepEqual(
+    filterToolParamsForDetail("file_edit", "edit", {
+      file_path: "cli/src/utils/format.ts",
+      old_string: "old",
+      new_string: "new",
+      replace_all: "false",
+    }),
+    { old_string: "old", new_string: "new", replace_all: "false" },
+  );
+  assert.deepEqual(
+    filterToolParamsForDetail("ask_questions", "ask", { questions: "[{\"question\":\"Pick one\"}]" }),
+    { questions: "[{\"question\":\"Pick one\"}]" },
+  );
+});
+
+test("formatAskQuestionsQuestionsOnly shows only question lines", () => {
+  const lines = formatAskQuestionsQuestionsOnly(JSON.stringify([
+    {
+      id: "q1",
+      question: "你打算主要面向哪个平台？",
+      options: ["移动端", "Web 端"],
+    },
+    {
+      id: "q2",
+      question: "你的 AI App 主要做什么类型的任务？",
+      options: ["聊天/对话机器人", "图像生成/处理"],
+    },
+  ]));
+
+  assert.deepEqual(lines, [
+    "├─ 你打算主要面向哪个平台？",
+    "└─ 你的 AI App 主要做什么类型的任务？",
+  ]);
+});
+
+test("parseFileReadOutput extracts read summary without keeping file content", () => {
+  const parsed = parseFileReadOutput([
+    "File: /repo/cli/src/utils/timelineFormat.ts",
+    "Total lines: 462",
+    "Showing lines 120-159:",
+    "   120\tconst x = 1",
+    "... [truncated; use offset/limit to read another range] ...",
+  ].join("\n"));
+
+  assert.deepEqual(parsed, {
+    filePath: "/repo/cli/src/utils/timelineFormat.ts",
+    totalLines: 462,
+    startLine: 120,
+    endLine: 159,
+    truncated: true,
+  });
+  assert.equal(formatFileReadSummary(parsed!), "Read 40 of 462 lines, showing 120-159");
+});
+
+test("parseFileReadOutput supports range-based output format", () => {
+  const parsed = parseFileReadOutput([
+    "File: /repo/cli/src/utils/timelineFormat.ts",
+    "Total lines: 462",
+    "Range 1 lines 120-159:",
+    "   120\tconst x = 1",
+  ].join("\n"));
+
+  assert.deepEqual(parsed, {
+    filePath: "/repo/cli/src/utils/timelineFormat.ts",
+    totalLines: 462,
+    startLine: 120,
+    endLine: 159,
+    truncated: false,
+  });
+});
+
+test("buildLineDiff emits concrete removed and added lines", () => {
+  assert.deepEqual(buildLineDiff("a\nb\nc\n", "a\nx\nc\n"), [
+    { kind: "context", oldLine: 1, newLine: 1, text: "a" },
+    { kind: "removed", oldLine: 2, text: "b" },
+    { kind: "added", newLine: 2, text: "x" },
+    { kind: "context", oldLine: 3, newLine: 3, text: "c" },
+  ]);
+});
+
+test("buildFileToolDisplay formats file_write as concrete added lines", () => {
+  const filePath = "frontend/src/utils/fileToolDisplay.ts";
+  const display = buildFileToolDisplay({
+    toolName: "file_write",
+    params: {
+      file_path: filePath,
+      content: "export const ok = true\n",
+    },
+  });
+
+  assert.equal(display?.summary, `Wrote 1 line to ${resolve(filePath)}`);
+  assert.equal(display?.fileName, "fileToolDisplay.ts");
+  assert.deepEqual(display?.diffLines, [
+    { kind: "added", newLine: 1, text: "export const ok = true" },
+  ]);
+});
+
+test("buildFileToolDisplay prefers backend metadata diff and absolute summary", () => {
+  const display = buildFileToolDisplay({
+    toolName: "file_edit",
+    params: {
+      file_path: "cli/src/utils/fileToolDisplay.ts",
+      old_string: "old",
+      new_string: "new",
+    },
+    metadata: {
+      filePath: "cli/src/utils/fileToolDisplay.ts",
+      operation: "Update",
+      summary: "Updated fileToolDisplay.ts",
+      diffLines: [
+        { kind: "context", oldLine: 9, newLine: 9, text: "before" },
+        { kind: "removed", oldLine: 10, text: "old" },
+        { kind: "added", newLine: 10, text: "new" },
+        { kind: "context", oldLine: 11, newLine: 11, text: "after" },
+      ],
+    },
+  });
+
+  assert.equal(display?.fileName, "fileToolDisplay.ts");
+  assert.equal(display?.filePath, "cli/src/utils/fileToolDisplay.ts");
+  assert.equal(display?.summary, `Updated ${resolve("cli/src/utils/fileToolDisplay.ts")}`);
+  assert.deepEqual(display?.diffLines, [
+    { kind: "context", oldLine: 9, newLine: 9, text: "before" },
+    { kind: "removed", oldLine: 10, text: "old" },
+    { kind: "added", newLine: 10, text: "new" },
+    { kind: "context", oldLine: 11, newLine: 11, text: "after" },
+  ]);
+});
+
+test("buildFileToolDisplay uses first item when metadata is array", () => {
+  const display = buildFileToolDisplay({
+    toolName: "file_edit",
+    params: {},
+    metadata: [{
+      filePath: "a.ts",
+      operation: "Update",
+      summary: "Updated a.ts",
+      diffLines: [{ kind: "added", newLine: 1, text: "x" }],
+    }, {
+      filePath: "b.ts",
+      operation: "Create",
+      summary: "Created b.ts",
+      diffLines: [{ kind: "added", newLine: 1, text: "y" }],
+    }],
+  });
+  assert.equal(display?.filePath, "a.ts");
+  assert.equal(display?.summary, `${"Updated"} ${resolve("a.ts")}`);
 });
 
 test("parseExecOutputPayload parses valid exec output payload", () => {
@@ -144,6 +334,61 @@ test("parseExecOutputPayload parses valid exec output payload", () => {
 test("parseExecOutputPayload returns null on invalid payload", () => {
   const payload = parseExecOutputPayload('{"stdout":"ok"}');
   assert.equal(payload, null);
+});
+
+test("summarizeExecOutput returns compact success summary", () => {
+  const summary = summarizeExecOutput(JSON.stringify({
+    stdout: "line1\nline2",
+    stderr: "",
+    exit_code: 0,
+    timed_out: false,
+    truncated: false,
+    shell: "bash",
+    working_directory: "/repo",
+    duration_ms: 31,
+  }));
+  assert.ok(summary);
+  assert.equal(summary?.isFailure, false);
+  assert.match(summary?.summary || "", /stdout_lines: 2/);
+  assert.match(summary?.summary || "", /stderr_lines: 0/);
+});
+
+test("summarizeExecOutput returns failure preview from stderr first", () => {
+  const summary = summarizeExecOutput(JSON.stringify({
+    stdout: "ok",
+    stderr: "error line 1\nerror line 2\nerror line 3",
+    exit_code: 1,
+    timed_out: false,
+    truncated: false,
+    shell: "bash",
+    working_directory: "/repo",
+    duration_ms: 40,
+  }));
+  assert.ok(summary);
+  assert.equal(summary?.isFailure, true);
+  assert.equal(summary?.preview.length, 2);
+  assert.match(summary?.preview[0] || "", /error line 1/);
+});
+
+test("formatToolExecutionCompactOutput prints compact exec summary with expand hint", () => {
+  const text = formatToolExecutionCompactOutput("exec", "run", JSON.stringify({
+    stdout: "done",
+    stderr: "",
+    exit_code: 0,
+    timed_out: false,
+    truncated: false,
+    shell: "bash",
+    working_directory: "/repo",
+    duration_ms: 18,
+  }));
+  assert.match(text, /duration_ms: 18/);
+  assert.match(text, /\(ctrl\+o to expand\)/);
+});
+
+test("formatToolExecutionCompactOutput keeps expand hint for non-JSON exec failure text", () => {
+  const text = formatToolExecutionCompactOutput("exec", "run", "permission denied");
+  assert.match(text, /permission denied/);
+  assert.match(text, /\(ctrl\+o to expand\)/);
 });
 
 test("formatTurnDuration formats seconds, minutes, and hours", () => {

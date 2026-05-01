@@ -535,6 +535,7 @@ export const useChatStore = defineStore('chat', () => {
           item.status = normalizeToolStatus(data.status, data.error)
           item.output = data.output
           item.error = data.error
+          item.metadata = data.metadata
           item.requiresApproval = data.requiresApproval
           item.finishedAt = parseSocketTimestamp(data.finishedAt)
           if (data.parentToolCallId) item.parentToolCallId = data.parentToolCallId

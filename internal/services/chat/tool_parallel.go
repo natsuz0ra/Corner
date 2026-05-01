@@ -34,6 +34,7 @@ type parallelToolOutcome struct {
 	status         string
 	output         string
 	error          string
+	metadata       any
 }
 
 func runParallelToolJobs(
@@ -113,6 +114,7 @@ func runParallelToolJobs(
 			if execResult != nil {
 				result.Output = execResult.Output
 				result.Error = execResult.Error
+				result.Metadata = execResult.Metadata
 			}
 			if onResult != nil {
 				onResult(result)
@@ -124,6 +126,7 @@ func runParallelToolJobs(
 				status:         status,
 				output:         result.Output,
 				error:          result.Error,
+				metadata:       result.Metadata,
 			}
 		}()
 	}

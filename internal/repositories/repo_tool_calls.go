@@ -57,6 +57,7 @@ func (r *Repository) UpsertToolCallStart(ctx context.Context, input domain.ToolC
 			"finished_at":          nil,
 			"output":               "",
 			"error":                "",
+			"metadata_json":        "",
 			"assistant_message_id": nil,
 			"updated_at":           time.Now(),
 		}),
@@ -82,12 +83,21 @@ func (r *Repository) FinishOpenToolCallsForRequest(ctx context.Context, sessionI
 }
 
 func (r *Repository) UpdateToolCallResult(ctx context.Context, input domain.ToolCallResultRecordInput) error {
+	metadataJSON := ""
+	if input.Metadata != nil {
+		if b, err := json.Marshal(input.Metadata); err == nil {
+			metadataJSON = string(b)
+		} else {
+			return err
+		}
+	}
 	updates := map[string]any{
-		"status":      input.Status,
-		"output":      input.Output,
-		"error":       input.Error,
-		"updated_at":  time.Now(),
-		"finished_at": input.FinishedAt,
+		"status":        input.Status,
+		"output":        input.Output,
+		"error":         input.Error,
+		"metadata_json": metadataJSON,
+		"updated_at":    time.Now(),
+		"finished_at":   input.FinishedAt,
 	}
 	if input.FinishedAt.IsZero() {
 		updates["finished_at"] = time.Now()

@@ -8,6 +8,7 @@ type CommandParam struct {
 	Required    bool   `json:"required"`
 	Description string `json:"description"`
 	Example     string `json:"example,omitempty"`
+	Schema      any    `json:"schema,omitempty"`
 }
 
 // Command describes one subcommand supported by a tool.
@@ -19,8 +20,9 @@ type Command struct {
 
 // ExecuteResult is the outcome of a tool command.
 type ExecuteResult struct {
-	Output string `json:"output,omitempty"`
-	Error  string `json:"error,omitempty"`
+	Output   string `json:"output,omitempty"`
+	Error    string `json:"error,omitempty"`
+	Metadata any    `json:"metadata,omitempty"`
 }
 
 // Tool is the interface every built-in tool implements.
@@ -32,5 +34,5 @@ type Tool interface {
 	Description() string
 	// Commands lists supported subcommands.
 	Commands() []Command
-	Execute(ctx context.Context, command string, params map[string]string) (*ExecuteResult, error)
+	Execute(ctx context.Context, command string, params map[string]any) (*ExecuteResult, error)
 }
