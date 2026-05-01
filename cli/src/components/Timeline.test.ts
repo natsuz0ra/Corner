@@ -108,6 +108,55 @@ test("formatToolOutputLines shows exec output in structured layout", () => {
   assert.ok(lines.some((line) => line.includes("hello")));
 });
 
+test("formatToolOutputLines shows compact exec summary when collapsed", () => {
+  const entry: TimelineEntry = {
+    kind: "tool",
+    content: "",
+    toolName: "exec",
+    command: "run",
+    status: "completed",
+    output: JSON.stringify({
+      stdout: "hello\\nworld",
+      stderr: "",
+      exit_code: 0,
+      timed_out: false,
+      truncated: false,
+      shell: "bash",
+      working_directory: "/repo",
+      duration_ms: 22,
+    }),
+  };
+
+  const lines = formatToolOutputLines(entry, 120, false);
+  assert.ok(lines.some((line) => line.includes("stdout_lines: 2")));
+  assert.ok(lines.some((line) => line.includes("ctrl+o to expand")));
+  assert.ok(lines.every((line) => !line.includes("stdout:")));
+});
+
+test("formatToolOutputLines shows failure preview for collapsed exec", () => {
+  const entry: TimelineEntry = {
+    kind: "tool",
+    content: "",
+    toolName: "exec",
+    command: "run",
+    status: "completed",
+    output: JSON.stringify({
+      stdout: "ok",
+      stderr: "boom 1\\nboom 2\\nboom 3",
+      exit_code: 2,
+      timed_out: false,
+      truncated: false,
+      shell: "bash",
+      working_directory: "/repo",
+      duration_ms: 19,
+    }),
+  };
+
+  const lines = formatToolOutputLines(entry, 120, false);
+  assert.ok(lines.some((line) => line.includes("✕ fail")));
+  assert.ok(lines.some((line) => line.includes("preview: boom 1")));
+});
+
 test("formatFileToolTimelineLines shows only file_read summary", () => {
   const entry: TimelineEntry = {
     kind: "tool",
@@ -227,6 +276,26 @@ test("formatToolParamLines pretty prints JSON params", () => {
   assert.ok(lines.some((line) => line.includes("command: echo ok")));
   assert.ok(lines.some((line) => line.includes("headers:")));
   assert.ok(lines.some((line) => line.includes("Content-Type")));
+});
+
+test("formatToolParamLines hides exec command when collapsed and shows it when expanded", () => {
+  const entry: TimelineEntry = {
+    kind: "tool",
+    content: "",
+    toolName: "exec",
+    command: "run",
+    params: {
+      command: "python3 -c \"print('hello')\"",
+      timeout_ms: "30000",
+    },
+  };
+
+  const collapsedLines = formatToolParamLines(entry, 120, false);
+  const expandedLines = formatToolParamLines(entry, 120, true);
+
+  assert.ok(collapsedLines.every((line) => !line.includes("command:")));
+  assert.ok(expandedLines.some((line) => line.includes("command:")));
+  assert.ok(expandedLines.some((line) => line.includes("python3 -c")));
 });
 
 test("formatThinkingLabel uses fixed duration after thinking completes", () => {
@@ -445,7 +514,7 @@ test("formatRunSubagentDetailLines uses stable fallback for active child tool wi
     subagentRunId: "run-1",
   }], 100, false);
 
-  assert.ok(lines.some((line) => line.includes("Thinking & tools: exec [exec.run()]")));
+  assert.ok(lines.some((line) => line.includes("Thinking & tools: exec [npm install -g @openai/codex]")));
 });
 
 test("formatRunSubagentDetailLines aligns wrapped collapsed summaries under the value", () => {

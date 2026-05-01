@@ -452,6 +452,7 @@ export type AppAction =
   | { type: "QA_NAV"; delta: number }
   | { type: "QA_SELECT"; optionIndex: number }
   | { type: "QA_SET_CUSTOM_INPUT"; value: string }
+  | { type: "QA_SUBMIT_CUSTOM"; value: string }
   | { type: "QA_NEXT_QUESTION" }
   | { type: "QA_PREV_QUESTION" }
   | { type: "QA_STEP_CONFIRM" }

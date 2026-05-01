@@ -874,16 +874,36 @@ export function reducer(state: AppState, action: AppAction): AppState {
 
     case "QA_SELECT": {
       const answers = [...state.qaAnswers];
+      const current = answers[state.qaCurrentIndex];
+      const isCustom = action.optionIndex === -1;
       answers[state.qaCurrentIndex] = {
-        ...answers[state.qaCurrentIndex],
+        ...current,
         selectedOption: action.optionIndex,
-        customAnswer: "",
+        customAnswer: isCustom ? current.customAnswer : "",
       };
-      return { ...state, qaAnswers: answers, qaCustomInput: "" };
+      return {
+        ...state,
+        qaAnswers: answers,
+        qaCustomInput: isCustom ? (current.customAnswer || "") : "",
+      };
     }
 
     case "QA_SET_CUSTOM_INPUT":
       return { ...state, qaCustomInput: action.value };
+
+    case "QA_SUBMIT_CUSTOM": {
+      const value = action.value.trim();
+      if (!value) {
+        return state;
+      }
+      const answers = [...state.qaAnswers];
+      answers[state.qaCurrentIndex] = {
+        ...answers[state.qaCurrentIndex],
+        selectedOption: -1,
+        customAnswer: value,
+      };
+      return { ...state, qaAnswers: answers, qaCustomInput: value };
+    }
 
     case "QA_NEXT_QUESTION": {
       const nextIdx = state.qaCurrentIndex + 1;

@@ -273,6 +273,50 @@ test("STREAM_DONE and RESET_SESSION clear current turn stats", () => {
 	assert.equal(state.turnThoughtDurationMs, undefined);
 });
 
+test("QA_SUBMIT_CUSTOM persists custom answer and selects custom option", () => {
+	let state = initState();
+	state = reduce(state, {
+		type: "SET_QA",
+		toolCallId: "tool-1",
+		questions: [{ id: "q1", question: "Pick", options: ["A", "B"] }],
+	});
+	state = reduce(state, { type: "QA_SET_CUSTOM_INPUT", value: "  my answer  " });
+	state = reduce(state, { type: "QA_SUBMIT_CUSTOM", value: state.qaCustomInput });
+
+	assert.equal(state.qaAnswers[0]?.selectedOption, -1);
+	assert.equal(state.qaAnswers[0]?.customAnswer, "my answer");
+	assert.equal(state.qaCustomInput, "my answer");
+});
+
+test("QA_SUBMIT_CUSTOM ignores empty input", () => {
+	let state = initState();
+	state = reduce(state, {
+		type: "SET_QA",
+		toolCallId: "tool-1",
+		questions: [{ id: "q1", question: "Pick", options: ["A", "B"] }],
+	});
+	const before = state.qaAnswers[0];
+	state = reduce(state, { type: "QA_SUBMIT_CUSTOM", value: "   " });
+
+	assert.deepEqual(state.qaAnswers[0], before);
+	assert.equal(state.qaCustomInput, "");
+});
+
+test("QA_SELECT on preset option clears custom answer", () => {
+	let state = initState();
+	state = reduce(state, {
+		type: "SET_QA",
+		toolCallId: "tool-1",
+		questions: [{ id: "q1", question: "Pick", options: ["A", "B"] }],
+	});
+	state = reduce(state, { type: "QA_SUBMIT_CUSTOM", value: "custom" });
+	state = reduce(state, { type: "QA_SELECT", optionIndex: 0 });
+
+	assert.equal(state.qaAnswers[0]?.selectedOption, 0);
+	assert.equal(state.qaAnswers[0]?.customAnswer, "");
+	assert.equal(state.qaCustomInput, "");
+});
+
 test("THINKING_DONE stores top-level duration for waiting stats", () => {
 	let state: AppState = {
 		...initState(),

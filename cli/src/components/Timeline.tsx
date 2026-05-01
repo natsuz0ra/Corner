@@ -12,6 +12,7 @@ import {
   wrapText,
   formatAskQuestionsDisplay,
   formatAskQuestionsPending,
+  formatAskQuestionsQuestionsOnly,
 } from "../utils/format.js";
 import {
   PLAN_GOLD,
@@ -230,19 +231,37 @@ function TimelineBlock({
   const summaryParams = entry.subagentTitle
     ? { ...(entry.params || {}), title: entry.subagentTitle }
     : entry.params;
-  const summaryTag = formatToolSummaryTag(formatToolCallSummary(entry.toolName || "", entry.command || "", summaryParams));
+  const normalizedTool = (entry.toolName || "").trim().toLowerCase();
+  const normalizedCommand = (entry.command || "").trim().toLowerCase();
+  const isExecRun = normalizedTool === "exec" && normalizedCommand === "run";
+  const summaryParamsForDisplay = isExecRun && !toolOutputExpanded && status === "completed"
+    ? (() => {
+        const cloned = { ...(summaryParams || {}) } as Record<string, unknown>;
+        delete cloned.command;
+        return cloned;
+      })()
+    : summaryParams;
+  const summaryTag = formatToolSummaryTag(
+    formatToolCallSummary(entry.toolName || "", entry.command || "", summaryParamsForDisplay),
+  );
   const statusPart = formatToolStatusPart(status);
   const isAskQuestions = (entry.toolName || "").trim().toLowerCase() === "ask_questions";
   const isRunSubagent = isRunSubagentEntry(entry);
   let qaDisplayLines: string[] | null = null;
-  if (isAskQuestions && (status === "completed" || status === "error" || status === "rejected")) {
+  if (isAskQuestions && status === "completed") {
     qaDisplayLines = formatAskQuestionsDisplay((entry.output || entry.content) || "");
+  } else if (isAskQuestions && (status === "error" || status === "rejected")) {
+    qaDisplayLines = formatAskQuestionsDisplay((entry.output || entry.content) || "");
+    if (!qaDisplayLines) {
+      const questionsRaw = entry.params?.questions;
+      if (questionsRaw) qaDisplayLines = formatAskQuestionsQuestionsOnly(String(questionsRaw));
+    }
   } else if (isAskQuestions && (status === "pending" || status === "executing")) {
     const questionsRaw = entry.params?.questions;
     if (questionsRaw) qaDisplayLines = formatAskQuestionsPending(questionsRaw);
   }
   const isFileTool = isFileToolEntry(entry);
-  const paramLines = qaDisplayLines || isRunSubagent || isFileTool ? [] : formatToolParamLines(entry, maxWidth);
+  const paramLines = qaDisplayLines || isRunSubagent || isFileTool ? [] : formatToolParamLines(entry, maxWidth, toolOutputExpanded);
   const resultLines = qaDisplayLines || isFileTool ? [] : (status === "completed" || status === "error" || status === "rejected")
     ? formatToolOutputLines(entry, maxWidth, toolOutputExpanded)
     : [];

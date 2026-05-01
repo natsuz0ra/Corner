@@ -40,16 +40,41 @@ export default function QuestionAnswerView({
   step,
   cursor,
   customInput,
+  onCustomInputChange,
+  onCustomInputSubmit,
   onEscape,
   columns,
 }: Props) {
+  const width = Math.min(columns ?? 80, 80);
+  const q = questions[currentIndex];
+  const currentAnswer = q ? answers[currentIndex] : undefined;
+  const isCustomSelected = q ? currentAnswer?.selectedOption === -1 : false;
+  const isCustomCursor = q ? cursor === q.options.length : false;
+  const customDisplayValue = currentAnswer?.customAnswer || customInput;
+
   useInput((input, key) => {
     if (key.escape) {
       onEscape();
+      return;
+    }
+    if (step !== "questions" || !q || (!isCustomSelected && !isCustomCursor)) {
+      return;
+    }
+    if (key.return) {
+      onCustomInputSubmit(customInput);
+      return;
+    }
+    if (key.backspace || key.delete) {
+      onCustomInputChange(customInput.slice(0, -1));
+      return;
+    }
+    if (key.ctrl || key.meta || key.tab || key.upArrow || key.downArrow || key.leftArrow || key.rightArrow) {
+      return;
+    }
+    if (input && input >= " " && input !== "\x7f") {
+      onCustomInputChange(customInput + input);
     }
   });
-
-  const width = Math.min(columns ?? 80, 80);
 
   if (step === "confirm") {
     return (
@@ -74,11 +99,7 @@ export default function QuestionAnswerView({
     );
   }
 
-  const q = questions[currentIndex];
   if (!q) return <Text>No questions</Text>;
-  const currentAnswer = answers[currentIndex];
-  const totalOptions = q.options.length + 1; // +1 for custom
-  const isCustomSelected = currentAnswer?.selectedOption === -1;
 
   return (
     <Box flexDirection="column" paddingX={1} width={width}>
@@ -117,7 +138,7 @@ export default function QuestionAnswerView({
         </Box>
         {isCustomSelected && (
           <Box marginLeft={2} marginTop={0}>
-            <Text color="gray">{customInput || "Type custom answer..."}</Text>
+            <Text color="gray">{customDisplayValue || "Type custom answer..."}</Text>
           </Box>
         )}
       </Box>

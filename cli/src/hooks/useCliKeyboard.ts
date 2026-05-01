@@ -1,4 +1,5 @@
 import { useInput } from "ink";
+import type { Key } from "ink";
 import type React from "react";
 import type { AppAction, AppState, MCPTemplate, MenuItem, ModelProvider } from "../types.js";
 import { MCP_TEMPLATES } from "../types.js";
@@ -26,6 +27,31 @@ function cancelAnswers(state: AppState): string {
   return JSON.stringify(
     state.qaQuestions.map((q) => ({ questionId: q.id, selectedOption: -2, customAnswer: "" })),
   );
+}
+
+export function shouldLetQuestionAnswerViewHandleInput(state: AppState, input: string, key: Key): boolean {
+  if (state.view !== "question-answer" || state.qaStep !== "questions") {
+    return false;
+  }
+  const q = state.qaQuestions[state.qaCurrentIndex];
+  if (!q) {
+    return false;
+  }
+  const isCustomCursor = state.qaCursor === q.options.length;
+  const isCustomSelected = state.qaAnswers[state.qaCurrentIndex]?.selectedOption === -1;
+  if (!isCustomCursor && !isCustomSelected) {
+    return false;
+  }
+  if (key.return || key.escape || key.tab || key.upArrow || key.downArrow) {
+    return false;
+  }
+  if (key.ctrl || key.meta || key.leftArrow || key.rightArrow || key.pageUp || key.pageDown || key.home || key.end) {
+    return false;
+  }
+  if (key.backspace || key.delete) {
+    return true;
+  }
+  return Boolean(input);
 }
 
 export function useCliKeyboard({
@@ -152,6 +178,9 @@ export function useCliKeyboard({
     }
 
     if (state.view === "question-answer") {
+      if (shouldLetQuestionAnswerViewHandleInput(state, input, key)) {
+        return;
+      }
       if (state.qaStep === "questions") {
         if (key.upArrow) {
           dispatch({ type: "QA_NAV", delta: -1 });

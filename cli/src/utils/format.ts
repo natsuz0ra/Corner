@@ -83,7 +83,11 @@ export function formatToolCallSummary(
   }
 
   if (tool === "exec" && cmd === "run") {
-    return normalizedParam(params, "description");
+    const description = normalizedParam(params, "description");
+    if (description) return description;
+    const commandText = normalizedParam(params, "command");
+    if (!commandText) return "";
+    return truncateText(commandText, 96);
   }
   if (tool === "web_search" || tool === "search_memory") {
     const query = normalizedParam(params, "query");
@@ -130,6 +134,12 @@ export interface ExecOutputPayload {
   shell: string;
   working_directory: string;
   duration_ms: number;
+}
+
+export interface ExecCompactSummary {
+  summary: string;
+  isFailure: boolean;
+  preview: string[];
 }
 
 function isJSONObject(value: unknown): value is Record<string, unknown> {
@@ -233,6 +243,45 @@ export function parseExecOutputPayload(raw: string): ExecOutputPayload | null {
   };
 }
 
+function countNonEmptyLines(text: string): number {
+  const normalized = formatToolTextValue(text).trim();
+  if (!normalized) return 0;
+  return normalized.split(/\r?\n/).filter((line) => line.trim() !== "").length;
+}
+
+function firstNonEmptyLines(text: string, limit: number): string[] {
+  if (limit <= 0) return [];
+  const normalized = formatToolTextValue(text).trim();
+  if (!normalized) return [];
+  return normalized
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== "")
+    .slice(0, limit);
+}
+
+export function summarizeExecOutput(raw: string): ExecCompactSummary | null {
+  const payload = parseExecOutputPayload(raw);
+  if (!payload) return null;
+
+  const stdoutLines = countNonEmptyLines(payload.stdout);
+  const stderrLines = countNonEmptyLines(payload.stderr);
+  const isFailure = payload.exit_code !== 0 || stderrLines > 0;
+  const statusToken = isFailure ? "✕ fail" : "✓ ok";
+  const summary =
+    `${statusToken} | exit_code: ${payload.exit_code} | duration_ms: ${payload.duration_ms} | ` +
+    `truncated: ${payload.truncated} | stdout_lines: ${stdoutLines} | stderr_lines: ${stderrLines}`;
+
+  const source = stderrLines > 0 ? payload.stderr : payload.stdout;
+  const rawPreview = firstNonEmptyLines(source, 2);
+  const preview = rawPreview.map((line, index) => {
+    const truncated = truncateText(line, 140);
+    return index === 0 ? `preview: ${truncated}` : `         ${truncated}`;
+  });
+
+  return { summary, isFailure, preview };
+}
+
 export function formatTurnDuration(durationMs: number): string {
   const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
   if (totalSeconds < 60) {
@@ -312,6 +361,31 @@ export function formatToolExecutionOutput(toolName: string, command: string, raw
     }
   }
   return formatToolTextValue(raw);
+}
+
+/** Formats compact tool output for collapsed timeline display. */
+export function formatToolExecutionCompactOutput(toolName: string, command: string, raw: string): string {
+  const normalizedTool = toolName.trim().toLowerCase();
+  const normalizedCommand = command.trim().toLowerCase();
+  if (normalizedTool === "exec" && normalizedCommand === "run") {
+    const compact = summarizeExecOutput(raw);
+    if (compact) {
+      const lines = [compact.summary];
+      if (compact.isFailure && compact.preview.length > 0) {
+        lines.push(...compact.preview);
+      }
+      lines.push("(ctrl+o to expand)");
+      return lines.join("\n");
+    }
+
+    // Fallback for non-JSON exec failures: keep collapsed output short
+    // but always preserve the expand hint for full details.
+    const fallback = formatToolTextValue(raw);
+    const firstLine = truncateText(fallback, 140);
+    return `${firstLine}\n(ctrl+o to expand)`;
+  }
+
+  return formatToolExecutionOutput(toolName, command, raw);
 }
 
 /** Truncates multi-line text into a single-line preview. */
@@ -445,6 +519,26 @@ export function formatAskQuestionsPending(raw: string): string[] | null {
       const indent = i < parsed.length - 1 ? "│  " : "   ";
       lines.push(`${indent}${optConnector} ${options[j]}`);
     }
+  }
+  return lines;
+}
+
+/**
+ * Formats ask_questions question list only (without options).
+ * Input is the raw JSON from params["questions"].
+ * Returns null if parsing fails.
+ */
+export function formatAskQuestionsQuestionsOnly(raw: string): string[] | null {
+  const parsed = tryParseJSON(raw);
+  if (!Array.isArray(parsed) || parsed.length === 0) return null;
+  const lines: string[] = [];
+  for (let i = 0; i < parsed.length; i++) {
+    const item = parsed[i];
+    if (typeof item !== "object" || item === null) return null;
+    const { question } = item as Record<string, unknown>;
+    if (typeof question !== "string") return null;
+    const connector = i < parsed.length - 1 ? "├─" : "└─";
+    lines.push(`${connector} ${question}`);
   }
   return lines;
 }
