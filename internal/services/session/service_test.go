@@ -69,6 +69,7 @@ func TestGetMessageHistoryBuildsToolThinkingAndReplyTiming(t *testing.T) {
 			Command:            "run",
 			ParamsJSON:         `{"cmd":"pwd"}`,
 			Status:             "executing",
+			MetadataJSON:       `{"filePath":"a.txt","operation":"Update"}`,
 			AssistantMessageID: &assistantIDPtr,
 			StartedAt:          assistantAt,
 		}},
@@ -92,6 +93,10 @@ func TestGetMessageHistoryBuildsToolThinkingAndReplyTiming(t *testing.T) {
 	tool := got.ToolCallsByAssistantMessageID[assistantID][0]
 	if tool.Status != "error" || tool.Error != "Execution cancelled." || tool.Params["cmd"] != "pwd" {
 		t.Fatalf("unexpected tool history: %+v", tool)
+	}
+	metadata, ok := tool.Metadata.(map[string]any)
+	if !ok || metadata["filePath"] != "a.txt" {
+		t.Fatalf("unexpected tool metadata: %#v", tool.Metadata)
 	}
 	thinking := got.ThinkingByAssistantMessageID[assistantID][0]
 	if thinking.Status != "completed" || thinking.Content != "reasoning" {

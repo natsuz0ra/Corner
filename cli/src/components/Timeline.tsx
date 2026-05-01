@@ -12,6 +12,7 @@ import {
   wrapText,
   formatAskQuestionsDisplay,
   formatAskQuestionsPending,
+  formatAskQuestionsQuestionsOnly,
 } from "../utils/format.js";
 import {
   PLAN_GOLD,
@@ -32,12 +33,14 @@ import {
   formatToolStatusPart,
   formatToolSummaryTag,
   getRunSubagentDetailLineColor,
+  isFileToolEntry,
   isRunSubagentEntry,
   shouldSeparatePlanningAndWaiting,
   shouldShowWaitingPrompt,
   toolDotState,
 } from "../utils/timelineFormat.js";
 import { GradientFlowText } from "./GradientFlowText.js";
+import { FileToolDiffBlock } from "./FileToolDiffBlock.js";
 import { Markdown, StreamingMarkdown } from "./Markdown.js";
 import { Spinner } from "./Spinner.js";
 
@@ -148,7 +151,10 @@ function TimelineBlock({
   }
 
   if (entry.kind === "user") {
-    const lines = entry.content.split("\n");
+    const contentWidth = Math.max(1, maxWidth - 2);
+    const lines = entry.content
+      .split("\n")
+      .flatMap((line) => wrapText(line, contentWidth).split("\n"));
     return (
       <Box flexDirection="column">
         {lines.map((line, i) => (
@@ -228,19 +234,38 @@ function TimelineBlock({
   const summaryParams = entry.subagentTitle
     ? { ...(entry.params || {}), title: entry.subagentTitle }
     : entry.params;
-  const summaryTag = formatToolSummaryTag(formatToolCallSummary(entry.toolName || "", entry.command || "", summaryParams));
+  const normalizedTool = (entry.toolName || "").trim().toLowerCase();
+  const normalizedCommand = (entry.command || "").trim().toLowerCase();
+  const isExecRun = normalizedTool === "exec" && normalizedCommand === "run";
+  const summaryParamsForDisplay = isExecRun && !toolOutputExpanded && status === "completed"
+    ? (() => {
+        const cloned = { ...(summaryParams || {}) } as Record<string, unknown>;
+        delete cloned.command;
+        return cloned;
+      })()
+    : summaryParams;
+  const summaryTag = formatToolSummaryTag(
+    formatToolCallSummary(entry.toolName || "", entry.command || "", summaryParamsForDisplay),
+  );
   const statusPart = formatToolStatusPart(status);
   const isAskQuestions = (entry.toolName || "").trim().toLowerCase() === "ask_questions";
   const isRunSubagent = isRunSubagentEntry(entry);
   let qaDisplayLines: string[] | null = null;
-  if (isAskQuestions && (status === "completed" || status === "error" || status === "rejected")) {
+  if (isAskQuestions && status === "completed") {
     qaDisplayLines = formatAskQuestionsDisplay((entry.output || entry.content) || "");
+  } else if (isAskQuestions && (status === "error" || status === "rejected")) {
+    qaDisplayLines = formatAskQuestionsDisplay((entry.output || entry.content) || "");
+    if (!qaDisplayLines) {
+      const questionsRaw = entry.params?.questions;
+      if (questionsRaw) qaDisplayLines = formatAskQuestionsQuestionsOnly(String(questionsRaw));
+    }
   } else if (isAskQuestions && (status === "pending" || status === "executing")) {
     const questionsRaw = entry.params?.questions;
     if (questionsRaw) qaDisplayLines = formatAskQuestionsPending(questionsRaw);
   }
-  const paramLines = qaDisplayLines || isRunSubagent ? [] : formatToolParamLines(entry, maxWidth);
-  const resultLines = qaDisplayLines ? [] : (status === "completed" || status === "error" || status === "rejected")
+  const isFileTool = isFileToolEntry(entry);
+  const paramLines = qaDisplayLines || isRunSubagent || isFileTool ? [] : formatToolParamLines(entry, maxWidth, toolOutputExpanded);
+  const resultLines = qaDisplayLines || isFileTool ? [] : (status === "completed" || status === "error" || status === "rejected")
     ? formatToolOutputLines(entry, maxWidth, toolOutputExpanded)
     : [];
   const subStreamLines =
@@ -303,6 +328,13 @@ function TimelineBlock({
               {line}
             </Text>
           ))}
+          {isFileTool ? (
+            <FileToolDiffBlock
+              entry={entry}
+              maxWidth={maxWidth}
+              expanded={toolOutputExpanded}
+            />
+          ) : null}
           {resultLines.map((line, index) => (
             <Text key={`${entry.toolCallId || invocation}-result-${index}`}>{line}</Text>
           ))}

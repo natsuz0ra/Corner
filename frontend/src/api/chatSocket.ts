@@ -32,7 +32,7 @@ export interface ToolCallStartData {
   toolCallId: string
   toolName: string
   command: string
-  params: Record<string, string>
+  params: Record<string, unknown>
   requiresApproval: boolean
   preamble?: string
   startedAt?: string
@@ -48,6 +48,7 @@ export interface ToolCallResultData {
   status: ToolCallStatus
   output: string
   error: string
+  metadata?: unknown
   finishedAt?: string
   parentToolCallId?: string
   subagentRunId?: string
@@ -104,11 +105,12 @@ type WSIncoming = {
   toolCallId?: string
   toolName?: string
   command?: string
-  params?: Record<string, string>
+  params?: Record<string, unknown>
   requiresApproval?: boolean
   status?: ToolCallStatus
   preamble?: string
   output?: string
+  metadata?: unknown
   startedAt?: string
   finishedAt?: string
   updatedAt?: string
@@ -173,6 +175,7 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
       status: data.status || 'completed',
       output: data.output || '',
       error: data.error || '',
+      metadata: data.metadata,
       finishedAt: data.finishedAt,
       parentToolCallId: data.parentToolCallId,
       subagentRunId: data.subagentRunId,

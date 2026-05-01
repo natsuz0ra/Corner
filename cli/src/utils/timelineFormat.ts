@@ -9,11 +9,17 @@ import {
   formatCollapsedLines,
   TOOL_OUTPUT_PREVIEW_LINES,
   formatToolExecutionOutput,
+  formatToolExecutionCompactOutput,
   formatToolTextValue,
   formatToolParamEntries,
   filterToolParamsForDetail,
   truncateText,
 } from "./format.js";
+import {
+  buildFileToolDisplays,
+  type FileDiffLine,
+  isFileToolEntry as isFileToolTimelineEntry,
+} from "./fileToolDisplay.js";
 
 export const PLAN_GOLD = "#f59e0b";
 export const WAITING_STATS_COLOR = "#64748b";
@@ -79,8 +85,15 @@ export function formatToolOutputLines(entry: TimelineEntry, maxWidth: number, ex
   const raw = (entry.status === "error" || entry.status === "rejected")
     ? (entry.error || entry.content)
     : (entry.output || entry.content);
-  const formatted = formatToolExecutionOutput(entry.toolName || "", entry.command || "", raw || "");
-  const { lines: rawLines } = formatCollapsedLines(formatted, TOOL_OUTPUT_PREVIEW_LINES, expanded);
+  const normalizedTool = (entry.toolName || "").trim().toLowerCase();
+  const normalizedCommand = (entry.command || "").trim().toLowerCase();
+  const useExecCompact = !expanded && normalizedTool === "exec" && normalizedCommand === "run";
+  const formatted = useExecCompact
+    ? formatToolExecutionCompactOutput(entry.toolName || "", entry.command || "", raw || "")
+    : formatToolExecutionOutput(entry.toolName || "", entry.command || "", raw || "");
+  const { lines: rawLines } = useExecCompact
+    ? { lines: formatted.split("\n"), totalLines: formatted.split("\n").length }
+    : formatCollapsedLines(formatted, TOOL_OUTPUT_PREVIEW_LINES, expanded);
   const result: string[] = [];
   for (const line of rawLines) {
     const wrapped = wrapText(line, contentWidth);
@@ -92,14 +105,87 @@ export function formatToolOutputLines(entry: TimelineEntry, maxWidth: number, ex
   return result;
 }
 
-export function formatToolParamLines(entry: TimelineEntry, maxWidth: number): string[] {
-  return formatToolParamLinesForParams(
-    filterToolParamsForDetail(entry.toolName || "", entry.command || "", entry.params),
-    maxWidth,
-  );
+export function formatToolParamLines(entry: TimelineEntry, maxWidth: number, expanded = false): string[] {
+  const params = filterToolParamsForDetail(entry.toolName || "", entry.command || "", entry.params);
+  const normalizedTool = (entry.toolName || "").trim().toLowerCase();
+  const normalizedCommand = (entry.command || "").trim().toLowerCase();
+  if (normalizedTool === "exec" && normalizedCommand === "run") {
+    if (!expanded) {
+      delete params.command;
+    } else if (entry.params && entry.params.command !== undefined) {
+      params.command = entry.params.command;
+    }
+  }
+  return formatToolParamLinesForParams(params, maxWidth);
 }
 
-function formatToolParamLinesForParams(params: Record<string, string> | undefined, maxWidth: number): string[] {
+export function isFileToolEntry(entry: TimelineEntry): boolean {
+  return isFileToolTimelineEntry(entry);
+}
+
+function fileDiffLineText(line: FileDiffLine): string {
+  const marker = line.kind === "added" ? "+" : line.kind === "removed" ? "-" : " ";
+  const lineNo = line.kind === "added" ? line.newLine : line.oldLine ?? line.newLine;
+  const paddedLineNo = lineNo === undefined ? "   " : String(lineNo).padStart(3, " ");
+  return `${marker} ${paddedLineNo}  ${line.text}`;
+}
+
+function treeWrapLine(prefix: string, text: string, maxWidth: number): string[] {
+  const contentWidth = Math.max(1, maxWidth - prefix.length);
+  const wrapped = wrapText(text, contentWidth).split("\n");
+  return wrapped.map((line, index) => `${index === 0 ? prefix : " ".repeat(prefix.length)}${line}`);
+}
+
+export function formatFileToolTimelineLines(entry: TimelineEntry, maxWidth: number, expanded: boolean): string[] {
+  const displays = buildFileToolDisplays(entry);
+  if (displays.length === 0) return [];
+
+  if (entry.status === "error" || entry.status === "rejected") {
+    const message = entry.error || entry.content || "File tool failed";
+    return treeWrapLine("   └─ ", message, maxWidth);
+  }
+
+  if (entry.status !== "completed") {
+    return [];
+  }
+
+  const lines: string[] = [];
+  for (const display of displays) {
+    lines.push(...treeWrapLine("   └─ ", display.summary, maxWidth));
+    if (display.toolName === "file_read" || display.diffLines.length === 0) {
+      continue;
+    }
+
+    const maxPreviewLines = 8;
+    const isFileEdit = display.toolName === "file_edit";
+    const diffLines = isFileEdit ? display.diffLines : (expanded ? display.diffLines : display.diffLines.slice(0, maxPreviewLines));
+    const remaining = display.diffLines.length - diffLines.length;
+    const rows = diffLines.map(fileDiffLineText);
+    const separatorLine = "─".repeat(Math.max(8, maxWidth - 12));
+    if (remaining > 0) {
+      rows.push(isFileEdit ? `+${remaining} more changed lines` : `... +${remaining} more changed lines (ctrl+o to expand)`);
+    } else if (expanded && !isFileEdit && display.diffLines.length > maxPreviewLines) {
+      rows.push("... (ctrl+o to collapse)");
+    }
+
+    rows.forEach((row, index) => {
+      const connector = index === rows.length - 1 ? "└─ " : "├─ ";
+      if (index > 0 && row.startsWith("+") === false && diffLines[index] && diffLines[index - 1]) {
+        const prev = diffLines[index - 1]!;
+        const curr = diffLines[index]!;
+        const prevNo = prev.newLine ?? prev.oldLine;
+        const currNo = curr.newLine ?? curr.oldLine;
+        if (prevNo !== undefined && currNo !== undefined && currNo - prevNo > 1) {
+          lines.push(...treeWrapLine("      ├─ ", separatorLine, maxWidth));
+        }
+      }
+      lines.push(...treeWrapLine(`      ${connector}`, row, maxWidth));
+    });
+  }
+  return lines;
+}
+
+function formatToolParamLinesForParams(params: Record<string, unknown> | undefined, maxWidth: number): string[] {
   const paramPrefix = "   :: ";
   const continuationPrefix = "      ";
   const prefixWidth = paramPrefix.length;
@@ -149,7 +235,7 @@ export function isRunSubagentEntry(entry: TimelineEntry): boolean {
   return (entry.toolName || "").trim().toLowerCase() === "run_subagent";
 }
 
-function displayParamValue(params: Record<string, string> | undefined, key: string): string {
+function displayParamValue(params: Record<string, unknown> | undefined, key: string): string {
   return formatToolTextValue(String(params?.[key] ?? "")).trim();
 }
 
@@ -162,9 +248,9 @@ function summarizeMultilineText(text: string, maxLen: number): string {
   return `${firstLine} ... +${rawLines.length - 1} more lines`;
 }
 
-function runSubagentExtraParams(params: Record<string, string> | undefined): Record<string, string> | undefined {
+function runSubagentExtraParams(params: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   if (!params) return undefined;
-  const filtered: Record<string, string> = {};
+  const filtered: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(params)) {
     const normalized = key.trim().toLowerCase();
     if (normalized === "context" || normalized === "task" || normalized === "title") continue;

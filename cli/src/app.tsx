@@ -838,8 +838,12 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           customInput={state.qaCustomInput}
           onCustomInputChange={(value) => dispatch({ type: "QA_SET_CUSTOM_INPUT", value } as AppAction)}
           onCustomInputSubmit={(value) => {
-            dispatch({ type: "QA_SELECT", optionIndex: -1 } as AppAction);
-            dispatch({ type: "QA_SET_CUSTOM_INPUT", value } as AppAction);
+            const trimmed = value.trim();
+            if (!trimmed) return;
+            dispatch({ type: "QA_SUBMIT_CUSTOM", value: trimmed } as AppAction);
+            dispatch(state.qaCurrentIndex < state.qaQuestions.length - 1
+              ? { type: "QA_NEXT_QUESTION" } as AppAction
+              : { type: "QA_STEP_CONFIRM" } as AppAction);
           }}
           onEscape={() => {
             const cancelAnswers = JSON.stringify(

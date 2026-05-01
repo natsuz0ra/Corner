@@ -1,4 +1,5 @@
 import wrapAnsi from "wrap-ansi";
+import { fileToolSummaryFromParams, isFileToolName } from "./fileToolDisplay.js";
 
 /** Formats tool invocation text shown in timeline rows. */
 export function formatToolInvocation(toolName: string, command: string): string {
@@ -7,11 +8,11 @@ export function formatToolInvocation(toolName: string, command: string): string 
   return `${name}.${cmd}()`;
 }
 
-function normalizedParam(params: Record<string, string> | undefined, key: string): string {
+function normalizedParam(params: Record<string, unknown> | undefined, key: string): string {
   return String(params?.[key] ?? "").trim();
 }
 
-function firstNonEmptyParam(params?: Record<string, string>): { key: string; value: string } | null {
+function firstNonEmptyParam(params?: Record<string, unknown>): { key: string; value: string } | null {
   if (!params) return null;
   for (const key of Object.keys(params).sort()) {
     const value = normalizedParam(params, key);
@@ -23,11 +24,24 @@ function firstNonEmptyParam(params?: Record<string, string>): { key: string; val
 export function getToolSummaryParamKeys(
   toolName: string,
   command: string,
-  params?: Record<string, string>,
+  params?: Record<string, unknown>,
 ): string[] {
   const tool = toolName.trim().toLowerCase();
   const cmd = command.trim().toLowerCase();
   if (tool === "") return [];
+
+  if (isFileToolName(tool)) {
+    const keys: string[] = [];
+    if (normalizedParam(params, "file_path") !== "") keys.push("file_path");
+    if (normalizedParam(params, "requests") !== "") keys.push("requests");
+    if (normalizedParam(params, "edits") !== "") keys.push("edits");
+    if (normalizedParam(params, "writes") !== "") keys.push("writes");
+    return keys;
+  }
+
+  if (tool === "ask_questions") {
+    return [];
+  }
 
   if (tool === "exec" && cmd === "run" && normalizedParam(params, "description") !== "") {
     return ["description"];
@@ -55,13 +69,25 @@ export function getToolSummaryParamKeys(
 export function formatToolCallSummary(
   toolName: string,
   command: string,
-  params?: Record<string, string>,
+  params?: Record<string, unknown>,
 ): string {
   const tool = toolName.trim().toLowerCase();
   const cmd = command.trim().toLowerCase();
 
+  if (isFileToolName(tool)) {
+    return fileToolSummaryFromParams(tool, params);
+  }
+
+  if (tool === "ask_questions") {
+    return "";
+  }
+
   if (tool === "exec" && cmd === "run") {
-    return normalizedParam(params, "description");
+    const description = normalizedParam(params, "description");
+    if (description) return description;
+    const commandText = normalizedParam(params, "command");
+    if (!commandText) return "";
+    return truncateText(commandText, 96);
   }
   if (tool === "web_search" || tool === "search_memory") {
     const query = normalizedParam(params, "query");
@@ -86,11 +112,11 @@ export function formatToolCallSummary(
 export function filterToolParamsForDetail(
   toolName: string,
   command: string,
-  params?: Record<string, string>,
-): Record<string, string> {
+  params?: Record<string, unknown>,
+): Record<string, unknown> {
   if (!params) return {};
   const hidden = new Set(getToolSummaryParamKeys(toolName, command, params));
-  const result: Record<string, string> = {};
+  const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(params)) {
     if (!hidden.has(key)) result[key] = value;
   }
@@ -108,6 +134,12 @@ export interface ExecOutputPayload {
   shell: string;
   working_directory: string;
   duration_ms: number;
+}
+
+export interface ExecCompactSummary {
+  summary: string;
+  isFailure: boolean;
+  preview: string[];
 }
 
 function isJSONObject(value: unknown): value is Record<string, unknown> {
@@ -154,7 +186,7 @@ export function formatToolTextValue(raw: string): string {
 }
 
 /** Formats params into readable key/value lines. */
-export function formatToolParamEntries(params?: Record<string, string>): string[] {
+export function formatToolParamEntries(params?: Record<string, unknown>): string[] {
   if (!params || Object.keys(params).length === 0) return [];
   const keys = Object.keys(params).sort();
   const lines: string[] = [];
@@ -209,6 +241,45 @@ export function parseExecOutputPayload(raw: string): ExecOutputPayload | null {
     working_directory: workingDirectory,
     duration_ms: durationMs,
   };
+}
+
+function countNonEmptyLines(text: string): number {
+  const normalized = formatToolTextValue(text).trim();
+  if (!normalized) return 0;
+  return normalized.split(/\r?\n/).filter((line) => line.trim() !== "").length;
+}
+
+function firstNonEmptyLines(text: string, limit: number): string[] {
+  if (limit <= 0) return [];
+  const normalized = formatToolTextValue(text).trim();
+  if (!normalized) return [];
+  return normalized
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== "")
+    .slice(0, limit);
+}
+
+export function summarizeExecOutput(raw: string): ExecCompactSummary | null {
+  const payload = parseExecOutputPayload(raw);
+  if (!payload) return null;
+
+  const stdoutLines = countNonEmptyLines(payload.stdout);
+  const stderrLines = countNonEmptyLines(payload.stderr);
+  const isFailure = payload.exit_code !== 0 || stderrLines > 0;
+  const statusToken = isFailure ? "✕ fail" : "✓ ok";
+  const summary =
+    `${statusToken} | exit_code: ${payload.exit_code} | duration_ms: ${payload.duration_ms} | ` +
+    `truncated: ${payload.truncated} | stdout_lines: ${stdoutLines} | stderr_lines: ${stderrLines}`;
+
+  const source = stderrLines > 0 ? payload.stderr : payload.stdout;
+  const rawPreview = firstNonEmptyLines(source, 2);
+  const preview = rawPreview.map((line, index) => {
+    const truncated = truncateText(line, 140);
+    return index === 0 ? `preview: ${truncated}` : `         ${truncated}`;
+  });
+
+  return { summary, isFailure, preview };
 }
 
 export function formatTurnDuration(durationMs: number): string {
@@ -290,6 +361,31 @@ export function formatToolExecutionOutput(toolName: string, command: string, raw
     }
   }
   return formatToolTextValue(raw);
+}
+
+/** Formats compact tool output for collapsed timeline display. */
+export function formatToolExecutionCompactOutput(toolName: string, command: string, raw: string): string {
+  const normalizedTool = toolName.trim().toLowerCase();
+  const normalizedCommand = command.trim().toLowerCase();
+  if (normalizedTool === "exec" && normalizedCommand === "run") {
+    const compact = summarizeExecOutput(raw);
+    if (compact) {
+      const lines = [compact.summary];
+      if (compact.isFailure && compact.preview.length > 0) {
+        lines.push(...compact.preview);
+      }
+      lines.push("(ctrl+o to expand)");
+      return lines.join("\n");
+    }
+
+    // Fallback for non-JSON exec failures: keep collapsed output short
+    // but always preserve the expand hint for full details.
+    const fallback = formatToolTextValue(raw);
+    const firstLine = truncateText(fallback, 140);
+    return `${firstLine}\n(ctrl+o to expand)`;
+  }
+
+  return formatToolExecutionOutput(toolName, command, raw);
 }
 
 /** Truncates multi-line text into a single-line preview. */
@@ -423,6 +519,26 @@ export function formatAskQuestionsPending(raw: string): string[] | null {
       const indent = i < parsed.length - 1 ? "│  " : "   ";
       lines.push(`${indent}${optConnector} ${options[j]}`);
     }
+  }
+  return lines;
+}
+
+/**
+ * Formats ask_questions question list only (without options).
+ * Input is the raw JSON from params["questions"].
+ * Returns null if parsing fails.
+ */
+export function formatAskQuestionsQuestionsOnly(raw: string): string[] | null {
+  const parsed = tryParseJSON(raw);
+  if (!Array.isArray(parsed) || parsed.length === 0) return null;
+  const lines: string[] = [];
+  for (let i = 0; i < parsed.length; i++) {
+    const item = parsed[i];
+    if (typeof item !== "object" || item === null) return null;
+    const { question } = item as Record<string, unknown>;
+    if (typeof question !== "string") return null;
+    const connector = i < parsed.length - 1 ? "├─" : "└─";
+    lines.push(`${connector} ${question}`);
   }
   return lines;
 }

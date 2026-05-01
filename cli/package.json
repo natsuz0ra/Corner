@@ -1,12 +1,13 @@
 {
   "name": "@slimebot/cli",
-  "version": "1.19.1",
+  "version": "1.20.0",
   "type": "module",
   "bin": {
     "slimebot-cli": "./cli.cjs"
   },
   "scripts": {
     "dev": "tsx src/index.tsx",
+    "build:native": "napi build --cwd native/color-diff --release",
     "build": "tsup",
     "start": "node dist/index.js",
     "test": "node --import tsx --test src/**/*.test.ts"
@@ -15,8 +16,10 @@
     "@types/argparse": "^2.0.17",
     "argparse": "^2.0.1",
     "chalk": "^5.3.0",
+    "diff": "^8.0.2",
     "emoji-regex": "^10.6.0",
     "get-east-asian-width": "^1.5.0",
+    "highlight.js": "^11.11.1",
     "ink": "^6.8.0",
     "marked": "^15.0.0",
     "react": "^19.0.0",
@@ -25,8 +28,12 @@
     "wrap-ansi": "^9.0.2",
     "ws": "^8.18.0"
   },
+  "optionalDependencies": {
+    "@slimebot/color-diff-native": "file:./native/color-diff"
+  },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",
+    "@napi-rs/cli": "^3.0.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/ws": "^8.5.0",

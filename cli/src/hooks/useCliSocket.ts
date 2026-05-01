@@ -138,6 +138,7 @@ export function useCliSocket({
             status: data.status || "completed",
             output: data.output,
             error: data.error,
+            metadata: data.metadata,
             content: data.output || data.error || "",
             parentToolCallId: data.parentToolCallId,
             subagentRunId: data.subagentRunId,

@@ -75,11 +75,12 @@ export interface ToolCallHistoryItem {
   toolCallId: string;
   toolName: string;
   command: string;
-  params: Record<string, string>;
+  params: Record<string, unknown>;
   status: string;
   requiresApproval: boolean;
   parentToolCallId?: string;
   subagentRunId?: string;
+  metadata?: unknown;
   subagentTitle?: string;
   subagentTask?: string;
   output?: string;
@@ -112,7 +113,7 @@ export interface ToolCallStartData {
   toolCallId: string;
   toolName: string;
   command: string;
-  params: Record<string, string>;
+  params: Record<string, unknown>;
   requiresApproval: boolean;
   preamble?: string;
   parentToolCallId?: string;
@@ -127,6 +128,7 @@ export interface ToolCallResultData {
   status: ToolCallStatus;
   output: string;
   error: string;
+  metadata?: unknown;
   parentToolCallId?: string;
   subagentRunId?: string;
 }
@@ -219,10 +221,11 @@ export interface TimelineEntry {
   toolCallId?: string;
   toolName?: string;
   command?: string;
-  params?: Record<string, string>;
+  params?: Record<string, unknown>;
   status?: ToolCallStatus;
   output?: string;
   error?: string;
+  metadata?: unknown;
   parentToolCallId?: string;
   subagentRunId?: string;
   subagentTitle?: string;
@@ -248,7 +251,7 @@ export interface PendingApprovalItem {
   toolCallId: string;
   toolName: string;
   command: string;
-  params: Record<string, string>;
+  params: Record<string, unknown>;
 }
 
 export interface MenuItem {
@@ -353,7 +356,7 @@ export interface AppState {
   approvalToolCallId: string;
   approvalToolName: string;
   approvalCommand: string;
-  approvalParams: Record<string, string>;
+  approvalParams: Record<string, unknown>;
   approvalReplyCh: ((approved: boolean) => void) | null;
   pendingApprovals: PendingApprovalItem[];
   approvalCursor: number;
@@ -422,7 +425,7 @@ export type AppAction =
   | { type: "MODEL_EDITOR_NEXT_FIELD" }
   | { type: "MODEL_EDITOR_PREV_FIELD" }
   | { type: "TOGGLE_MODEL_EDITOR_PROVIDER_SELECT" }
-  | { type: "SET_APPROVAL"; toolCallId: string; toolName: string; command: string; params: Record<string, string>; replyCh: (approved: boolean) => void }
+  | { type: "SET_APPROVAL"; toolCallId: string; toolName: string; command: string; params: Record<string, unknown>; replyCh: (approved: boolean) => void }
   | { type: "CLEAR_APPROVAL" }
   | { type: "ADD_PENDING_APPROVAL"; item: PendingApprovalItem }
   | { type: "REMOVE_PENDING_APPROVAL"; toolCallId: string }
@@ -449,6 +452,7 @@ export type AppAction =
   | { type: "QA_NAV"; delta: number }
   | { type: "QA_SELECT"; optionIndex: number }
   | { type: "QA_SET_CUSTOM_INPUT"; value: string }
+  | { type: "QA_SUBMIT_CUSTOM"; value: string }
   | { type: "QA_NEXT_QUESTION" }
   | { type: "QA_PREV_QUESTION" }
   | { type: "QA_STEP_CONFIRM" }

@@ -12,6 +12,7 @@ import {
   formatRunSubagentDetailLines,
   getRunSubagentDetailLineColor,
   formatPlanningIndicatorParts,
+  formatFileToolTimelineLines,
   formatThinkingLabel,
   formatToolOutputLines,
   formatToolParamLines,
@@ -107,6 +108,186 @@ test("formatToolOutputLines shows exec output in structured layout", () => {
   assert.ok(lines.some((line) => line.includes("hello")));
 });
 
+test("formatToolOutputLines shows compact exec summary when collapsed", () => {
+  const entry: TimelineEntry = {
+    kind: "tool",
+    content: "",
+    toolName: "exec",
+    command: "run",
+    status: "completed",
+    output: JSON.stringify({
+      stdout: "hello\\nworld",
+      stderr: "",
+      exit_code: 0,
+      timed_out: false,
+      truncated: false,
+      shell: "bash",
+      working_directory: "/repo",
+      duration_ms: 22,
+    }),
+  };
+
+  const lines = formatToolOutputLines(entry, 120, false);
+  assert.ok(lines.some((line) => line.includes("stdout_lines: 2")));
+  assert.ok(lines.some((line) => line.includes("ctrl+o to expand")));
+  assert.ok(lines.every((line) => !line.includes("stdout:")));
+});
+
+test("formatToolOutputLines shows failure preview for collapsed exec", () => {
+  const entry: TimelineEntry = {
+    kind: "tool",
+    content: "",
+    toolName: "exec",
+    command: "run",
+    status: "completed",
+    output: JSON.stringify({
+      stdout: "ok",
+      stderr: "boom 1\\nboom 2\\nboom 3",
+      exit_code: 2,
+      timed_out: false,
+      truncated: false,
+      shell: "bash",
+      working_directory: "/repo",
+      duration_ms: 19,
+    }),
+  };
+
+  const lines = formatToolOutputLines(entry, 120, false);
+  assert.ok(lines.some((line) => line.includes("✕ fail")));
+  assert.ok(lines.some((line) => line.includes("preview: boom 1")));
+});
+
+test("formatFileToolTimelineLines shows only file_read summary", () => {
+  const entry: TimelineEntry = {
+    kind: "tool",
+    content: "",
+    toolName: "file_read",
+    command: "read",
+    status: "completed",
+    params: { file_path: "cli/src/utils/timelineFormat.ts" },
+    output: [
+      "File: cli/src/utils/timelineFormat.ts",
+      "Total lines: 462",
+      "Showing lines 120-159:",
+      "   120\tconst hidden = true",
+    ].join("\n"),
+  };
+
+  const lines = formatFileToolTimelineLines(entry, 120, false);
+
+  assert.deepEqual(lines, ["   └─ Read 40 of 462 lines, showing 120-159"]);
+  assert.ok(lines.every((line) => !line.includes("hidden")));
+});
+
+test("formatFileToolTimelineLines shows tree-headed concrete edit diff", () => {
+  const entry: TimelineEntry = {
+    kind: "tool",
+    content: "",
+    toolName: "file_edit",
+    command: "edit",
+    status: "completed",
+    params: {
+      file_path: "frontend/src/utils/toolDisplay.ts",
+      old_string: "return mdiConsoleLine\n",
+      new_string: "if (toolName === 'file_read') return mdiFileDocumentOutline\nreturn mdiConsoleLine\n",
+    },
+    output: "File updated successfully: frontend/src/utils/toolDisplay.ts\nReplacements: 1",
+  };
+
+  const lines = formatFileToolTimelineLines(entry, 120, false);
+
+  assert.equal(lines[0], `   └─ Updated ${resolve("frontend/src/utils/toolDisplay.ts")}`);
+  assert.ok(lines.some((line) => line.includes("├─ +") && line.includes("file_read")));
+  assert.ok(lines.some((line) => line.includes("└─") || line.includes("├─")));
+});
+
+test("formatFileToolTimelineLines collapses long file changes with concrete rows", () => {
+  const content = Array.from({ length: 12 }, (_, i) => `line ${i + 1}`).join("\n");
+  const entry: TimelineEntry = {
+    kind: "tool",
+    content: "",
+    toolName: "file_write",
+    command: "write",
+    status: "completed",
+    params: {
+      file_path: "frontend/src/utils/fileToolDisplay.ts",
+      content,
+    },
+    output: "File created successfully: frontend/src/utils/fileToolDisplay.ts\nBytes written: 86",
+  };
+
+  const lines = formatFileToolTimelineLines(entry, 120, false);
+
+  assert.ok(lines.some((line) => line.includes("├─ +") && line.includes("line 1")));
+  assert.ok(lines.at(-1)?.includes("more changed lines"));
+  assert.ok(lines.at(-1)?.includes("ctrl+o to expand"));
+});
+
+test("formatFileToolTimelineLines renders multi-file metadata arrays", () => {
+  const entry: TimelineEntry = {
+    kind: "tool",
+    content: "",
+    toolName: "file_edit",
+    command: "edit",
+    status: "completed",
+    metadata: [
+      {
+        filePath: "a.ts",
+        operation: "Update",
+        summary: "Updated a.ts",
+        diffLines: [{ kind: "added", newLine: 1, text: "A" }],
+      },
+      {
+        filePath: "b.ts",
+        operation: "Create",
+        summary: "Created b.ts",
+        diffLines: [{ kind: "added", newLine: 1, text: "B" }],
+      },
+    ],
+  };
+
+  const lines = formatFileToolTimelineLines(entry, 120, false);
+
+  assert.ok(lines.filter((line) => line.includes("└─ Updated")).length >= 1);
+  assert.ok(lines.filter((line) => line.includes("└─ Created")).length >= 1);
+  assert.ok(lines.some((line) => line.includes("A")));
+  assert.ok(lines.some((line) => line.includes("B")));
+});
+
+test("formatFileToolTimelineLines keeps file_edit expanded and uses line separator", () => {
+  const entry: TimelineEntry = {
+    kind: "tool",
+    content: "",
+    toolName: "file_edit",
+    command: "edit",
+    status: "completed",
+    metadata: [{
+      filePath: "a.ts",
+      operation: "Update",
+      summary: "Updated a.ts",
+      diffLines: [
+        { kind: "context", oldLine: 1, newLine: 1, text: "line 1" },
+        { kind: "added", newLine: 2, text: "line 2 updated" },
+        { kind: "context", oldLine: 20, newLine: 21, text: "line 20" },
+        { kind: "added", newLine: 22, text: "line 21 updated" },
+      ],
+    }],
+  };
+
+  const lines = formatFileToolTimelineLines(entry, 120, false);
+
+  assert.ok(lines.some((line) => line.includes("updated")));
+  assert.ok(lines.every((line) => !line.includes("ctrl+o to expand")));
+  assert.ok(lines.some((line) => line.includes("────")));
+});
+
+test("Timeline renders file tool changes through the dedicated diff component", () => {
+  const source = readFileSync(resolve(import.meta.dirname, "Timeline.tsx"), "utf8");
+
+  assert.match(source, /<FileToolDiffBlock/);
+  assert.doesNotMatch(source, /isFileTool\s*\?\s*formatFileToolTimelineLines/);
+});
+
 test("formatToolParamLines pretty prints JSON params", () => {
   const entry: TimelineEntry = {
     kind: "tool",
@@ -122,6 +303,26 @@ test("formatToolParamLines pretty prints JSON params", () => {
   assert.ok(lines.some((line) => line.includes("command: echo ok")));
   assert.ok(lines.some((line) => line.includes("headers:")));
   assert.ok(lines.some((line) => line.includes("Content-Type")));
+});
+
+test("formatToolParamLines hides exec command when collapsed and shows it when expanded", () => {
+  const entry: TimelineEntry = {
+    kind: "tool",
+    content: "",
+    toolName: "exec",
+    command: "run",
+    params: {
+      command: "python3 -c \"print('hello')\"",
+      timeout_ms: "30000",
+    },
+  };
+
+  const collapsedLines = formatToolParamLines(entry, 120, false);
+  const expandedLines = formatToolParamLines(entry, 120, true);
+
+  assert.ok(collapsedLines.every((line) => !line.includes("command:")));
+  assert.ok(expandedLines.some((line) => line.includes("command:")));
+  assert.ok(expandedLines.some((line) => line.includes("python3 -c")));
 });
 
 test("formatThinkingLabel uses fixed duration after thinking completes", () => {
@@ -340,7 +541,7 @@ test("formatRunSubagentDetailLines uses stable fallback for active child tool wi
     subagentRunId: "run-1",
   }], 100, false);
 
-  assert.ok(lines.some((line) => line.includes("Thinking & tools: exec [exec.run()]")));
+  assert.ok(lines.some((line) => line.includes("Thinking & tools: exec [npm install -g @openai/codex]")));
 });
 
 test("formatRunSubagentDetailLines aligns wrapped collapsed summaries under the value", () => {
