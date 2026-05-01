@@ -9,10 +9,13 @@ import {
   filterToolParamsForDetail,
   formatToolCallSummary,
   parseExecOutputPayload,
+  summarizeExecOutput,
+  formatToolExecutionCompactOutput,
   estimateTokens,
   formatCompactTokenCount,
   formatTurnDuration,
   formatWaitingStatsSuffix,
+  formatAskQuestionsQuestionsOnly,
 } from "./format";
 import {
   buildFileToolDisplay,
@@ -142,8 +145,8 @@ test("formatToolCallSummary uses core tool parameters", () => {
   );
 });
 
-test("formatToolCallSummary hides missing legacy exec description", () => {
-  assert.equal(formatToolCallSummary("exec", "run", { command: "go test ./..." }), "");
+test("formatToolCallSummary falls back to compact exec command text", () => {
+  assert.equal(formatToolCallSummary("exec", "run", { command: "go test ./..." }), "go test ./...");
 });
 
 test("filterToolParamsForDetail removes params already shown in summary", () => {
@@ -177,6 +180,26 @@ test("filterToolParamsForDetail removes params already shown in summary", () => 
     filterToolParamsForDetail("ask_questions", "ask", { questions: "[{\"question\":\"Pick one\"}]" }),
     { questions: "[{\"question\":\"Pick one\"}]" },
   );
+});
+
+test("formatAskQuestionsQuestionsOnly shows only question lines", () => {
+  const lines = formatAskQuestionsQuestionsOnly(JSON.stringify([
+    {
+      id: "q1",
+      question: "你打算主要面向哪个平台？",
+      options: ["移动端", "Web 端"],
+    },
+    {
+      id: "q2",
+      question: "你的 AI App 主要做什么类型的任务？",
+      options: ["聊天/对话机器人", "图像生成/处理"],
+    },
+  ]));
+
+  assert.deepEqual(lines, [
+    "├─ 你打算主要面向哪个平台？",
+    "└─ 你的 AI App 主要做什么类型的任务？",
+  ]);
 });
 
 test("parseFileReadOutput extracts read summary without keeping file content", () => {
@@ -311,6 +334,61 @@ test("parseExecOutputPayload parses valid exec output payload", () => {
 test("parseExecOutputPayload returns null on invalid payload", () => {
   const payload = parseExecOutputPayload('{"stdout":"ok"}');
   assert.equal(payload, null);
+});
+
+test("summarizeExecOutput returns compact success summary", () => {
+  const summary = summarizeExecOutput(JSON.stringify({
+    stdout: "line1\nline2",
+    stderr: "",
+    exit_code: 0,
+    timed_out: false,
+    truncated: false,
+    shell: "bash",
+    working_directory: "/repo",
+    duration_ms: 31,
+  }));
+  assert.ok(summary);
+  assert.equal(summary?.isFailure, false);
+  assert.match(summary?.summary || "", /stdout_lines: 2/);
+  assert.match(summary?.summary || "", /stderr_lines: 0/);
+});
+
+test("summarizeExecOutput returns failure preview from stderr first", () => {
+  const summary = summarizeExecOutput(JSON.stringify({
+    stdout: "ok",
+    stderr: "error line 1\nerror line 2\nerror line 3",
+    exit_code: 1,
+    timed_out: false,
+    truncated: false,
+    shell: "bash",
+    working_directory: "/repo",
+    duration_ms: 40,
+  }));
+  assert.ok(summary);
+  assert.equal(summary?.isFailure, true);
+  assert.equal(summary?.preview.length, 2);
+  assert.match(summary?.preview[0] || "", /error line 1/);
+});
+
+test("formatToolExecutionCompactOutput prints compact exec summary with expand hint", () => {
+  const text = formatToolExecutionCompactOutput("exec", "run", JSON.stringify({
+    stdout: "done",
+    stderr: "",
+    exit_code: 0,
+    timed_out: false,
+    truncated: false,
+    shell: "bash",
+    working_directory: "/repo",
+    duration_ms: 18,
+  }));
+  assert.match(text, /duration_ms: 18/);
+  assert.match(text, /\(ctrl\+o to expand\)/);
+});
+
+test("formatToolExecutionCompactOutput keeps expand hint for non-JSON exec failure text", () => {
+  const text = formatToolExecutionCompactOutput("exec", "run", "permission denied");
+  assert.match(text, /permission denied/);
+  assert.match(text, /\(ctrl\+o to expand\)/);
 });
 
 test("formatTurnDuration formats seconds, minutes, and hours", () => {

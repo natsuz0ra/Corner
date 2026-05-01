@@ -9,6 +9,7 @@ import {
   formatCollapsedLines,
   TOOL_OUTPUT_PREVIEW_LINES,
   formatToolExecutionOutput,
+  formatToolExecutionCompactOutput,
   formatToolTextValue,
   formatToolParamEntries,
   filterToolParamsForDetail,
@@ -84,8 +85,15 @@ export function formatToolOutputLines(entry: TimelineEntry, maxWidth: number, ex
   const raw = (entry.status === "error" || entry.status === "rejected")
     ? (entry.error || entry.content)
     : (entry.output || entry.content);
-  const formatted = formatToolExecutionOutput(entry.toolName || "", entry.command || "", raw || "");
-  const { lines: rawLines } = formatCollapsedLines(formatted, TOOL_OUTPUT_PREVIEW_LINES, expanded);
+  const normalizedTool = (entry.toolName || "").trim().toLowerCase();
+  const normalizedCommand = (entry.command || "").trim().toLowerCase();
+  const useExecCompact = !expanded && normalizedTool === "exec" && normalizedCommand === "run";
+  const formatted = useExecCompact
+    ? formatToolExecutionCompactOutput(entry.toolName || "", entry.command || "", raw || "")
+    : formatToolExecutionOutput(entry.toolName || "", entry.command || "", raw || "");
+  const { lines: rawLines } = useExecCompact
+    ? { lines: formatted.split("\n"), totalLines: formatted.split("\n").length }
+    : formatCollapsedLines(formatted, TOOL_OUTPUT_PREVIEW_LINES, expanded);
   const result: string[] = [];
   for (const line of rawLines) {
     const wrapped = wrapText(line, contentWidth);
@@ -97,11 +105,18 @@ export function formatToolOutputLines(entry: TimelineEntry, maxWidth: number, ex
   return result;
 }
 
-export function formatToolParamLines(entry: TimelineEntry, maxWidth: number): string[] {
-  return formatToolParamLinesForParams(
-    filterToolParamsForDetail(entry.toolName || "", entry.command || "", entry.params),
-    maxWidth,
-  );
+export function formatToolParamLines(entry: TimelineEntry, maxWidth: number, expanded = false): string[] {
+  const params = filterToolParamsForDetail(entry.toolName || "", entry.command || "", entry.params);
+  const normalizedTool = (entry.toolName || "").trim().toLowerCase();
+  const normalizedCommand = (entry.command || "").trim().toLowerCase();
+  if (normalizedTool === "exec" && normalizedCommand === "run") {
+    if (!expanded) {
+      delete params.command;
+    } else if (entry.params && entry.params.command !== undefined) {
+      params.command = entry.params.command;
+    }
+  }
+  return formatToolParamLinesForParams(params, maxWidth);
 }
 
 export function isFileToolEntry(entry: TimelineEntry): boolean {
