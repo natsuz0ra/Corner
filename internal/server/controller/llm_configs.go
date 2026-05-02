@@ -19,11 +19,12 @@ func (h *HTTPController) ListLLMConfigs(c WebContext) {
 // CreateLLMConfig creates a model config and validates required connection fields.
 func (h *HTTPController) CreateLLMConfig(c WebContext) {
 	var req struct {
-		Name     string `json:"name"`
-		Provider string `json:"provider"`
-		BaseURL  string `json:"baseUrl"`
-		APIKey   string `json:"apiKey"`
-		Model    string `json:"model"`
+		Name        string `json:"name"`
+		Provider    string `json:"provider"`
+		BaseURL     string `json:"baseUrl"`
+		APIKey      string `json:"apiKey"`
+		Model       string `json:"model"`
+		ContextSize int    `json:"contextSize"`
 	}
 	if !bindJSONOrBadRequest(c, &req, "Invalid request payload format.") {
 		return
@@ -34,11 +35,12 @@ func (h *HTTPController) CreateLLMConfig(c WebContext) {
 		return
 	}
 	item, err := h.llmConfigs.Create(c.Request().Context(), configsvc.LLMConfigCreateInput{
-		Name:     req.Name,
-		Provider: req.Provider,
-		BaseURL:  req.BaseURL,
-		APIKey:   req.APIKey,
-		Model:    req.Model,
+		Name:        req.Name,
+		Provider:    req.Provider,
+		BaseURL:     req.BaseURL,
+		APIKey:      req.APIKey,
+		Model:       req.Model,
+		ContextSize: req.ContextSize,
 	})
 	if err != nil {
 		jsonInternalError(c, err)

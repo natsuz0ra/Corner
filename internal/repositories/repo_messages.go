@@ -107,6 +107,24 @@ func (r *Repository) ListRecentSessionMessages(ctx context.Context, sessionID st
 	return messages, nil
 }
 
+func (r *Repository) ListAllSessionMessages(ctx context.Context, sessionID string, limit int) ([]domain.Message, error) {
+	if limit <= 0 {
+		limit = 10000
+	}
+	var messages []domain.Message
+	err := r.dbWithContext(ctx).
+		Where("session_id = ?", sessionID).
+		Order("created_at asc, seq asc").
+		Limit(limit).
+		Find(&messages).
+		Error
+	if err != nil {
+		return nil, err
+	}
+	normalizeMessages(messages)
+	return messages, nil
+}
+
 func (r *Repository) AddMessageWithInput(ctx context.Context, input domain.AddMessageInput) (*domain.Message, error) {
 	message := &domain.Message{
 		ID:                uuid.NewString(),

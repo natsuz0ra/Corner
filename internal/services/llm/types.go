@@ -9,6 +9,8 @@ const (
 
 // ModelRuntimeConfig is per-request LLM configuration.
 type ModelRuntimeConfig struct {
+	// ConfigID is the saved LLM config id when the model came from persisted settings.
+	ConfigID string
 	// Provider selects which backend implementation to use.
 	Provider string
 	// Base URL for OpenAI-compatible APIs (Anthropic may also use a custom base URL).
@@ -17,6 +19,8 @@ type ModelRuntimeConfig struct {
 	APIKey string
 	// Model identifier.
 	Model string
+	// ContextSize is the approximate token threshold for session context compaction.
+	ContextSize int
 	// Sampling temperature.
 	Temperature float64
 	// Thinking level: off, low, medium, high, max. Empty or "off" = no extended thinking.

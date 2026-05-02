@@ -103,6 +103,7 @@ export class APIClient {
     baseUrl: string;
     apiKey: string;
     model: string;
+    contextSize?: number;
   }): Promise<LLMConfig> {
     return this.request("/api/llm-configs", {
       method: "POST",

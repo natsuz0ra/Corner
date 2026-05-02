@@ -27,6 +27,7 @@ export interface LLMConfig {
   provider: string;
   baseUrl: string;
   model: string;
+  contextSize?: number;
   createdAt: string;
   updatedAt: string;
 }

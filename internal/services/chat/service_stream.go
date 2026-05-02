@@ -47,7 +47,6 @@ type chatTurnResult struct {
 	answer        string
 	interrupted   bool
 	planCompleted bool
-	memoryPayload string
 	pushErr       error
 	narration     string
 	planBody      string
@@ -148,10 +147,12 @@ func (s *ChatService) prepareChatTurn(
 		return nil, err
 	}
 	modelConfig := llmsvc.ModelRuntimeConfig{
+		ConfigID:      llmConfig.ID,
 		Provider:      llmConfig.Provider,
 		BaseURL:       llmConfig.BaseURL,
 		APIKey:        llmConfig.APIKey,
 		Model:         llmConfig.Model,
+		ContextSize:   llmConfig.ContextSize,
 		ThinkingLevel: thinkingLevel,
 	}
 
@@ -538,14 +539,13 @@ func (s *ChatService) executeChatTurn(
 		answer:        finalAnswer,
 		interrupted:   interrupted,
 		planCompleted: planCompleted,
-		memoryPayload: "",
 		pushErr:       accumulator.pushErr,
 		narration:     resultNarration,
 		planBody:      resultPlanBody,
 	}, nil
 }
 
-// finalizeChatTurn persists assistant message, enqueues memory, and saves plan if applicable.
+// finalizeChatTurn persists assistant message and saves plan if applicable.
 func (s *ChatService) finalizeChatTurn(
 	ctx context.Context,
 	sessionID string,
@@ -587,7 +587,6 @@ func (s *ChatService) finalizeChatTurn(
 		Narration:         result.narration,
 		PlanBody:          result.planBody,
 	}
-	s.maybeEnqueueMemoryAsync(ctx, sessionID, assistantMessage.ID, result.answer)
 
 	if planMode && !result.interrupted && s.planService != nil && strings.TrimSpace(result.planBody) != "" {
 		if !result.planCompleted {
@@ -641,7 +640,7 @@ Analyze the user's request and create a detailed implementation plan.
 
 ## Workflow
 
-1. **Research** — Use read-only tools (file_read, web_search, search_memory) ONLY to gather information.
+1. **Research** — Use read-only tools (file_read, web_search) ONLY to gather information.
 2. **Analyze** — Assess the current state and identify what needs to change.
 3. **Begin Plan** — Call the plan_start tool when you are ready to begin writing your plan. All text output BEFORE this call will appear as narration; all text AFTER will be the plan body. You MUST call this before writing your plan.
 4. **Plan** — Create a structured markdown plan with:
@@ -659,4 +658,4 @@ Analyze the user's request and create a detailed implementation plan.
 - Be specific: include file paths, function names, and concrete actions in each step.
 - You MUST call plan_start before writing your plan.
 - You MUST call plan_complete__submit when your plan is complete.
-- Only file_read, web_search, search_memory, plan_start, and plan_complete__submit tools are available.`
+- Only file_read, web_search, plan_start, and plan_complete__submit tools are available.`
