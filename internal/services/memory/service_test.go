@@ -219,3 +219,48 @@ func TestMemoryService_BuildMemoryContext_SelectsSessionAndGlobalMemoriesWithout
 		t.Fatalf("memory context should not inject the full MEMORY.md manifest anymore: %s", contextText)
 	}
 }
+
+func TestMemoryService_EnqueueTurnMemory_RejectsLowQualityPayload(t *testing.T) {
+	dir := t.TempDir()
+	svc, err := NewMemoryService(dir)
+	if err != nil {
+		t.Fatalf("NewMemoryService: %v", err)
+	}
+	defer svc.Shutdown(context.Background())
+
+	svc.EnqueueTurnMemory("session-1", "", `{"name":"-","description":"短","type":"project","content":"短"}`)
+
+	entries, err := svc.Store().Scan()
+	if err != nil {
+		t.Fatalf("scan entries: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected low-quality memory to be rejected, got %d", len(entries))
+	}
+}
+
+func TestMemoryService_EnqueueTurnMemory_TriggersAutoConsolidate(t *testing.T) {
+	dir := t.TempDir()
+	svc, err := NewMemoryService(dir)
+	if err != nil {
+		t.Fatalf("NewMemoryService: %v", err)
+	}
+	defer svc.Shutdown(context.Background())
+
+	hookCalled := make(chan struct{}, 1)
+	svc.ConfigureAutoConsolidation(true, 0, 1)
+	svc.SetConsolidateHookForTest(func() {
+		select {
+		case hookCalled <- struct{}{}:
+		default:
+		}
+	})
+
+	svc.EnqueueTurnMemory("session-1", "assistant-msg-1", `{"name":"Auto Consolidate Trigger","description":"memory entry to trigger auto consolidate","type":"project","content":"This payload is long enough to pass quality checks."}`)
+
+	select {
+	case <-hookCalled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("expected auto consolidation hook to be triggered after enqueue")
+	}
+}

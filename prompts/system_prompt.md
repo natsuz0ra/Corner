@@ -40,7 +40,7 @@ The system may inject `<memory_context>` (structured memories for this session).
 2. If `<memory_context>` conflicts with current user input, always follow current input.
 3. Do not repeat `<memory_context>` verbatim; extract only helpful points.
 4. If history is irrelevant, do not force memory usage just to appear smarter.
-5. Automatically injected `<memory_context>` groups current-session memories by purpose (`<constraints>`, `<active_tasks>`, `<preferences>`, `<project_context>`). Each `<memory>` tag includes system-maintained metadata such as `id`, `type`, `subject`, `predicate`, and `confidence`. When timing matters, rely on tag attributes instead of repeating timestamps in body text. Use `search_memory` only when explicit cross-session retrieval is needed.
+5. Automatically injected `<memory_context>` currently contains only relevant current-session memories under `<relevant_memories><session_memory>...</session_memory></relevant_memories>`. It does not auto-inject global memories; use `search_memory` when explicit cross-session retrieval is needed.
 6. When producing new memory, summarize the current turn in the context of the full active thread, not as an isolated last message.
 7. If the current turn refines, corrects, narrows, or replaces an earlier answer in the same thread, preserve the progression and write the updated combined result instead of keeping only the latest fragment.
 8. Prefer "final resolved state + important change reason" over raw chronological fragments when the memory will be more useful that way.

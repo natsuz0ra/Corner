@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
 	"slimebot/internal/logging"
 	"sort"
 	"strings"
@@ -29,6 +30,8 @@ type MemoryService struct {
 	consolidateHookForTest       func()
 	autoConsolidationRunning     atomic.Bool
 }
+
+var memoryNameAllowedPattern = regexp.MustCompile(`[\p{L}\p{N}]`)
 
 // MemorySearchHit is one hit in a memory search result.
 type MemorySearchHit struct {
@@ -136,6 +139,10 @@ func (m *MemoryService) EnqueueTurnMemory(sessionID, assistantMessageID, rawMemo
 	}
 
 	entry.SessionID = scopeForMemoryType(entry.Type, sessionID)
+	if reason := validateMemoryEntryQuality(entry); reason != "" {
+		logging.Info("memory_enqueue_rejected", "session", sessionID, "name", entry.Name, "reason", reason)
+		return
+	}
 
 	if dup, dupErr := m.findConflictingMemory(entry); dupErr != nil {
 		logging.Warn("memory_conflict_search_failed", "name", entry.Name, "error", dupErr)
@@ -150,6 +157,19 @@ func (m *MemoryService) EnqueueTurnMemory(sessionID, assistantMessageID, rawMemo
 	if err := m.store.Save(entry); err != nil {
 		logging.Warn("memory_save_failed", "name", entry.Name, "error", err)
 		return
+	}
+
+	if strings.TrimSpace(assistantMessageID) != "" {
+		go func() {
+			ran, merged, deleted, autoErr := m.TryAutoConsolidate("enqueue_turn_memory")
+			if autoErr != nil {
+				logging.Warn("memory_auto_consolidate_failed", "error", autoErr)
+				return
+			}
+			if ran {
+				logging.Info("memory_auto_consolidate_done", "merged", merged, "deleted", deleted)
+			}
+		}()
 	}
 }
 
@@ -529,6 +549,31 @@ func parseMemoryPayload(raw string) (*MemoryEntry, error) {
 		Type:        memType,
 		Content:     p.Content,
 	}, nil
+}
+
+func validateMemoryEntryQuality(entry *MemoryEntry) string {
+	if entry == nil {
+		return "nil_entry"
+	}
+	name := strings.TrimSpace(entry.Name)
+	description := strings.TrimSpace(entry.Description)
+	content := strings.TrimSpace(entry.Content)
+	if name == "" {
+		return "empty_name"
+	}
+	if !memoryNameAllowedPattern.MatchString(name) {
+		return "invalid_name"
+	}
+	if description == "" {
+		return "empty_description"
+	}
+	if len([]rune(description)) < 6 {
+		return "description_too_short"
+	}
+	if content == "" {
+		return "empty_content"
+	}
+	return ""
 }
 
 // freshnessLabel returns a freshness tag from update time (see Claude Code memoryAgeDays).

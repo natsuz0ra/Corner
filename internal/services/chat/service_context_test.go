@@ -2,10 +2,12 @@ package chat
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"slimebot/internal/domain"
 	llmsvc "slimebot/internal/services/llm"
 )
 
@@ -138,5 +140,46 @@ func TestBuildContextMessages_NoRunContext_OmitsConfigDir(t *testing.T) {
 				t.Fatal("expected no working directory when RunContext is zero-valued")
 			}
 		}
+	}
+}
+
+func TestBuildContextMessages_ContextRoundsLimit(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	session, err := repo.CreateSession(ctx, "history-rounds")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	for i := 0; i < 80; i++ {
+		role := "assistant"
+		if i%2 == 0 {
+			role = "user"
+		}
+		if _, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{
+			SessionID: session.ID,
+			Role:      role,
+			Content:   fmt.Sprintf("m-%d", i),
+		}); err != nil {
+			t.Fatalf("AddMessageWithInput failed at %d: %v", i, err)
+		}
+	}
+
+	svc := NewChatService(repo, nil, nil, nil, nil, nil)
+	svc.SetContextHistoryRounds(20)
+	msgs20, err := svc.BuildContextMessages(ctx, session.ID, llmsvc.ModelRuntimeConfig{})
+	if err != nil {
+		t.Fatalf("BuildContextMessages(20 rounds) failed: %v", err)
+	}
+	if got := len(msgs20); got != 42 { // system(2) + history(40)
+		t.Fatalf("expected 42 messages for 20 rounds, got %d", got)
+	}
+
+	svc.SetContextHistoryRounds(30)
+	msgs30, err := svc.BuildContextMessages(ctx, session.ID, llmsvc.ModelRuntimeConfig{})
+	if err != nil {
+		t.Fatalf("BuildContextMessages(30 rounds) failed: %v", err)
+	}
+	if got := len(msgs30); got != 62 { // system(2) + history(60)
+		t.Fatalf("expected 62 messages for 30 rounds, got %d", got)
 	}
 }

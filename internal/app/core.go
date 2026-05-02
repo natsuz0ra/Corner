@@ -95,6 +95,9 @@ func NewCore(cfg config.Config) (*Core, error) {
 	chatUpload := chatsvc.NewChatUploadService(cfg.ChatUploadRoot)
 	chatService := chatsvc.NewChatService(repo, repo, providerFactory, mcpManager, skillRuntime, memoryService)
 	chatService.SetUploadService(chatUpload)
+	chatService.SetContextHistoryRounds(cfg.ContextHistoryRounds)
+
+	memoryService.ConfigureAutoConsolidation(true, 10*time.Minute, 20)
 
 	planService, err := plansvc.NewPlanService()
 	if err != nil {
