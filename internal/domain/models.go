@@ -88,14 +88,27 @@ type AppSetting struct {
 }
 
 type LLMConfig struct {
-	ID        string    `gorm:"primaryKey;size:36" json:"id"`
-	Name      string    `gorm:"size:128;not null" json:"name"`
-	Provider  string    `gorm:"size:32;not null;default:'openai'" json:"provider"`
-	BaseURL   string    `gorm:"size:512;not null" json:"baseUrl"`
-	APIKey    string    `gorm:"size:512;not null" json:"apiKey"`
-	Model     string    `gorm:"size:128;not null" json:"model"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID          string    `gorm:"primaryKey;size:36" json:"id"`
+	Name        string    `gorm:"size:128;not null" json:"name"`
+	Provider    string    `gorm:"size:32;not null;default:'openai'" json:"provider"`
+	BaseURL     string    `gorm:"size:512;not null" json:"baseUrl"`
+	APIKey      string    `gorm:"size:512;not null" json:"apiKey"`
+	Model       string    `gorm:"size:128;not null" json:"model"`
+	ContextSize int       `gorm:"not null;default:1000000" json:"contextSize"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+// SessionContextSummary stores the hidden compacted prefix for one chat session.
+type SessionContextSummary struct {
+	ID                      string    `gorm:"primaryKey;size:36" json:"id"`
+	SessionID               string    `gorm:"size:36;not null;uniqueIndex:idx_context_summary_session_model,priority:1" json:"sessionId"`
+	ModelConfigID           string    `gorm:"size:36;not null;default:'';uniqueIndex:idx_context_summary_session_model,priority:2" json:"modelConfigId"`
+	Summary                 string    `gorm:"type:text;not null" json:"summary"`
+	SummarizedUntilSeq      int64     `gorm:"not null;default:0" json:"summarizedUntilSeq"`
+	PreCompactTokenEstimate int       `gorm:"not null;default:0" json:"preCompactTokenEstimate"`
+	CreatedAt               time.Time `json:"createdAt"`
+	UpdatedAt               time.Time `json:"updatedAt"`
 }
 
 type MCPConfig struct {

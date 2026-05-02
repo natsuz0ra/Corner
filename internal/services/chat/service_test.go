@@ -146,7 +146,7 @@ func TestHandleChatStream_PersistsThinkingHistory(t *testing.T) {
 		t.Fatalf("create model failed: %v", err)
 	}
 	provider := &fakeThinkingProvider{}
-	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil, nil)
+	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
 
 	result, err := svc.HandleChatStream(ctx, session.ID, "request-1", "hello", "", model.ID, nil, "high", false, "", AgentCallbacks{
 		OnChunk: func(string) error { return nil },
@@ -204,7 +204,7 @@ func TestHandleChatStream_FinishesThinkingBeforeAnswerChunk(t *testing.T) {
 		t.Fatalf("create model failed: %v", err)
 	}
 	provider := &fakeThinkingProvider{}
-	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil, nil)
+	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
 
 	var events []string
 	_, err = svc.HandleChatStream(ctx, session.ID, "request-1", "hello", "", model.ID, nil, "high", false, "", AgentCallbacks{
@@ -253,7 +253,7 @@ func TestHandleChatStream_UsesDisplayContentForStoredUserMessage(t *testing.T) {
 		t.Fatalf("create model failed: %v", err)
 	}
 	provider := &captureMessagesProvider{}
-	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil, nil)
+	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
 
 	internalPrompt := "Execute the following approved plan:\n\n# Plan"
 	displayContent := "Execute this plan"
@@ -313,7 +313,7 @@ func TestHandleChatStream_PlanModeSavesOnlyPlanBody(t *testing.T) {
 		t.Fatalf("create plan service failed: %v", err)
 	}
 	provider := &fakePlanModeProvider{}
-	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil, nil)
+	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
 	svc.SetPlanService(planService)
 
 	result, err := svc.HandleChatStream(ctx, session.ID, "request-1", "make a plan", "", model.ID, nil, "high", true, "", AgentCallbacks{
@@ -378,7 +378,7 @@ func TestHandleChatStream_PlanModeDoesNotSavePlanBodyWithoutSubmitTool(t *testin
 		t.Fatalf("create plan service failed: %v", err)
 	}
 	provider := &fakePlanTextProvider{}
-	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil, nil)
+	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
 	svc.SetPlanService(planService)
 
 	result, err := svc.HandleChatStream(ctx, session.ID, "request-1", "make a plan", "", model.ID, nil, "high", true, "", AgentCallbacks{
@@ -425,7 +425,7 @@ func TestHandleChatStream_StartsTitleGenerationBeforeAssistantChunk(t *testing.T
 	}
 
 	provider := &earlyTitleProvider{titleStarted: make(chan struct{})}
-	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil, nil)
+	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
 
 	_, err = svc.HandleChatStream(ctx, session.ID, "request-1", "用户消息", "", model.ID, nil, "off", false, "", AgentCallbacks{
 		OnChunk: func(string) error { return nil },
@@ -444,7 +444,7 @@ func TestHandleChatStream_StartsTitleGenerationBeforeAssistantChunk(t *testing.T
 
 func TestRunAgentLoopPreservesThinkingBlocksAcrossToolIterations(t *testing.T) {
 	provider := &thinkingToolIterationProvider{}
-	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil, nil)
+	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil)
 
 	answer, err := agent.RunAgentLoop(
 		context.Background(),
@@ -476,7 +476,7 @@ func TestRunAgentLoopPreservesThinkingBlocksAcrossToolIterations(t *testing.T) {
 
 func TestRunAgentLoopPreservesReasoningContentAcrossToolIterations(t *testing.T) {
 	provider := &reasoningToolIterationProvider{}
-	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil, nil)
+	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil)
 
 	answer, err := agent.RunAgentLoop(
 		context.Background(),

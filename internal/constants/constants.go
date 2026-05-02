@@ -4,10 +4,9 @@ import "time"
 
 const (
 	DefaultContextHistoryRounds        = 20
+	DefaultContextSize                 = 1_000_000
 	ContextHistoryRoundMin             = 5
 	ContextHistoryRoundMax             = 50
-	DefaultMemoryAsyncWorkerInterval   = 2 * time.Second
-	DefaultMemoryWriteMaxRetries       = 5
 	MessagePlatformSessionID           = "im-platform-session"
 	MessagePlatformSessionName         = "Message Platform Session"
 	SettingLanguage                    = "language"
@@ -54,7 +53,6 @@ const (
 	TodoUpdateTool                 = "todo_update"
 	ActivateSkillTool              = "activate_skill"
 	RunSubagentTool                = "run_subagent"
-	SearchMemoryTool               = "search_memory"
 	HTTPRequestTimeout             = 30 * time.Second
 	HTTPMaxResponseBytes           = 128 * 1024
 	WebSearchBaseURL               = "https://api.tavily.com"

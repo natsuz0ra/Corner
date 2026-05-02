@@ -2,7 +2,9 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"slimebot/internal/apperrors"
 	"slimebot/internal/logging"
 	"strings"
 	"sync"
@@ -32,9 +34,10 @@ func (s *ChatService) BuildContextMessages(ctx context.Context, sessionID string
 	return s.buildContextMessages(ctx, sessionID, modelConfig)
 }
 
-// buildContextMessages loads system prompt and history in parallel, then orders system -> memory -> history.
+const contextCompressionMaxMessages = 10000
+
+// buildContextMessages loads system prompt and history in parallel, then orders system -> optional compact summary -> history.
 func (s *ChatService) buildContextMessages(ctx context.Context, sessionID string, modelConfig llmsvc.ModelRuntimeConfig) ([]llmsvc.ChatMessage, error) {
-	_ = modelConfig
 	buildStart := time.Now()
 	parallelStart := time.Now()
 	var (
@@ -57,8 +60,7 @@ func (s *ChatService) buildContextMessages(ctx context.Context, sessionID string
 	go func() {
 		defer wg.Done()
 		var err error
-		historyLimit := s.contextHistoryRounds * 2
-		history, err = s.store.ListRecentSessionMessages(ctx, sessionID, historyLimit)
+		history, err = s.store.ListAllSessionMessages(ctx, sessionID, contextCompressionMaxMessages)
 		histErr = err
 	}()
 	wg.Wait()
@@ -74,23 +76,138 @@ func (s *ChatService) buildContextMessages(ctx context.Context, sessionID string
 	if runtimeEnvPrompt := s.buildRuntimeEnvironmentPrompt(); runtimeEnvPrompt != "" {
 		msgs = append(msgs, llmsvc.ChatMessage{Role: "system", Content: runtimeEnvPrompt})
 	}
-	if s.memory != nil {
-		memStart := time.Now()
-		memCtx, cancel := context.WithTimeout(ctx, constants.MemoryContextBuildBudget)
-		memoryContext := s.memory.BuildSessionMemoryContextForPrompt(memCtx, sessionID, history)
-		cancel()
-		logging.Span("memory_context_build", memStart)
-		if memoryContext != "" {
-			msgs = append(msgs, llmsvc.ChatMessage{
-				Role: "system",
-				Content: "The following memory_context is provided by the system. Use it primarily to understand historical preferences, constraints, and long-term tasks; " +
-					"if it conflicts with the user's current input, always follow the current input.\n\n<memory_context>\n" +
-					memoryContext +
-					"\n</memory_context>",
-			})
-		}
+
+	contextHistory, compacted := s.applyContextCompression(ctx, sessionID, modelConfig, msgs, history)
+	msgs = append(msgs, contextHistory...)
+	mode := "full_history"
+	if compacted {
+		mode = "compact_summary_plus_recent"
+	}
+	logging.Info(
+		"chat_context_ready",
+		"session", sessionID,
+		"history_messages", len(history),
+		"history_rounds", s.contextHistoryRounds,
+		"mode", mode,
+		"cost_ms", time.Since(buildStart).Milliseconds(),
+	)
+	logging.Span("context_build_total", buildStart)
+	return msgs, nil
+}
+
+func (s *ChatService) applyContextCompression(ctx context.Context, sessionID string, modelConfig llmsvc.ModelRuntimeConfig, prefix []llmsvc.ChatMessage, history []domain.Message) ([]llmsvc.ChatMessage, bool) {
+	historyMessages := historyToChatMessages(history)
+	if len(historyMessages) == 0 {
+		return historyMessages, false
+	}
+	contextSize := modelConfig.ContextSize
+	if contextSize <= 0 {
+		contextSize = constants.DefaultContextSize
+	}
+	if estimateChatMessagesTokens(append(append([]llmsvc.ChatMessage{}, prefix...), historyMessages...)) <= contextSize {
+		return historyMessages, false
 	}
 
+	modelConfigID := strings.TrimSpace(modelConfig.ConfigID)
+	existing, err := s.store.GetSessionContextSummary(ctx, sessionID, modelConfigID)
+	if err == nil && strings.TrimSpace(existing.Summary) != "" {
+		kept := messagesAfterSeq(history, existing.SummarizedUntilSeq)
+		withExisting := append([]llmsvc.ChatMessage{buildCompactSummaryMessage(existing.Summary)}, historyToChatMessages(kept)...)
+		tailCount := s.contextHistoryRounds * 2
+		if estimateChatMessagesTokens(append(append([]llmsvc.ChatMessage{}, prefix...), withExisting...)) <= contextSize || len(kept) <= tailCount {
+			return withExisting, true
+		}
+		split := len(kept) - tailCount
+		if split > 0 {
+			summary, compactErr := s.generateContextSummary(ctx, modelConfig, kept[:split], existing.Summary)
+			if compactErr == nil && strings.TrimSpace(summary) != "" {
+				lastSeq := kept[split-1].Seq
+				if err := s.store.UpsertSessionContextSummary(ctx, &domain.SessionContextSummary{
+					SessionID:               sessionID,
+					ModelConfigID:           modelConfigID,
+					Summary:                 summary,
+					SummarizedUntilSeq:      lastSeq,
+					PreCompactTokenEstimate: estimateChatMessagesTokens(historyToChatMessages(kept[:split])),
+				}); err != nil {
+					logging.Warn("context_summary_save_failed", "session", sessionID, "error", err)
+				}
+				return append([]llmsvc.ChatMessage{buildCompactSummaryMessage(summary)}, historyToChatMessages(kept[split:])...), true
+			}
+			if compactErr != nil {
+				logging.Warn("context_summary_generate_failed", "session", sessionID, "error", compactErr)
+			}
+		}
+		return withExisting, true
+	}
+	if err != nil && !errors.Is(err, apperrors.ErrNotFound) {
+		logging.Warn("context_summary_load_failed", "session", sessionID, "error", err)
+	}
+
+	tailCount := s.contextHistoryRounds * 2
+	if tailCount < 2 {
+		tailCount = constants.DefaultContextHistoryRounds * 2
+	}
+	split := len(history) - tailCount
+	if split <= 0 {
+		return limitTailHistory(historyMessages, tailCount), false
+	}
+	toSummarize := history[:split]
+	tail := history[split:]
+	summary, compactErr := s.generateContextSummary(ctx, modelConfig, toSummarize, "")
+	if compactErr != nil || strings.TrimSpace(summary) == "" {
+		if compactErr != nil {
+			logging.Warn("context_summary_generate_failed", "session", sessionID, "error", compactErr)
+		}
+		return historyToChatMessages(tail), false
+	}
+	lastSeq := toSummarize[len(toSummarize)-1].Seq
+	preCompactEstimate := estimateChatMessagesTokens(historyToChatMessages(toSummarize))
+	if err := s.store.UpsertSessionContextSummary(ctx, &domain.SessionContextSummary{
+		SessionID:               sessionID,
+		ModelConfigID:           modelConfigID,
+		Summary:                 summary,
+		SummarizedUntilSeq:      lastSeq,
+		PreCompactTokenEstimate: preCompactEstimate,
+	}); err != nil {
+		logging.Warn("context_summary_save_failed", "session", sessionID, "error", err)
+	}
+	return append([]llmsvc.ChatMessage{buildCompactSummaryMessage(summary)}, historyToChatMessages(tail)...), true
+}
+
+func (s *ChatService) generateContextSummary(ctx context.Context, modelConfig llmsvc.ModelRuntimeConfig, history []domain.Message, priorSummary string) (string, error) {
+	if s.providerFactory == nil {
+		return "", fmt.Errorf("provider factory is not initialized")
+	}
+	var transcript strings.Builder
+	if strings.TrimSpace(priorSummary) != "" {
+		transcript.WriteString("已有摘要：\n")
+		transcript.WriteString(strings.TrimSpace(priorSummary))
+		transcript.WriteString("\n\n")
+	}
+	for _, item := range historyToChatMessages(history) {
+		transcript.WriteString(strings.ToUpper(item.Role))
+		transcript.WriteString(": ")
+		transcript.WriteString(strings.TrimSpace(item.Content))
+		transcript.WriteString("\n\n")
+	}
+	prompt := "请对以下对话生成压缩总结，用于后续继续上下文。压缩总结必须保留用户意图、关键决策、涉及的文件/代码、错误与修复、待办和下一步；不要调用工具，只输出摘要正文。\n\n压缩总结输入：\n" + transcript.String()
+	provider := s.providerFactory.GetProvider(modelConfig.Provider)
+	var summary strings.Builder
+	_, err := provider.StreamChatWithTools(ctx, modelConfig, []llmsvc.ChatMessage{
+		{Role: "system", Content: "你是会话上下文压缩器。只输出压缩总结正文，不要使用工具。"},
+		{Role: "user", Content: prompt},
+	}, nil, llmsvc.StreamCallbacks{OnChunk: func(chunk string) error {
+		summary.WriteString(chunk)
+		return nil
+	}})
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(summary.String()), nil
+}
+
+func historyToChatMessages(history []domain.Message) []llmsvc.ChatMessage {
+	msgs := make([]llmsvc.ChatMessage, 0, len(history))
 	for _, item := range history {
 		messageContent := item.Content
 		if item.Role == "user" && len(item.Attachments) > 0 {
@@ -99,21 +216,59 @@ func (s *ChatService) buildContextMessages(ctx context.Context, sessionID string
 		if item.Role == "assistant" {
 			messageContent = StripContentMarkers(messageContent)
 		}
-		msgs = append(msgs, llmsvc.ChatMessage{
-			Role:    item.Role,
-			Content: messageContent,
-		})
+		msgs = append(msgs, llmsvc.ChatMessage{Role: item.Role, Content: messageContent})
 	}
-	logging.Info(
-		"chat_context_ready",
-		"session", sessionID,
-		"history_messages", len(history),
-		"history_rounds", s.contextHistoryRounds,
-		"mode", "memory_plus_recent_rounds",
-		"cost_ms", time.Since(buildStart).Milliseconds(),
-	)
-	logging.Span("context_build_total", buildStart)
-	return msgs, nil
+	return msgs
+}
+
+func buildCompactSummaryMessage(summary string) llmsvc.ChatMessage {
+	return llmsvc.ChatMessage{
+		Role: "system",
+		Content: "The earlier conversation has been compacted by the system. Use this summary as hidden continuity context, " +
+			"and follow newer user messages if they conflict.\n\n<context_summary>\n" +
+			strings.TrimSpace(summary) +
+			"\n</context_summary>",
+	}
+}
+
+func messagesAfterSeq(history []domain.Message, seq int64) []domain.Message {
+	var kept []domain.Message
+	for _, item := range history {
+		if item.Seq > seq {
+			kept = append(kept, item)
+		}
+	}
+	return kept
+}
+
+func limitTailHistory(msgs []llmsvc.ChatMessage, limit int) []llmsvc.ChatMessage {
+	if limit <= 0 || len(msgs) <= limit {
+		return msgs
+	}
+	return msgs[len(msgs)-limit:]
+}
+
+func estimateChatMessagesTokens(msgs []llmsvc.ChatMessage) int {
+	total := 0
+	for _, msg := range msgs {
+		total += 4
+		total += estimateTextTokens(msg.Role)
+		total += estimateTextTokens(msg.Content)
+		for _, part := range msg.ContentParts {
+			total += estimateTextTokens(part.Text)
+			total += estimateTextTokens(part.ImageURL)
+			total += estimateTextTokens(part.Filename)
+		}
+	}
+	return total
+}
+
+func estimateTextTokens(text string) int {
+	runes := len([]rune(text))
+	if runes == 0 {
+		return 0
+	}
+	return (runes + 3) / 4
 }
 
 // loadSystemPrompt reads and caches the embedded system prompt.

@@ -13,7 +13,7 @@ import (
 
 func TestBuildContextMessages_SystemPrefixStableAndNoLocalDateTime(t *testing.T) {
 	repo := newTestRepo(t)
-	svc := NewChatService(repo, nil, nil, nil, nil, nil)
+	svc := NewChatService(repo, nil, nil, nil, nil)
 	ctx := context.Background()
 
 	msgs1, err := svc.BuildContextMessages(ctx, "session-1", llmsvc.ModelRuntimeConfig{})
@@ -62,7 +62,7 @@ func TestBuildContextMessages_SystemPrefixStableAndNoLocalDateTime(t *testing.T)
 
 func TestBuildContextMessages_IncludesConfigDirInCLI(t *testing.T) {
 	repo := newTestRepo(t)
-	svc := NewChatService(repo, nil, nil, nil, nil, nil)
+	svc := NewChatService(repo, nil, nil, nil, nil)
 	svc.SetRunContext(RunContext{
 		ConfigHomeDir:        "/home/user/.slimebot",
 		ConfigDirDescription: "/home/user/.slimebot/\n  skills/\n  storage/\n",
@@ -99,7 +99,7 @@ func TestBuildContextMessages_IncludesConfigDirInCLI(t *testing.T) {
 
 func TestBuildContextMessages_ServerMode_NoWorkingDir(t *testing.T) {
 	repo := newTestRepo(t)
-	svc := NewChatService(repo, nil, nil, nil, nil, nil)
+	svc := NewChatService(repo, nil, nil, nil, nil)
 	svc.SetRunContext(RunContext{
 		ConfigHomeDir: "/home/user/.slimebot",
 		IsCLI:         false,
@@ -122,7 +122,7 @@ func TestBuildContextMessages_ServerMode_NoWorkingDir(t *testing.T) {
 
 func TestBuildContextMessages_NoRunContext_OmitsConfigDir(t *testing.T) {
 	repo := newTestRepo(t)
-	svc := NewChatService(repo, nil, nil, nil, nil, nil)
+	svc := NewChatService(repo, nil, nil, nil, nil)
 	// Do not set RunContext (zero value)
 	ctx := context.Background()
 
@@ -143,7 +143,7 @@ func TestBuildContextMessages_NoRunContext_OmitsConfigDir(t *testing.T) {
 	}
 }
 
-func TestBuildContextMessages_ContextRoundsLimit(t *testing.T) {
+func TestBuildContextMessages_IncludesFullHistoryBelowContextSize(t *testing.T) {
 	repo := newTestRepo(t)
 	ctx := context.Background()
 	session, err := repo.CreateSession(ctx, "history-rounds")
@@ -164,22 +164,163 @@ func TestBuildContextMessages_ContextRoundsLimit(t *testing.T) {
 		}
 	}
 
-	svc := NewChatService(repo, nil, nil, nil, nil, nil)
+	svc := NewChatService(repo, nil, nil, nil, nil)
 	svc.SetContextHistoryRounds(20)
 	msgs20, err := svc.BuildContextMessages(ctx, session.ID, llmsvc.ModelRuntimeConfig{})
 	if err != nil {
-		t.Fatalf("BuildContextMessages(20 rounds) failed: %v", err)
+		t.Fatalf("BuildContextMessages failed: %v", err)
 	}
-	if got := len(msgs20); got != 42 { // system(2) + history(40)
-		t.Fatalf("expected 42 messages for 20 rounds, got %d", got)
+	if got := len(msgs20); got != 82 { // system(2) + full history(80)
+		t.Fatalf("expected 82 messages below context threshold, got %d", got)
+	}
+}
+
+func TestBuildContextMessages_CompactsWhenContextSizeExceeded(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	session, err := repo.CreateSession(ctx, "compact")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	for i := 0; i < 12; i++ {
+		role := "assistant"
+		if i%2 == 0 {
+			role = "user"
+		}
+		if _, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{
+			SessionID: session.ID,
+			Role:      role,
+			Content:   fmt.Sprintf("message-%02d %s", i, strings.Repeat("长上下文", 20)),
+		}); err != nil {
+			t.Fatalf("AddMessageWithInput failed at %d: %v", i, err)
+		}
 	}
 
-	svc.SetContextHistoryRounds(30)
-	msgs30, err := svc.BuildContextMessages(ctx, session.ID, llmsvc.ModelRuntimeConfig{})
+	provider := &compactSummaryProvider{summary: "这是压缩后的会话摘要"}
+	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
+	svc.SetContextHistoryRounds(2)
+
+	msgs, err := svc.BuildContextMessages(ctx, session.ID, llmsvc.ModelRuntimeConfig{
+		Provider:    llmsvc.ProviderOpenAI,
+		BaseURL:     "http://fake",
+		APIKey:      "key",
+		Model:       "fake-model",
+		ContextSize: 80,
+	})
 	if err != nil {
-		t.Fatalf("BuildContextMessages(30 rounds) failed: %v", err)
+		t.Fatalf("BuildContextMessages failed: %v", err)
 	}
-	if got := len(msgs30); got != 62 { // system(2) + history(60)
-		t.Fatalf("expected 62 messages for 30 rounds, got %d", got)
+
+	if provider.compactCalls != 1 {
+		t.Fatalf("expected one compact call, got %d", provider.compactCalls)
 	}
+	joined := joinChatMessageContent(msgs)
+	if !strings.Contains(joined, "这是压缩后的会话摘要") {
+		t.Fatalf("expected compact summary in context, got: %s", joined)
+	}
+	if strings.Contains(joined, "message-00") {
+		t.Fatalf("old history should be summarized instead of replayed: %s", joined)
+	}
+	if !strings.Contains(joined, "message-10") || !strings.Contains(joined, "message-11") {
+		t.Fatalf("recent tail should be preserved, got: %s", joined)
+	}
+
+	summary, err := repo.GetSessionContextSummary(ctx, session.ID, "")
+	if err != nil {
+		t.Fatalf("expected stored compact summary: %v", err)
+	}
+	if summary.SummarizedUntilSeq != 2 {
+		t.Fatalf("expected summarizedUntilSeq=2, got %d", summary.SummarizedUntilSeq)
+	}
+}
+
+func TestBuildContextMessages_ReusesExistingCompactSummary(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	session, err := repo.CreateSession(ctx, "compact-reuse")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	for i := 0; i < 8; i++ {
+		role := "assistant"
+		if i%2 == 0 {
+			role = "user"
+		}
+		if _, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{
+			SessionID: session.ID,
+			Role:      role,
+			Content:   fmt.Sprintf("message-%02d %s", i, strings.Repeat("上下文", 20)),
+		}); err != nil {
+			t.Fatalf("AddMessageWithInput failed at %d: %v", i, err)
+		}
+	}
+	if err := repo.UpsertSessionContextSummary(ctx, &domain.SessionContextSummary{
+		SessionID:               session.ID,
+		ModelConfigID:           "",
+		Summary:                 "已有压缩摘要",
+		SummarizedUntilSeq:      4,
+		PreCompactTokenEstimate: 100,
+	}); err != nil {
+		t.Fatalf("UpsertSessionContextSummary failed: %v", err)
+	}
+
+	provider := &compactSummaryProvider{summary: "不应重新生成"}
+	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
+	svc.SetContextHistoryRounds(2)
+
+	msgs, err := svc.BuildContextMessages(ctx, session.ID, llmsvc.ModelRuntimeConfig{
+		Provider:    llmsvc.ProviderOpenAI,
+		BaseURL:     "http://fake",
+		APIKey:      "key",
+		Model:       "fake-model",
+		ContextSize: 80,
+	})
+	if err != nil {
+		t.Fatalf("BuildContextMessages failed: %v", err)
+	}
+
+	if provider.compactCalls != 0 {
+		t.Fatalf("expected existing summary to be reused, got %d compact calls", provider.compactCalls)
+	}
+	joined := joinChatMessageContent(msgs)
+	if !strings.Contains(joined, "已有压缩摘要") {
+		t.Fatalf("expected existing compact summary in context, got: %s", joined)
+	}
+	if strings.Contains(joined, "message-00") || strings.Contains(joined, "message-03") {
+		t.Fatalf("summarized messages should not be replayed: %s", joined)
+	}
+}
+
+func joinChatMessageContent(msgs []llmsvc.ChatMessage) string {
+	var parts []string
+	for _, msg := range msgs {
+		parts = append(parts, msg.Content)
+	}
+	return strings.Join(parts, "\n")
+}
+
+type compactSummaryProvider struct {
+	summary      string
+	compactCalls int
+}
+
+func (p *compactSummaryProvider) StreamChatWithTools(
+	_ context.Context,
+	_ llmsvc.ModelRuntimeConfig,
+	messages []llmsvc.ChatMessage,
+	toolDefs []llmsvc.ToolDef,
+	callbacks llmsvc.StreamCallbacks,
+) (*llmsvc.StreamResult, error) {
+	if len(toolDefs) != 0 {
+		return &llmsvc.StreamResult{Type: llmsvc.StreamResultText}, nil
+	}
+	if len(messages) > 0 && strings.Contains(messages[len(messages)-1].Content, "压缩总结") {
+		p.compactCalls++
+		if callbacks.OnChunk != nil {
+			if err := callbacks.OnChunk(p.summary); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return &llmsvc.StreamResult{Type: llmsvc.StreamResultText}, nil
 }
