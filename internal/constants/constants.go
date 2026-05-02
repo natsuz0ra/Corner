@@ -3,7 +3,9 @@ package constants
 import "time"
 
 const (
-	ContextHistoryLimit                = 10
+	DefaultContextHistoryRounds        = 20
+	ContextHistoryRoundMin             = 5
+	ContextHistoryRoundMax             = 50
 	MessagePlatformSessionID           = "im-platform-session"
 	MessagePlatformSessionName         = "Message Platform Session"
 	SettingLanguage                    = "language"

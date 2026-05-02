@@ -51,7 +51,7 @@ func (e *MemoryEntry) Slug() string {
 		return e.slug
 	}
 	e.slug = Slugify(e.Name)
-	if e.slug == "" {
+	if strings.Trim(e.slug, "_-") == "" {
 		e.slug = fmt.Sprintf("memory_%d", time.Now().UnixNano())
 	}
 	return e.slug

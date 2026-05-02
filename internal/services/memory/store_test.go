@@ -227,6 +227,7 @@ func TestMemoryEntry_Slug(t *testing.T) {
 		{"special", "Test@#$%Memory", "testmemory"},
 		{"mixed", "Test123-ABC", "test123-abc"},
 		{"chinese", "测试记忆", "memory_"}, // CJK stripped; default name uses timestamp with memory_ prefix
+		{"punct-only", "-", "memory_"},
 	}
 
 	for _, tt := range tests {
@@ -234,7 +235,7 @@ func TestMemoryEntry_Slug(t *testing.T) {
 			e := &MemoryEntry{Name: tt.input}
 			got := e.Slug()
 			// For CJK input, assert prefix only (value includes timestamp).
-			if tt.name == "chinese" {
+			if tt.name == "chinese" || tt.name == "punct-only" {
 				if !startsWith(got, tt.expected) {
 					t.Errorf("Slug() = %q, want prefix %q", got, tt.expected)
 				}

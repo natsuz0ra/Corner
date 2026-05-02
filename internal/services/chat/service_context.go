@@ -57,7 +57,8 @@ func (s *ChatService) buildContextMessages(ctx context.Context, sessionID string
 	go func() {
 		defer wg.Done()
 		var err error
-		history, err = s.store.ListRecentSessionMessages(ctx, sessionID, constants.ContextHistoryLimit)
+		historyLimit := s.contextHistoryRounds * 2
+		history, err = s.store.ListRecentSessionMessages(ctx, sessionID, historyLimit)
 		histErr = err
 	}()
 	wg.Wait()
@@ -103,7 +104,14 @@ func (s *ChatService) buildContextMessages(ctx context.Context, sessionID string
 			Content: messageContent,
 		})
 	}
-	logging.Info("chat_context_ready", "session", sessionID, "history", len(history), "mode", "memory_plus_recent20", "cost_ms", time.Since(buildStart).Milliseconds())
+	logging.Info(
+		"chat_context_ready",
+		"session", sessionID,
+		"history_messages", len(history),
+		"history_rounds", s.contextHistoryRounds,
+		"mode", "memory_plus_recent_rounds",
+		"cost_ms", time.Since(buildStart).Milliseconds(),
+	)
 	logging.Span("context_build_total", buildStart)
 	return msgs, nil
 }
