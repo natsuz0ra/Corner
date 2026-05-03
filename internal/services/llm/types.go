@@ -78,14 +78,27 @@ type TokenUsage struct {
 	OutputTokens             int `json:"outputTokens"`
 	CacheCreationInputTokens int `json:"cacheCreationInputTokens"`
 	CacheReadInputTokens     int `json:"cacheReadInputTokens"`
+	// TotalTokens is the provider-reported total for the request when available.
+	// It is the best available snapshot of the context window used by that call.
+	TotalTokens int `json:"totalTokens,omitempty"`
 }
 
 func (u TokenUsage) TotalContextTokens() int {
+	if u.TotalTokens > 0 {
+		return u.TotalTokens
+	}
 	return u.InputTokens + u.OutputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
 }
 
+func (u TokenUsage) ContextWindowTokens() int {
+	if u.TotalTokens > 0 {
+		return u.TotalTokens
+	}
+	return u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
+}
+
 func (u TokenUsage) IsZero() bool {
-	return u.InputTokens == 0 && u.OutputTokens == 0 && u.CacheCreationInputTokens == 0 && u.CacheReadInputTokens == 0
+	return u.InputTokens == 0 && u.OutputTokens == 0 && u.CacheCreationInputTokens == 0 && u.CacheReadInputTokens == 0 && u.TotalTokens == 0
 }
 
 // ToolCallInfo describes one tool invocation from the model.

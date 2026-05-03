@@ -104,11 +104,12 @@ func streamChatCompletion(ctx context.Context, client openai.Client, params open
 		chunk := stream.Current()
 		acc.AddChunk(chunk)
 		if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 {
-			tokenUsage = llmsvc.TokenUsage{
-				InputTokens:          int(chunk.Usage.PromptTokens),
-				OutputTokens:         int(chunk.Usage.CompletionTokens),
-				CacheReadInputTokens: int(chunk.Usage.PromptTokensDetails.CachedTokens),
-			}
+			tokenUsage = tokenUsageFromOpenAIChunkUsage(
+				chunk.Usage.PromptTokens,
+				chunk.Usage.PromptTokensDetails.CachedTokens,
+				chunk.Usage.CompletionTokens,
+				chunk.Usage.TotalTokens,
+			)
 		}
 
 		if len(chunk.Choices) > 0 {
@@ -163,6 +164,15 @@ func streamChatCompletion(ctx context.Context, client openai.Client, params open
 	}
 
 	return &llmsvc.StreamResult{Type: llmsvc.StreamResultText, TokenUsage: nonZeroUsage(tokenUsage)}, sawStreamEvent, nil
+}
+
+func tokenUsageFromOpenAIChunkUsage(promptTokens, cachedTokens, completionTokens, totalTokens int64) llmsvc.TokenUsage {
+	return llmsvc.TokenUsage{
+		InputTokens:          int(promptTokens),
+		OutputTokens:         int(completionTokens),
+		CacheReadInputTokens: int(cachedTokens),
+		TotalTokens:          int(totalTokens),
+	}
 }
 
 func nonZeroUsage(usage llmsvc.TokenUsage) *llmsvc.TokenUsage {
