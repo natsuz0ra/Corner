@@ -360,15 +360,6 @@ export class ChatSocket {
     return true
   }
 
-  sendPlanModify(planId: string, sessionId: string, modelId: string, content: string, thinkingLevel: string) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      this.handlers?.onSocketError?.('socket is not connected')
-      return false
-    }
-    this.ws.send(JSON.stringify({ type: 'plan_modify', planId, sessionId, modelId, content, thinkingLevel }))
-    return true
-  }
-
   close() {
     this.manualClose = true
     this.clearReconnectTimer()

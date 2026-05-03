@@ -905,16 +905,6 @@ export const useChatStore = defineStore('chat', () => {
     pendingPlanConfirmation.value = null
   }
 
-  function modifyPlan(feedback: string, modelId: string, thinkingLevel: string) {
-    if (!pendingPlanConfirmation.value) return
-    const { planId } = pendingPlanConfirmation.value
-    const sessionId = currentSessionId.value
-    if (!sessionId) return
-    if (pendingPlanConfirmation.value.sessionId !== sessionId) return
-    ws.sendPlanModify(planId, sessionId, modelId, feedback, thinkingLevel)
-    pendingPlanConfirmation.value = null
-  }
-
   function dismissPlanConfirmation() {
     pendingPlanConfirmation.value = null
   }
@@ -961,7 +951,6 @@ export const useChatStore = defineStore('chat', () => {
     pendingApprovalToolCallIds,
     approvePlan,
     rejectPlan,
-    modifyPlan,
     dismissPlanConfirmation,
 
     pendingQuestions,

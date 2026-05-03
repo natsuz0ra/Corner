@@ -23,7 +23,6 @@
     "ink": "^6.8.0",
     "marked": "^15.0.0",
     "react": "^19.0.0",
-    "string-width": "^8.2.0",
     "strip-ansi": "^7.2.0",
     "wrap-ansi": "^9.0.2",
     "ws": "^8.18.0"
@@ -32,7 +31,6 @@
     "@slimebot/color-diff-native": "file:./native/color-diff"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.0",
     "@napi-rs/cli": "^3.0.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
