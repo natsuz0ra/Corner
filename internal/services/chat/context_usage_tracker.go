@@ -23,7 +23,7 @@ func (t *contextUsageTracker) calibrateProviderUsage(usage llmsvc.TokenUsage) er
 	if usage.IsZero() {
 		return nil
 	}
-	return t.setUsedTokens(usage.TotalContextTokens())
+	return t.setUsedTokens(usage.ContextWindowTokens())
 }
 
 func (t *contextUsageTracker) setUsedTokens(usedTokens int) error {

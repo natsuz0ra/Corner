@@ -80,6 +80,9 @@ func TestStreamChatWithToolsCapturesCompatibleReasoningContentAsThinking(t *test
 	if result.TokenUsage.InputTokens != 100 || result.TokenUsage.OutputTokens != 42 || result.TokenUsage.CacheCreationInputTokens != 5 || result.TokenUsage.CacheReadInputTokens != 7 {
 		t.Fatalf("unexpected token usage: %+v", result.TokenUsage)
 	}
+	if got := result.TokenUsage.ContextWindowTokens(); got != 112 {
+		t.Fatalf("anthropic context tokens should ignore output tokens, got %d from %+v", got, result.TokenUsage)
+	}
 }
 
 func TestMergeAnthropicUsageKeepsInputAndUpdatesOutput(t *testing.T) {

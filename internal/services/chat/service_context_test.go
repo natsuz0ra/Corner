@@ -267,7 +267,7 @@ func TestBuildContextUsageUsesPersistedTokenUsageAsBaseline(t *testing.T) {
 		Role:    "user",
 		Content: strings.Repeat("next prompt ", 40),
 	}}, nil))
-	want := 1000 + 120 + 30 + 20 + tailEstimate
+	want := 1000 + 30 + 20 + tailEstimate
 	if usage.UsedTokens != want {
 		t.Fatalf("expected persisted usage baseline plus trailing estimate %d, got %+v", want, usage)
 	}

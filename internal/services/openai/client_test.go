@@ -141,6 +141,13 @@ func TestIsStreamUsageUnsupported(t *testing.T) {
 	}
 }
 
+func TestMergeOpenAIStreamUsagePreservesTotalTokens(t *testing.T) {
+	usage := tokenUsageFromOpenAIChunkUsage(123, 12, 45, 180)
+	if usage.InputTokens != 123 || usage.CacheReadInputTokens != 12 || usage.OutputTokens != 45 || usage.TotalTokens != 180 {
+		t.Fatalf("unexpected usage: %+v", usage)
+	}
+}
+
 func TestBuildRequestMessages_UserContentParts(t *testing.T) {
 	source := []llmsvc.ChatMessage{
 		{

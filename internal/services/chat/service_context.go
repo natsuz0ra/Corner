@@ -87,7 +87,7 @@ func (s *ChatService) GetContextUsageDetailed(ctx context.Context, sessionID str
 
 const contextCompressionMaxMessages = 10000
 
-// buildContextMessages loads system prompt and history in parallel, then orders system -> optional compact summary -> history.
+// buildContextMessages loads context prefix and history in parallel, then orders stable prefix -> dynamic tail -> optional compact summary -> history.
 func (s *ChatService) buildContextMessages(ctx context.Context, sessionID string, modelConfig llmsvc.ModelRuntimeConfig) ([]llmsvc.ChatMessage, error) {
 	result, err := s.buildContextMessagesDetailed(ctx, sessionID, modelConfig)
 	if err != nil {
@@ -100,7 +100,7 @@ func (s *ChatService) buildContextMessagesDetailed(ctx context.Context, sessionI
 	buildStart := time.Now()
 	parallelStart := time.Now()
 	var (
-		systemPrompt string
+		stablePrefix []llmsvc.ChatMessage
 		history      []domain.Message
 		toolRecords  []domain.ToolCallRecord
 		loadErr      error
@@ -111,12 +111,12 @@ func (s *ChatService) buildContextMessagesDetailed(ctx context.Context, sessionI
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		sp, err := s.loadStableSystemPrompt()
+		prefix, err := s.buildStableContextPrefix()
 		if err != nil {
 			loadErr = err
 			return
 		}
-		systemPrompt = sp
+		stablePrefix = prefix
 	}()
 	go func() {
 		defer wg.Done()
@@ -140,10 +140,10 @@ func (s *ChatService) buildContextMessagesDetailed(ctx context.Context, sessionI
 		}
 	}
 
-	msgs := []llmsvc.ChatMessage{{Role: "system", Content: systemPrompt}}
-	if runtimeEnvPrompt := s.buildRuntimeEnvironmentPrompt(); runtimeEnvPrompt != "" {
-		msgs = append(msgs, llmsvc.ChatMessage{Role: "system", Content: runtimeEnvPrompt})
-	}
+	dynamicTail := s.buildDynamicContextTail()
+	msgs := make([]llmsvc.ChatMessage, 0, len(stablePrefix)+len(dynamicTail))
+	msgs = append(msgs, stablePrefix...)
+	msgs = append(msgs, dynamicTail...)
 
 	compression, err := s.applyContextCompression(ctx, sessionID, modelConfig, msgs, history, toolRecords)
 	if err != nil {
@@ -165,6 +165,22 @@ func (s *ChatService) buildContextMessagesDetailed(ctx context.Context, sessionI
 	)
 	logging.Span("context_build_total", buildStart)
 	return contextBuildResult{messages: msgs, usage: usage, compactedNow: compression.compactedNow}, nil
+}
+
+func (s *ChatService) buildStableContextPrefix() ([]llmsvc.ChatMessage, error) {
+	systemPrompt, err := s.loadStableSystemPrompt()
+	if err != nil {
+		return nil, err
+	}
+	return []llmsvc.ChatMessage{{Role: "system", Content: systemPrompt}}, nil
+}
+
+func (s *ChatService) buildDynamicContextTail() []llmsvc.ChatMessage {
+	runtimeEnvPrompt := s.buildRuntimeEnvironmentPrompt()
+	if runtimeEnvPrompt == "" {
+		return nil
+	}
+	return []llmsvc.ChatMessage{{Role: "system", Content: runtimeEnvPrompt}}
 }
 
 func (s *ChatService) applyContextCompression(ctx context.Context, sessionID string, modelConfig llmsvc.ModelRuntimeConfig, prefix []llmsvc.ChatMessage, history []domain.Message, toolRecords []domain.ToolCallRecord) (contextCompressionResult, error) {
@@ -309,7 +325,7 @@ func contextUsageFromPersistedTokenUsage(history []domain.Message, toolRecords [
 		if item.Role != "assistant" || item.TokenUsage == nil || item.TokenUsage.IsZero() {
 			continue
 		}
-		used := item.TokenUsage.TotalContextTokens()
+		used := item.TokenUsage.ContextWindowTokens()
 		if i+1 < len(history) {
 			tail := history[i+1:]
 			used += estimateChatMessagesTokens(historyToChatMessages(tail, toolRecordsForHistory(tail, toolRecords)))
