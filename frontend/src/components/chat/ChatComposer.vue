@@ -286,7 +286,7 @@ onUnmounted(() => {
         </button>
       </div>
       <div class="flex items-center gap-2">
-        <div v-if="contextUsage" class="relative z-[120] group/context-tip">
+        <div v-if="contextUsage" class="context-usage-tip-wrap relative z-[120] group/context-tip">
           <div
             class="context-usage-indicator"
             :class="`context-usage-indicator--${contextTone}`"
@@ -296,7 +296,7 @@ onUnmounted(() => {
             <span class="context-usage-core" />
           </div>
           <div
-            class="pointer-events-none absolute bottom-full right-0 mb-2 w-[260px] rounded-lg px-3 py-2 text-sm leading-5 text-white bg-black/78 opacity-0 translate-y-1 transition-all duration-150 shadow-lg group-hover/context-tip:opacity-100 group-hover/context-tip:translate-y-0 group-focus-within/context-tip:opacity-100 group-focus-within/context-tip:translate-y-0"
+            class="context-usage-tooltip pointer-events-none absolute bottom-full right-0 mb-2 w-[260px] rounded-lg px-3 py-2 text-sm leading-5 text-white bg-black/78 opacity-0 translate-y-1 transition-all duration-150 shadow-lg group-hover/context-tip:opacity-100 group-hover/context-tip:translate-y-0 group-focus-within/context-tip:opacity-100 group-focus-within/context-tip:translate-y-0"
           >
             <div class="font-semibold">{{ t('contextUsageLabel') }}</div>
             <div class="mt-1 opacity-90">{{ currentModelLabel }}</div>
@@ -312,7 +312,6 @@ onUnmounted(() => {
               <span class="opacity-75">{{ t('contextStatus') }}</span>
               <span class="text-right">{{ contextStatusLabel }}</span>
             </div>
-            <div class="absolute -bottom-1 right-3 h-2 w-2 rotate-45 bg-black/78" />
           </div>
         </div>
         <div class="relative z-[120] group/upload-tip">
@@ -330,7 +329,6 @@ onUnmounted(() => {
           >
             <div>{{ t('uploadTipLine1') }}</div>
             <div class="mt-1 opacity-90">{{ t('uploadTipLine2') }}</div>
-            <div class="absolute -bottom-1 right-3 h-2 w-2 rotate-45 bg-black/78" />
           </div>
         </div>
         <button
@@ -575,11 +573,17 @@ onUnmounted(() => {
   color: var(--text-primary);
 }
 
+.context-usage-tip-wrap {
+  --context-usage-size: 14px;
+  --context-usage-core-size: 10px;
+}
+
 .context-usage-indicator {
   --context-usage-color: #22c55e;
   --context-usage-bg: color-mix(in srgb, var(--context-usage-color) 18%, transparent);
-  width: 26px;
-  height: 26px;
+  width: var(--context-usage-size);
+  height: var(--context-usage-size);
+  flex: 0 0 var(--context-usage-size);
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
@@ -599,8 +603,8 @@ onUnmounted(() => {
 }
 
 .context-usage-core {
-  width: 14px;
-  height: 14px;
+  width: var(--context-usage-core-size);
+  height: var(--context-usage-core-size);
   border-radius: 999px;
   background: var(--input-bg);
   box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.16);

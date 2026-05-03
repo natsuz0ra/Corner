@@ -250,7 +250,6 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
         :style="{ left: tooltipState.x + 'px', top: tooltipState.y + 'px' }"
       >
         {{ tooltipState.text }}
-        <span class="qa-desc-floating-arrow" />
       </div>
     </Transition>
   </Teleport>
@@ -591,16 +590,6 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 99999;
   pointer-events: none;
-}
-
-.qa-desc-floating-arrow {
-  position: absolute;
-  bottom: -4px;
-  left: 50%;
-  transform: translateX(-50%) rotate(45deg);
-  width: 8px;
-  height: 8px;
-  background: rgba(0, 0, 0, 0.78);
 }
 
 .tooltip-fade-enter-active,
