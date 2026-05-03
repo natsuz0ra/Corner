@@ -30,7 +30,6 @@ internal/
 ├─ app/                      # App composition/wiring
 ├─ apperrors/                # Shared application errors
 ├─ auth/                     # Auth primitives
-├─ cli/                      # CLI-side backend integration
 ├─ config/                   # Runtime configuration
 ├─ constants/                # Shared constants
 ├─ domain/                   # Domain models/types
@@ -104,7 +103,7 @@ Quick index (feature -> first place to inspect):
 - LLM abstraction/provider wiring: `internal/services/llm/`, `internal/services/openai/`, `internal/services/anthropic/`
 - Tool implementations: `internal/tools/`
 - Web settings page UI: `frontend/src/components/settings/`, `frontend/src/composables/settings/`, `frontend/src/pages/`
-- CLI interaction flow: `cli/src/controllers/`, `cli/src/components/`, `cli/src/ws/`
+- CLI interaction flow: `cmd/cli/`, `cli/src/controllers/`, `cli/src/components/`, `cli/src/ws/`
 - Prompt templates: `prompts/`
 
 Notes:

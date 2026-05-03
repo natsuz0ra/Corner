@@ -182,11 +182,7 @@ const messages = {
     planConfirmTitle: '计划已生成',
     planConfirmPrompt: '计划已生成，是否执行？',
     planConfirmExecute: '执行计划',
-    planConfirmModify: '修改计划',
     planConfirmCancel: '取消',
-    planConfirmModifyPlaceholder: '输入修改建议...',
-    planConfirmSendFeedback: '发送反馈',
-    planConfirmBack: '返回',
     planExecuteUserMessage: '确认执行该计划',
 
     qaTitle: '问答',
@@ -382,11 +378,7 @@ const messages = {
     planConfirmTitle: 'Plan Generated',
     planConfirmPrompt: 'The plan is ready. Execute it?',
     planConfirmExecute: 'Execute Plan',
-    planConfirmModify: 'Modify Plan',
     planConfirmCancel: 'Cancel',
-    planConfirmModifyPlaceholder: 'Enter modification feedback...',
-    planConfirmSendFeedback: 'Send Feedback',
-    planConfirmBack: 'Back',
     planExecuteUserMessage: 'Execute this plan',
 
     qaTitle: 'Q&A',
