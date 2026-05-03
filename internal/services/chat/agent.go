@@ -438,6 +438,16 @@ func (a *AgentService) RunAgentLoop(
 		if err != nil {
 			return "", fmt.Errorf("agent LLM call failed at iteration %d: %w", i+1, err)
 		}
+		if result != nil && result.TokenUsage != nil && !result.TokenUsage.IsZero() {
+			if opts.LatestUsage != nil {
+				*opts.LatestUsage = *result.TokenUsage
+			}
+			if opts.OnProviderUsage != nil {
+				if err := opts.OnProviderUsage(*result.TokenUsage); err != nil {
+					return "", fmt.Errorf("OnProviderUsage callback failed: %w", err)
+				}
+			}
+		}
 
 		if thinkingStarted && !thinkingDone {
 			if err := finishThinking(); err != nil {

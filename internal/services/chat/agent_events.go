@@ -1,6 +1,9 @@
 package chat
 
-import "context"
+import (
+	"context"
+	llmsvc "slimebot/internal/services/llm"
+)
 
 // ApprovalRequest is sent to the client for tool-call approval.
 type ApprovalRequest struct {
@@ -91,4 +94,6 @@ type AgentLoopOptions struct {
 	PlanStarted     *bool
 	PlanComplete    *bool
 	SubagentModelID string
+	LatestUsage     *llmsvc.TokenUsage
+	OnProviderUsage func(usage llmsvc.TokenUsage) error
 }

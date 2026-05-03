@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	llmsvc "slimebot/internal/services/llm"
 	"time"
 
 	"slimebot/internal/domain"
@@ -34,9 +35,32 @@ func decodeMessageAttachments(raw string) []domain.MessageAttachment {
 	return items
 }
 
+func encodeTokenUsage(usage *llmsvc.TokenUsage) string {
+	if usage == nil || usage.IsZero() {
+		return ""
+	}
+	data, err := json.Marshal(usage)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func decodeTokenUsage(raw string) *llmsvc.TokenUsage {
+	if raw == "" {
+		return nil
+	}
+	var usage llmsvc.TokenUsage
+	if err := json.Unmarshal([]byte(raw), &usage); err != nil || usage.IsZero() {
+		return nil
+	}
+	return &usage
+}
+
 func normalizeMessages(items []domain.Message) {
 	for idx := range items {
 		items[idx].Attachments = decodeMessageAttachments(items[idx].AttachmentsJSON)
+		items[idx].TokenUsage = decodeTokenUsage(items[idx].TokenUsageJSON)
 	}
 }
 
@@ -134,7 +158,9 @@ func (r *Repository) AddMessageWithInput(ctx context.Context, input domain.AddMe
 		IsInterrupted:     input.IsInterrupted,
 		IsStopPlaceholder: input.IsStopPlaceholder,
 		AttachmentsJSON:   encodeMessageAttachments(input.Attachments),
+		TokenUsageJSON:    encodeTokenUsage(input.TokenUsage),
 		Attachments:       input.Attachments,
+		TokenUsage:        input.TokenUsage,
 	}
 	if !input.CreatedAt.IsZero() {
 		message.CreatedAt = input.CreatedAt
