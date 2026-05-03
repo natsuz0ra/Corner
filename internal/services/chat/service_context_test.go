@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"slimebot/internal/constants"
 	"slimebot/internal/domain"
 	llmsvc "slimebot/internal/services/llm"
 )
@@ -216,6 +217,296 @@ func TestBuildContextUsageReportsActualContextBelowThreshold(t *testing.T) {
 	}
 	if usage.IsCompacted {
 		t.Fatalf("usage below threshold should not be compacted: %+v", usage)
+	}
+}
+
+func TestEstimateChatMessagesTokensCountsToolCallPayload(t *testing.T) {
+	base := estimateChatMessagesTokens([]llmsvc.ChatMessage{{
+		Role: "assistant",
+	}})
+	withToolCall := estimateChatMessagesTokens([]llmsvc.ChatMessage{{
+		Role: "assistant",
+		ToolCalls: []llmsvc.ToolCallInfo{{
+			ID:        "tc-token",
+			Name:      "exec__run",
+			Arguments: `{"cmd":"` + strings.Repeat("echo token ", 20) + `"}`,
+		}},
+	}})
+	if withToolCall <= base {
+		t.Fatalf("expected tool call payload to increase token estimate, base=%d withToolCall=%d", base, withToolCall)
+	}
+}
+
+func TestBuildContextMessages_ReplaysHistoricalToolCallsForLLMContext(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	session, err := repo.CreateSession(ctx, "tool-history")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	if _, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{
+		SessionID: session.ID,
+		Role:      "user",
+		Content:   "请检查当前目录",
+	}); err != nil {
+		t.Fatalf("AddMessageWithInput user failed: %v", err)
+	}
+	assistant, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{
+		SessionID: session.ID,
+		Role:      "assistant",
+		Content:   "<!-- TOOL_CALL:tc-exec -->当前目录是项目根目录。",
+	})
+	if err != nil {
+		t.Fatalf("AddMessageWithInput assistant failed: %v", err)
+	}
+	if err := repo.UpsertToolCallStart(ctx, domain.ToolCallStartRecordInput{
+		SessionID:        session.ID,
+		RequestID:        "request-tool-history",
+		ToolCallID:       "tc-exec",
+		ToolName:         constants.ExecToolName,
+		Command:          "run",
+		Params:           map[string]any{"cmd": "pwd"},
+		Status:           constants.ToolCallStatusExecuting,
+		RequiresApproval: true,
+		StartedAt:        time.Now(),
+	}); err != nil {
+		t.Fatalf("UpsertToolCallStart failed: %v", err)
+	}
+	if err := repo.UpdateToolCallResult(ctx, domain.ToolCallResultRecordInput{
+		SessionID:  session.ID,
+		RequestID:  "request-tool-history",
+		ToolCallID: "tc-exec",
+		Status:     constants.ToolCallStatusCompleted,
+		Output:     "/Users/natsuzora/Documents/gitCode/SlimeBot",
+		FinishedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("UpdateToolCallResult failed: %v", err)
+	}
+	if err := repo.BindToolCallsToAssistantMessage(ctx, session.ID, "request-tool-history", assistant.ID); err != nil {
+		t.Fatalf("BindToolCallsToAssistantMessage failed: %v", err)
+	}
+
+	svc := NewChatService(repo, nil, nil, nil, nil)
+	msgs, err := svc.BuildContextMessages(ctx, session.ID, llmsvc.ModelRuntimeConfig{})
+	if err != nil {
+		t.Fatalf("BuildContextMessages failed: %v", err)
+	}
+
+	history := msgs[2:]
+	if len(history) != 4 {
+		t.Fatalf("expected user + assistant tool call + tool result + final assistant, got %d: %+v", len(history), history)
+	}
+	if history[1].Role != "assistant" || len(history[1].ToolCalls) != 1 {
+		t.Fatalf("expected assistant tool call message, got %+v", history[1])
+	}
+	toolCall := history[1].ToolCalls[0]
+	if toolCall.ID != "tc-exec" || toolCall.Name != "exec__run" || !strings.Contains(toolCall.Arguments, `"cmd":"pwd"`) {
+		t.Fatalf("unexpected reconstructed tool call: %+v", toolCall)
+	}
+	if history[2].Role != "tool" || history[2].ToolCallID != "tc-exec" || !strings.Contains(history[2].Content, "Execution result:\n/Users/natsuzora") {
+		t.Fatalf("unexpected reconstructed tool result: %+v", history[2])
+	}
+	if history[3].Role != "assistant" || strings.Contains(history[3].Content, "<!-- TOOL_CALL:") || !strings.Contains(history[3].Content, "当前目录") {
+		t.Fatalf("expected final assistant answer with markers stripped, got %+v", history[3])
+	}
+}
+
+func TestBuildContextMessages_ReplaysMultipleToolCallsInRecordedOrderAndSkipsNested(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	session, err := repo.CreateSession(ctx, "parallel-tool-history")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	if _, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{
+		SessionID: session.ID,
+		Role:      "user",
+		Content:   "查资料并委托子任务",
+	}); err != nil {
+		t.Fatalf("AddMessageWithInput user failed: %v", err)
+	}
+	assistant, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{
+		SessionID: session.ID,
+		Role:      "assistant",
+		Content:   "<!-- TOOL_CALL:tc-search --><!-- TOOL_CALL:tc-sub -->处理完成。",
+	})
+	if err != nil {
+		t.Fatalf("AddMessageWithInput assistant failed: %v", err)
+	}
+	base := time.Now().Add(-1 * time.Minute)
+	records := []domain.ToolCallStartRecordInput{
+		{
+			SessionID: session.ID, RequestID: "request-parallel", ToolCallID: "tc-search",
+			ToolName: "web_search", Command: "search", Params: map[string]any{"q": "slimebot"},
+			Status: constants.ToolCallStatusExecuting, StartedAt: base,
+		},
+		{
+			SessionID: session.ID, RequestID: "request-parallel", ToolCallID: "tc-sub",
+			ToolName: constants.RunSubagentTool, Command: "run", Params: map[string]any{"title": "检查", "task": "inspect"},
+			Status: constants.ToolCallStatusExecuting, StartedAt: base.Add(time.Second),
+		},
+		{
+			SessionID: session.ID, RequestID: "request-parallel", ToolCallID: "tc-child",
+			ToolName: "file_read", Command: "read", Params: map[string]any{"path": "README.md"},
+			Status: constants.ToolCallStatusExecuting, StartedAt: base.Add(2 * time.Second), ParentToolCallID: "tc-sub",
+		},
+	}
+	for _, record := range records {
+		if err := repo.UpsertToolCallStart(ctx, record); err != nil {
+			t.Fatalf("UpsertToolCallStart(%s) failed: %v", record.ToolCallID, err)
+		}
+		if err := repo.UpdateToolCallResult(ctx, domain.ToolCallResultRecordInput{
+			SessionID: session.ID, RequestID: record.RequestID, ToolCallID: record.ToolCallID,
+			Status: constants.ToolCallStatusCompleted, Output: "output-" + record.ToolCallID, FinishedAt: time.Now(),
+		}); err != nil {
+			t.Fatalf("UpdateToolCallResult(%s) failed: %v", record.ToolCallID, err)
+		}
+	}
+	if err := repo.BindToolCallsToAssistantMessage(ctx, session.ID, "request-parallel", assistant.ID); err != nil {
+		t.Fatalf("BindToolCallsToAssistantMessage failed: %v", err)
+	}
+
+	svc := NewChatService(repo, nil, nil, nil, nil)
+	msgs, err := svc.BuildContextMessages(ctx, session.ID, llmsvc.ModelRuntimeConfig{})
+	if err != nil {
+		t.Fatalf("BuildContextMessages failed: %v", err)
+	}
+
+	history := msgs[2:]
+	if len(history) != 5 {
+		t.Fatalf("expected user + assistant tool calls + 2 tool results + final assistant, got %d: %+v", len(history), history)
+	}
+	if got := history[1].ToolCalls; len(got) != 2 {
+		t.Fatalf("expected only top-level tool calls, got %+v", got)
+	} else if got[0].ID != "tc-search" || got[0].Name != "web_search__search" || got[1].ID != "tc-sub" || got[1].Name != constants.RunSubagentTool {
+		t.Fatalf("unexpected tool call ordering or names: %+v", got)
+	}
+	if history[2].ToolCallID != "tc-search" || history[3].ToolCallID != "tc-sub" {
+		t.Fatalf("tool result order should follow tool call order, got %+v / %+v", history[2], history[3])
+	}
+	joined := joinChatMessageContent(history)
+	if strings.Contains(joined, "tc-child") || strings.Contains(joined, "output-tc-child") {
+		t.Fatalf("nested subagent tool records should not enter parent context: %s", joined)
+	}
+}
+
+func TestBuildContextMessages_ReplaysRejectedToolCallsAsToolResults(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	session, err := repo.CreateSession(ctx, "rejected-tool-history")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	if _, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{
+		SessionID: session.ID,
+		Role:      "user",
+		Content:   "写文件",
+	}); err != nil {
+		t.Fatalf("AddMessageWithInput user failed: %v", err)
+	}
+	assistant, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{
+		SessionID: session.ID,
+		Role:      "assistant",
+		Content:   "<!-- TOOL_CALL:tc-rejected -->用户拒绝写入，所以我停止。",
+	})
+	if err != nil {
+		t.Fatalf("AddMessageWithInput assistant failed: %v", err)
+	}
+	if err := repo.UpsertToolCallStart(ctx, domain.ToolCallStartRecordInput{
+		SessionID:        session.ID,
+		RequestID:        "request-rejected",
+		ToolCallID:       "tc-rejected",
+		ToolName:         "file_write",
+		Command:          "write",
+		Params:           map[string]any{"file_path": "a.txt", "content": "x"},
+		Status:           constants.ToolCallStatusPending,
+		RequiresApproval: true,
+		StartedAt:        time.Now(),
+	}); err != nil {
+		t.Fatalf("UpsertToolCallStart failed: %v", err)
+	}
+	if err := repo.UpdateToolCallResult(ctx, domain.ToolCallResultRecordInput{
+		SessionID:  session.ID,
+		RequestID:  "request-rejected",
+		ToolCallID: "tc-rejected",
+		Status:     constants.ToolCallStatusRejected,
+		FinishedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("UpdateToolCallResult failed: %v", err)
+	}
+	if err := repo.BindToolCallsToAssistantMessage(ctx, session.ID, "request-rejected", assistant.ID); err != nil {
+		t.Fatalf("BindToolCallsToAssistantMessage failed: %v", err)
+	}
+
+	svc := NewChatService(repo, nil, nil, nil, nil)
+	msgs, err := svc.BuildContextMessages(ctx, session.ID, llmsvc.ModelRuntimeConfig{})
+	if err != nil {
+		t.Fatalf("BuildContextMessages failed: %v", err)
+	}
+	history := msgs[2:]
+	if len(history) != 4 {
+		t.Fatalf("expected replayed rejected tool trajectory, got %+v", history)
+	}
+	if history[1].ToolCalls[0].Name != "file_write__write" {
+		t.Fatalf("unexpected reconstructed tool call: %+v", history[1].ToolCalls[0])
+	}
+	if history[2].Role != "tool" || !strings.Contains(history[2].Content, "Execution was rejected by the user.") {
+		t.Fatalf("expected rejected tool result content, got %+v", history[2])
+	}
+}
+
+func TestBuildContextMessages_CompactionSummaryInputIncludesHistoricalToolCalls(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	session, err := repo.CreateSession(ctx, "tool-history-compact")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	if _, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{
+		SessionID: session.ID,
+		Role:      "user",
+		Content:   strings.Repeat("需要检查目录", 1500),
+	}); err != nil {
+		t.Fatalf("AddMessageWithInput user failed: %v", err)
+	}
+	assistant, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{
+		SessionID: session.ID,
+		Role:      "assistant",
+		Content:   "<!-- TOOL_CALL:tc-pwd -->" + strings.Repeat("已检查。", 1500),
+	})
+	if err != nil {
+		t.Fatalf("AddMessageWithInput assistant failed: %v", err)
+	}
+	if err := repo.UpsertToolCallStart(ctx, domain.ToolCallStartRecordInput{
+		SessionID: session.ID, RequestID: "request-compact-tool", ToolCallID: "tc-pwd",
+		ToolName: constants.ExecToolName, Command: "run", Params: map[string]any{"cmd": "pwd"},
+		Status: constants.ToolCallStatusExecuting, StartedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("UpsertToolCallStart failed: %v", err)
+	}
+	if err := repo.UpdateToolCallResult(ctx, domain.ToolCallResultRecordInput{
+		SessionID: session.ID, RequestID: "request-compact-tool", ToolCallID: "tc-pwd",
+		Status: constants.ToolCallStatusCompleted, Output: "/tmp/slimebot", FinishedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("UpdateToolCallResult failed: %v", err)
+	}
+	if err := repo.BindToolCallsToAssistantMessage(ctx, session.ID, "request-compact-tool", assistant.ID); err != nil {
+		t.Fatalf("BindToolCallsToAssistantMessage failed: %v", err)
+	}
+
+	provider := &compactSummaryProvider{summary: "工具历史摘要"}
+	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
+	_, err = svc.BuildContextMessages(ctx, session.ID, llmsvc.ModelRuntimeConfig{
+		Provider: llmsvc.ProviderOpenAI, BaseURL: "http://fake", APIKey: "key", Model: "fake-model", ContextSize: 5_000,
+	})
+	if err != nil {
+		t.Fatalf("BuildContextMessages failed: %v", err)
+	}
+	if provider.compactCalls != 1 {
+		t.Fatalf("expected compaction, got %d calls", provider.compactCalls)
+	}
+	if !strings.Contains(provider.lastPrompt, "exec__run") || !strings.Contains(provider.lastPrompt, `"cmd":"pwd"`) || !strings.Contains(provider.lastPrompt, "/tmp/slimebot") {
+		t.Fatalf("expected compact prompt to include reconstructed tool call and result, got: %s", provider.lastPrompt)
 	}
 }
 
