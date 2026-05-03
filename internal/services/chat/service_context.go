@@ -154,7 +154,7 @@ func (s *ChatService) buildContextMessagesDetailed(ctx context.Context, sessionI
 	if compression.compacted {
 		mode = "compact_summary_plus_recent"
 	}
-	usage := buildContextUsage(sessionID, modelConfig, msgs, compression.compacted, compression.compactedAt)
+	usage := buildContextUsage(sessionID, modelConfig, msgs, history, toolRecords, compression.compacted, compression.compactedAt)
 	logging.Info(
 		"chat_context_ready",
 		"session", sessionID,
@@ -270,12 +270,17 @@ func (s *ChatService) applyContextCompression(ctx context.Context, sessionID str
 	}, nil
 }
 
-func buildContextUsage(sessionID string, modelConfig llmsvc.ModelRuntimeConfig, messages []llmsvc.ChatMessage, compacted bool, compactedAt string) ContextUsage {
+func buildContextUsage(sessionID string, modelConfig llmsvc.ModelRuntimeConfig, messages []llmsvc.ChatMessage, history []domain.Message, toolRecords []domain.ToolCallRecord, compacted bool, compactedAt string) ContextUsage {
 	total := modelConfig.ContextSize
 	if total <= 0 {
 		total = constants.DefaultContextSize
 	}
 	used := estimateChatMessagesTokens(messages)
+	if !compacted {
+		if exactUsed, ok := contextUsageFromPersistedTokenUsage(history, toolRecords); ok {
+			used = exactUsed
+		}
+	}
 	usedPercent := 0
 	if total > 0 {
 		usedPercent = int(float64(used)*100/float64(total) + 0.5)
@@ -296,6 +301,29 @@ func buildContextUsage(sessionID string, modelConfig llmsvc.ModelRuntimeConfig, 
 		IsCompacted:      compacted,
 		CompactedAt:      compactedAt,
 	}
+}
+
+func contextUsageFromPersistedTokenUsage(history []domain.Message, toolRecords []domain.ToolCallRecord) (int, bool) {
+	for i := len(history) - 1; i >= 0; i-- {
+		item := history[i]
+		if item.Role != "assistant" || item.TokenUsage == nil || item.TokenUsage.IsZero() {
+			continue
+		}
+		used := item.TokenUsage.TotalContextTokens()
+		if i+1 < len(history) {
+			tail := history[i+1:]
+			used += estimateChatMessagesTokens(historyToChatMessages(tail, toolRecordsForHistory(tail, toolRecords)))
+		}
+		return used, true
+	}
+	return 0, false
+}
+
+func nonZeroTokenUsage(usage llmsvc.TokenUsage) *llmsvc.TokenUsage {
+	if usage.IsZero() {
+		return nil
+	}
+	return &usage
 }
 
 func (s *ChatService) generateContextSummary(ctx context.Context, modelConfig llmsvc.ModelRuntimeConfig, history []domain.Message, toolRecords []domain.ToolCallRecord, priorSummary string) (string, error) {

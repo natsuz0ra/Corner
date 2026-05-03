@@ -127,7 +127,7 @@ test("CONTEXT_USAGE stores latest usage", () => {
 	assert.equal(state.contextUsage?.totalTokens, 1_000_000);
 });
 
-test("STREAM_CHUNK increments context usage estimate", () => {
+test("STREAM_CHUNK leaves context usage unchanged until server usage arrives", () => {
 	let state = reduce(initState(), {
 		type: "CONTEXT_USAGE",
 		usage: {
@@ -146,9 +146,9 @@ test("STREAM_CHUNK increments context usage estimate", () => {
 		chunk: "12345678",
 	});
 
-	assert.equal(state.contextUsage?.usedTokens, 12);
-	assert.equal(state.contextUsage?.usedPercent, 12);
-	assert.equal(state.contextUsage?.availablePercent, 88);
+	assert.equal(state.contextUsage?.usedTokens, 10);
+	assert.equal(state.contextUsage?.usedPercent, 10);
+	assert.equal(state.contextUsage?.availablePercent, 90);
 });
 
 test("CONTEXT_COMPACTED stores usage and appends a system notice", () => {

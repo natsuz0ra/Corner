@@ -72,6 +72,22 @@ type ChatMessageContentPart struct {
 	Filename         string                     `json:"filename,omitempty"`
 }
 
+// TokenUsage is provider-reported token usage for one model response.
+type TokenUsage struct {
+	InputTokens              int `json:"inputTokens"`
+	OutputTokens             int `json:"outputTokens"`
+	CacheCreationInputTokens int `json:"cacheCreationInputTokens"`
+	CacheReadInputTokens     int `json:"cacheReadInputTokens"`
+}
+
+func (u TokenUsage) TotalContextTokens() int {
+	return u.InputTokens + u.OutputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
+}
+
+func (u TokenUsage) IsZero() bool {
+	return u.InputTokens == 0 && u.OutputTokens == 0 && u.CacheCreationInputTokens == 0 && u.CacheReadInputTokens == 0
+}
+
 // ToolCallInfo describes one tool invocation from the model.
 type ToolCallInfo struct {
 	ID        string `json:"id"`
@@ -154,6 +170,8 @@ const (
 type StreamResult struct {
 	// Result kind: text or tool calls.
 	Type StreamResultType
+	// TokenUsage is provider-reported usage for this API response when available.
+	TokenUsage *TokenUsage
 	// Tool calls from the model (only when Type is StreamResultToolCalls).
 	ToolCalls []ToolCallInfo
 	// AssistantMessage carries assistant role content including tool_calls for context replay.

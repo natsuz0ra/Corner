@@ -220,6 +220,59 @@ func TestBuildContextUsageReportsActualContextBelowThreshold(t *testing.T) {
 	}
 }
 
+func TestBuildContextUsageUsesPersistedTokenUsageAsBaseline(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	session, err := repo.CreateSession(ctx, "usage-real-baseline")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	if _, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{
+		SessionID: session.ID,
+		Role:      "user",
+		Content:   strings.Repeat("older prompt ", 100),
+	}); err != nil {
+		t.Fatalf("AddMessageWithInput user failed: %v", err)
+	}
+	if _, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{
+		SessionID: session.ID,
+		Role:      "assistant",
+		Content:   "assistant answer",
+		TokenUsage: &llmsvc.TokenUsage{
+			InputTokens:              1000,
+			OutputTokens:             120,
+			CacheCreationInputTokens: 30,
+			CacheReadInputTokens:     20,
+		},
+	}); err != nil {
+		t.Fatalf("AddMessageWithInput assistant failed: %v", err)
+	}
+	if _, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{
+		SessionID: session.ID,
+		Role:      "user",
+		Content:   strings.Repeat("next prompt ", 40),
+	}); err != nil {
+		t.Fatalf("AddMessageWithInput trailing user failed: %v", err)
+	}
+
+	svc := NewChatService(repo, nil, nil, nil, nil)
+	usage, err := svc.BuildContextUsage(ctx, session.ID, llmsvc.ModelRuntimeConfig{
+		ConfigID:    "model-real",
+		ContextSize: 10_000,
+	})
+	if err != nil {
+		t.Fatalf("BuildContextUsage failed: %v", err)
+	}
+	tailEstimate := estimateChatMessagesTokens(historyToChatMessages([]domain.Message{{
+		Role:    "user",
+		Content: strings.Repeat("next prompt ", 40),
+	}}, nil))
+	want := 1000 + 120 + 30 + 20 + tailEstimate
+	if usage.UsedTokens != want {
+		t.Fatalf("expected persisted usage baseline plus trailing estimate %d, got %+v", want, usage)
+	}
+}
+
 func TestEstimateChatMessagesTokensCountsToolCallPayload(t *testing.T) {
 	base := estimateChatMessagesTokens([]llmsvc.ChatMessage{{
 		Role: "assistant",

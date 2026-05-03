@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	llmsvc "slimebot/internal/services/llm"
+	"time"
+)
 
 type AddMessageInput struct {
 	SessionID         string
@@ -9,6 +12,7 @@ type AddMessageInput struct {
 	IsInterrupted     bool
 	IsStopPlaceholder bool
 	Attachments       []MessageAttachment
+	TokenUsage        *llmsvc.TokenUsage
 	CreatedAt         time.Time
 }
 

@@ -52,6 +52,7 @@ type chatTurnResult struct {
 	pushErr       error
 	narration     string
 	planBody      string
+	tokenUsage    *llmsvc.TokenUsage
 }
 
 // HandleChatStream runs one full turn: persist user message, build context, run agent, save assistant.
@@ -267,6 +268,7 @@ func (s *ChatService) executeChatTurn(
 ) (*chatTurnResult, error) {
 	parser := newTitleStreamParser()
 	accumulator := &chatStreamAccumulator{}
+	usageTracker := newContextUsageTracker(state.contextUsage, callbacks.OnContextUsage)
 	streamStart := time.Now()
 	var firstTokenAt time.Time
 	var callbackMu sync.Mutex
@@ -339,7 +341,11 @@ func (s *ChatService) executeChatTurn(
 			if chunk != "" && firstTokenAt.IsZero() {
 				firstTokenAt = time.Now()
 			}
-			return pushBodyLocked(parser.Feed(chunk))
+			body := parser.Feed(chunk)
+			if err := pushBodyLocked(body); err != nil {
+				return err
+			}
+			return nil
 		},
 		OnToolCallStart: func(req ApprovalRequest) error {
 			callbackMu.Lock()
@@ -485,7 +491,15 @@ func (s *ChatService) executeChatTurn(
 
 	agentStart := time.Now()
 	var planCompleted bool
-	answer, err := s.agent.RunAgentLoop(ctx, state.modelConfig, sessionID, state.contextMessages, state.enabledMCPConfigs, activatedSkills, agentCallbacks, AgentLoopOptions{ApprovalMode: approvalMode, PlanMode: planMode, PlanComplete: &planCompleted, SubagentModelID: subagentModelID})
+	var latestUsage llmsvc.TokenUsage
+	answer, err := s.agent.RunAgentLoop(ctx, state.modelConfig, sessionID, state.contextMessages, state.enabledMCPConfigs, activatedSkills, agentCallbacks, AgentLoopOptions{
+		ApprovalMode:    approvalMode,
+		PlanMode:        planMode,
+		PlanComplete:    &planCompleted,
+		SubagentModelID: subagentModelID,
+		LatestUsage:     &latestUsage,
+		OnProviderUsage: usageTracker.calibrateProviderUsage,
+	})
 	logging.Span("agent_loop", agentStart)
 	s.mergeSessionActivatedSkills(sessionID, activatedSkills)
 	if finishErr := finishAllActiveThinkings(time.Now()); finishErr != nil && err == nil {
@@ -504,7 +518,8 @@ func (s *ChatService) executeChatTurn(
 	logging.Info("chat_stream_done", "session", sessionID, "first_token_ms", firstTokenMs, "total_stream_ms", time.Since(streamStart).Milliseconds())
 
 	callbackMu.Lock()
-	flushErr := pushBodyLocked(parser.Flush())
+	flushed := parser.Flush()
+	flushErr := pushBodyLocked(flushed)
 	callbackMu.Unlock()
 	if flushErr != nil && !interrupted {
 		return nil, flushErr
@@ -556,6 +571,7 @@ func (s *ChatService) executeChatTurn(
 		pushErr:       accumulator.pushErr,
 		narration:     resultNarration,
 		planBody:      resultPlanBody,
+		tokenUsage:    nonZeroTokenUsage(latestUsage),
 	}, nil
 }
 
@@ -575,6 +591,7 @@ func (s *ChatService) finalizeChatTurn(
 		Content:           result.answer,
 		IsInterrupted:     result.interrupted,
 		IsStopPlaceholder: result.interrupted && strings.TrimSpace(result.answer) == "",
+		TokenUsage:        result.tokenUsage,
 	})
 	if err != nil {
 		return nil, err

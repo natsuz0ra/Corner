@@ -348,6 +348,56 @@ func TestHandleChatStream_StartsTitleGenerationBeforeAssistantChunk(t *testing.T
 	}
 }
 
+func TestHandleChatStreamPushesAuthoritativeContextUsageOnly(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	session, err := repo.CreateSession(ctx, "usage-stream")
+	if err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+	model, err := repo.CreateLLMConfig(context.Background(), domain.LLMConfig{
+		Name:        "fake",
+		Provider:    llmsvc.ProviderOpenAI,
+		BaseURL:     "http://fake",
+		APIKey:      "key",
+		Model:       "fake-model",
+		ContextSize: 100_000,
+	})
+	if err != nil {
+		t.Fatalf("create model failed: %v", err)
+	}
+	provider := &contextUsageStreamingProvider{}
+	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
+
+	var usages []ContextUsage
+	_, err = svc.HandleChatStream(ctx, session.ID, "request-usage-stream", "hello", "", model.ID, nil, "off", false, "", AgentCallbacks{
+		OnChunk: func(string) error { return nil },
+		OnContextUsage: func(usage ContextUsage) error {
+			usages = append(usages, usage)
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("HandleChatStream failed: %v", err)
+	}
+	if len(usages) != 3 {
+		t.Fatalf("expected initial and provider usage updates only, got %d: %+v", len(usages), usages)
+	}
+	if usages[1].UsedTokens != 21_000 || usages[1].UsedPercent != 21 || usages[1].AvailablePercent != 79 {
+		t.Fatalf("expected first provider usage calibration, got %+v", usages[1])
+	}
+	if usages[2].UsedTokens != 50_000 || usages[2].UsedPercent != 50 || usages[2].AvailablePercent != 50 {
+		t.Fatalf("expected final provider usage calibration, got %+v", usages[2])
+	}
+	finalUsage, err := svc.GetContextUsage(ctx, session.ID, model.ID)
+	if err != nil {
+		t.Fatalf("GetContextUsage failed: %v", err)
+	}
+	if finalUsage.UsedTokens != usages[2].UsedTokens || finalUsage.UsedPercent != usages[2].UsedPercent || finalUsage.AvailablePercent != usages[2].AvailablePercent {
+		t.Fatalf("expected saved context usage to match final provider usage, final=%+v streamed=%+v", finalUsage, usages[2])
+	}
+}
+
 func TestRunAgentLoopPreservesThinkingBlocksAcrossToolIterations(t *testing.T) {
 	provider := &thinkingToolIterationProvider{}
 	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil)
@@ -458,6 +508,50 @@ type thinkingToolIterationProvider struct {
 type reasoningToolIterationProvider struct {
 	call                int
 	secondCallAssistant *llmsvc.ChatMessage
+}
+
+type contextUsageStreamingProvider struct {
+	call int
+}
+
+func (p *contextUsageStreamingProvider) StreamChatWithTools(
+	_ context.Context,
+	_ llmsvc.ModelRuntimeConfig,
+	_ []llmsvc.ChatMessage,
+	_ []llmsvc.ToolDef,
+	callbacks llmsvc.StreamCallbacks,
+) (*llmsvc.StreamResult, error) {
+	p.call++
+	switch p.call {
+	case 1:
+		return &llmsvc.StreamResult{
+			Type:       llmsvc.StreamResultToolCalls,
+			TokenUsage: &llmsvc.TokenUsage{InputTokens: 20_000, OutputTokens: 1_000},
+			ToolCalls: []llmsvc.ToolCallInfo{{
+				ID:        "plan-start-call",
+				Name:      constants.PlanStartTool,
+				Arguments: `{"note":"` + strings.Repeat("tool payload ", 80) + `"}`,
+			}},
+			AssistantMessage: llmsvc.ChatMessage{
+				Role: "assistant",
+				ToolCalls: []llmsvc.ToolCallInfo{{
+					ID:        "plan-start-call",
+					Name:      constants.PlanStartTool,
+					Arguments: `{"note":"` + strings.Repeat("tool payload ", 80) + `"}`,
+				}},
+			},
+		}, nil
+	default:
+		if callbacks.OnChunk != nil {
+			if err := callbacks.OnChunk(strings.Repeat("streamed answer ", 40)); err != nil {
+				return nil, err
+			}
+		}
+		return &llmsvc.StreamResult{
+			Type:       llmsvc.StreamResultText,
+			TokenUsage: &llmsvc.TokenUsage{InputTokens: 45_000, OutputTokens: 5_000},
+		}, nil
+	}
 }
 
 func (p *reasoningToolIterationProvider) StreamChatWithTools(
