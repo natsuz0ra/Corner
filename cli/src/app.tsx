@@ -916,6 +916,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
       {state.view === "mcp-editor" && (
         <MCPEditor
+          id={state.mcpEditorId}
           name={state.mcpEditorName}
           config={state.mcpEditorConfig}
           enabled={state.mcpEditorEnabled}
