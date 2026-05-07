@@ -13,7 +13,7 @@ import { Banner } from "./components/Banner.js";
 import { CommandHints } from "./components/CommandHints.js";
 import { MCPEditor } from "./components/MCPEditor.js";
 import { MCPTemplatePicker } from "./components/MCPTemplatePicker.js";
-import { MenuView } from "./components/MenuView.js";
+import { CLI_HINT_COLOR, MenuView } from "./components/MenuView.js";
 import { ModelEditor } from "./components/ModelEditor.js";
 import { TextInput } from "./components/TextInput.js";
 import { Timeline } from "./components/Timeline.js";
@@ -994,7 +994,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       <Text color="white">{border}</Text>
 
       {state.view === "chat" && state.streaming && (
-        <Text color="gray" dimColor>
+        <Text color={CLI_HINT_COLOR}>
           Generating response | Esc to cancel
         </Text>
       )}
@@ -1002,7 +1002,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       {hasCommandHints && (
         <Box flexDirection="column">
           <CommandHints input={state.inputValue} selectedIndex={selectedCommandHintIndex} />
-          <Text color="gray" dimColor>
+          <Text color={CLI_HINT_COLOR}>
             ↑↓ to select | Enter/Tab to fill | Esc to clear
           </Text>
         </Box>
@@ -1010,7 +1010,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
       {state.view === "chat" && !state.streaming && !hasCommandHints && (
         <Box justifyContent="space-between">
-          <Text color="#64748b">
+          <Text color={CLI_HINT_COLOR}>
             {getChatFooterHint(state.planMode, state.approvalMode)}
           </Text>
           <Box>
@@ -1021,31 +1021,31 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       )}
 
       {state.view === "approval" && (
-        <Text color="gray" dimColor>
+        <Text color={CLI_HINT_COLOR}>
           ↑/↓ switch | Y approve | N reject | A approve all | R reject all
         </Text>
       )}
 
       {state.view === "plan-confirm" && (
-        <Text color="gray" dimColor>
+        <Text color={CLI_HINT_COLOR}>
           Arrow keys to navigate | Enter to select | Esc to cancel
         </Text>
       )}
 
       {state.view === "mcp-editor" && (
-        <Text color="gray" dimColor>
+        <Text color={CLI_HINT_COLOR}>
           Tab to switch field | Ctrl+S to save | Ctrl+E to toggle | Esc to go back
         </Text>
       )}
 
       {state.view === "mcp-template" && (
-        <Text color="gray" dimColor>
+        <Text color={CLI_HINT_COLOR}>
           Arrow keys to navigate | Enter to select | Esc to cancel
         </Text>
       )}
 
       {state.view === "model-editor" && (
-        <Text color="gray" dimColor>
+        <Text color={CLI_HINT_COLOR}>
           Tab to switch field | Ctrl+S to save | Esc to go back{state.modelEditorFocusIndex === 1 ? " | Enter to change provider" : ""}
         </Text>
       )}
