@@ -18,6 +18,7 @@ const MAX_MENU_TITLE_LENGTH = 25;
 const MAX_MENU_DESC_LENGTH = 80;
 
 export const MENU_TITLE_GAP_LINES = 1;
+export const CLI_HINT_COLOR = "#64748b";
 export const MENU_ITEM_COLORS = {
 	title: "#67e8f9",
 	activeCursor: "#22d3ee",
@@ -26,7 +27,7 @@ export const MENU_ITEM_COLORS = {
 	inactiveTitle: "#cbd5e1",
 	description: "#94a3b8",
 	empty: "#94a3b8",
-	hint: "#64748b",
+	hint: CLI_HINT_COLOR,
 } as const;
 
 export function truncateMenuTitle(
