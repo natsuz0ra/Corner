@@ -29,7 +29,6 @@ import { useSettingsSkills } from '@/composables/settings/useSettingsSkills'
 import { useSettingsMessagePlatform } from '@/composables/settings/useSettingsMessagePlatform'
 import { useSettingsConfirmDialog } from '@/composables/settings/useSettingsConfirmDialog'
 import { useSettingsWebSearch } from '@/composables/settings/useSettingsWebSearch'
-import { useSettingsApprovalMode } from '@/composables/settings/useSettingsApprovalMode'
 import { useLanguagePreference, type LanguageCode } from '@/composables/useLanguagePreference'
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
@@ -82,7 +81,6 @@ const {
   closeWebSearchDialog,
   saveWebSearch,
 } = useSettingsWebSearch({ toast, t: (key) => t(key) })
-const { approvalMode, onApprovalModeChange } = useSettingsApprovalMode({ toast, t: (key) => t(key) })
 
 const {
   llmForm,
@@ -175,7 +173,6 @@ async function loadData() {
     const appSettings: AppSettings = await settingAPI.get()
     messagePlatformDefaultModel.value = appSettings.messagePlatformDefaultModel || ''
     webSearchKey.value = appSettings.webSearchKey || ''
-    approvalMode.value = appSettings.approvalMode || 'standard'
     llmList.value = await llmAPI.list()
     mcpList.value = await mcpAPI.list()
     skillsList.value = await skillsAPI.list()
@@ -274,12 +271,10 @@ onMounted(loadData)
           :language="language"
           :language-select-options="languageSelectOptions"
           :saving-language="savingLanguage"
-          :approval-mode="approvalMode"
           @open-account="openAccountDialog"
           @open-web-search="openWebSearchDialog"
           @logout="logout"
           @language-change="onLanguageChange"
-          @approval-mode-change="onApprovalModeChange"
         />
 
         <SettingsLLMTab v-if="tab === 'llm'" :llm-rows="llmRows" @add="openLLMDialog" @edit="openLLMEditDialog" @delete="deleteLLM" />

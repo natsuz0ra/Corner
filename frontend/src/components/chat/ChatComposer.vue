@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { mdiChevronLeft, mdiChevronRight, mdiClose, mdiPaperclip, mdiSend, mdiStop, mdiTuneVariant } from '@mdi/js'
 import { useI18n } from 'vue-i18n'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
@@ -9,6 +9,8 @@ import type { SelectOption } from '@/components/ui/AppSelect.vue'
 import { formatSize } from '@/utils/format'
 import { contextUsageTone, formatContextTokenCount } from '@/utils/contextSize'
 import type { ContextUsageData } from '@/api/chatSocket'
+import type { ApprovalMode } from '@/types/settings'
+import { getApprovalModeLabelKey, getApprovalModeOptions, getApprovalModeTone } from '@/utils/approvalMode'
 
 const props = defineProps<{
   modelValue: string
@@ -25,6 +27,7 @@ const props = defineProps<{
   pendingFiles: File[]
   placeholder: string
   planMode: boolean
+  approvalMode: ApprovalMode
   planConfirmationVisible?: boolean
   contextUsage?: ContextUsageData | null
 }>()
@@ -39,6 +42,7 @@ const emit = defineEmits<{
   thinkingChange: [level: string]
   subagentModelChange: [modelId: string]
   planToggle: []
+  approvalModeChange: [mode: ApprovalMode]
   planExecute: []
   planCancel: []
 }>()
@@ -99,6 +103,12 @@ const submenuKey = ref<string | null>(null)
 const menuTriggerRef = ref<HTMLElement | null>(null)
 const menuPanelRef = ref<HTMLElement | null>(null)
 const menuStyle = ref<Record<string, string>>({})
+const approvalTooltipState = reactive({
+  visible: false,
+  text: '',
+  x: 0,
+  y: 0,
+})
 
 const currentModelLabel = computed(() => {
   const found = props.modelSelectOptions.find((o) => o.value === props.selectedModelId)
@@ -115,6 +125,9 @@ const currentSubagentModelLabel = computed(() => {
   return found?.label || props.selectedSubagentModelId
 })
 
+const approvalModeOptions = getApprovalModeOptions()
+const currentApprovalModeLabel = computed(() => t(getApprovalModeLabelKey(props.approvalMode)))
+const currentApprovalModeTone = computed(() => getApprovalModeTone(props.approvalMode))
 const contextTone = computed(() => contextUsageTone(props.contextUsage?.usedPercent ?? 0))
 const contextCircleStyle = computed(() => {
   const usage = Math.max(0, Math.min(100, props.contextUsage?.usedPercent ?? 0))
@@ -145,6 +158,7 @@ function toggleMenu() {
 function closeMenu() {
   menuOpen.value = false
   submenuKey.value = null
+  hideApprovalTooltip()
 }
 
 function onSelectModel(value: string) {
@@ -160,6 +174,24 @@ function onSelectThinking(value: string) {
 function onSelectSubagentModel(value: string) {
   emit('subagentModelChange', value)
   closeMenu()
+}
+
+function onSelectApprovalMode(value: ApprovalMode) {
+  emit('approvalModeChange', value)
+  closeMenu()
+}
+
+function showApprovalTooltip(event: MouseEvent | FocusEvent, text: string) {
+  const el = event.currentTarget as HTMLElement
+  const rect = el.getBoundingClientRect()
+  approvalTooltipState.visible = true
+  approvalTooltipState.text = text
+  approvalTooltipState.x = rect.left + rect.width / 2
+  approvalTooltipState.y = rect.top - 8
+}
+
+function hideApprovalTooltip() {
+  approvalTooltipState.visible = false
 }
 
 function onGlobalMenuClick(e: MouseEvent) {
@@ -438,6 +470,45 @@ onUnmounted(() => {
           </div>
         </Transition>
 
+        <!-- Submenu: approval mode -->
+        <Transition name="composer-submenu">
+          <div v-if="submenuKey === 'approval'" class="composer-submenu sb-scrollbar">
+            <button type="button" class="composer-submenu-header" @click="submenuKey = null">
+              <MdiIcon :path="mdiChevronLeft" :size="16" />
+              <span>{{ t('approvalMode') }}</span>
+            </button>
+            <button
+              v-for="opt in approvalModeOptions"
+              :key="opt.value"
+              type="button"
+              class="composer-submenu-option"
+              :class="[
+                `approval-mode-option--${opt.tone}`,
+                opt.value === approvalMode ? 'composer-submenu-option-active' : '',
+              ]"
+              @click="onSelectApprovalMode(opt.value)"
+            >
+              <span
+                class="approval-mode-dot flex-shrink-0"
+                :class="`approval-mode-dot--${opt.tone}`"
+              />
+              <span class="approval-mode-option-label">{{ t(opt.labelKey) }}</span>
+              <span
+                class="approval-mode-help ml-auto flex-shrink-0"
+                tabindex="0"
+                :aria-label="t(opt.descriptionKey)"
+                @click.stop
+                @mouseenter="showApprovalTooltip($event, t(opt.descriptionKey))"
+                @mouseleave="hideApprovalTooltip"
+                @focus="showApprovalTooltip($event, t(opt.descriptionKey))"
+                @blur="hideApprovalTooltip"
+              >
+                <span class="approval-mode-help-icon">?</span>
+              </span>
+            </button>
+          </div>
+        </Transition>
+
         <!-- Main menu body -->
         <div class="composer-menu-body" :class="submenuKey ? 'invisible' : ''">
           <button
@@ -474,6 +545,19 @@ onUnmounted(() => {
             <MdiIcon :path="mdiChevronRight" :size="14" class="sb-text-muted" />
           </button>
           <div class="composer-menu-divider" />
+          <button type="button" class="composer-menu-item" @click="submenuKey = 'approval'">
+            <div>
+              <div class="composer-menu-item-label">{{ t('approvalMode') }}</div>
+              <div
+                class="composer-menu-item-value approval-mode-current-value"
+                :class="`approval-mode-current-value--${currentApprovalModeTone}`"
+              >
+                {{ currentApprovalModeLabel }}
+              </div>
+            </div>
+            <MdiIcon :path="mdiChevronRight" :size="14" class="sb-text-muted" />
+          </button>
+          <div class="composer-menu-divider" />
           <button type="button" class="composer-menu-item" @click="emit('planToggle')">
             <div>
               <div class="composer-menu-item-label">{{ t('planModeLabel') }}</div>
@@ -485,6 +569,15 @@ onUnmounted(() => {
             />
           </button>
         </div>
+      </div>
+    </Transition>
+    <Transition name="approval-tooltip-fade">
+      <div
+        v-if="approvalTooltipState.visible"
+        class="approval-mode-tooltip"
+        :style="{ left: approvalTooltipState.x + 'px', top: approvalTooltipState.y + 'px' }"
+      >
+        {{ approvalTooltipState.text }}
       </div>
     </Transition>
   </Teleport>
@@ -772,6 +865,103 @@ onUnmounted(() => {
   background: var(--primary-alpha-10);
   color: var(--sb-brand);
   font-weight: 500;
+}
+
+.approval-mode-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 3px var(--approval-mode-soft);
+  background: var(--approval-mode-color);
+}
+
+.approval-mode-option--safe,
+.approval-mode-current-value--safe {
+  --approval-mode-color: var(--tool-success-dot);
+  --approval-mode-soft: var(--tool-success-bg);
+  --approval-mode-text: var(--tool-success-text);
+}
+
+.approval-mode-option--review,
+.approval-mode-current-value--review {
+  --approval-mode-color: var(--color-warning);
+  --approval-mode-soft: var(--warning-alpha-12);
+  --approval-mode-text: #b45309;
+}
+
+.dark .approval-mode-option--review,
+.dark .approval-mode-current-value--review {
+  --approval-mode-text: #fbbf24;
+}
+
+.approval-mode-option--auto,
+.approval-mode-current-value--auto {
+  --approval-mode-color: var(--tool-error-dot);
+  --approval-mode-soft: var(--tool-error-bg);
+  --approval-mode-text: var(--tool-error-text);
+}
+
+.approval-mode-option-label {
+  min-width: 0;
+  color: inherit;
+}
+
+.approval-mode-option--safe.composer-submenu-option-active,
+.approval-mode-option--review.composer-submenu-option-active,
+.approval-mode-option--auto.composer-submenu-option-active {
+  background: var(--approval-mode-soft);
+  color: var(--approval-mode-text);
+  font-weight: 600;
+}
+
+.approval-mode-current-value {
+  color: var(--approval-mode-text);
+  font-weight: 600;
+}
+
+.approval-mode-help {
+  display: inline-flex;
+  align-items: center;
+  cursor: help;
+}
+
+.approval-mode-help-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  background: var(--approval-mode-soft);
+  color: var(--approval-mode-text);
+}
+
+.approval-mode-tooltip {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  width: 240px;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 20px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.78);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10000;
+  pointer-events: none;
+}
+
+.approval-tooltip-fade-enter-active,
+.approval-tooltip-fade-leave-active {
+  transition: opacity 150ms;
+}
+
+.approval-tooltip-fade-enter-from,
+.approval-tooltip-fade-leave-to {
+  opacity: 0;
 }
 
 /* --- Menu transitions --- */
