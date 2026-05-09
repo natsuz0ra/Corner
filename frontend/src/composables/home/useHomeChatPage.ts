@@ -1,7 +1,8 @@
-import { computed, reactive, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToast } from '@/composables/useToast'
 import { MESSAGE_PLATFORM_SESSION_ID } from '@/api/chat'
+import { settingAPI } from '@/api/settings'
 import { useHomeModelSelector } from '@/composables/home/useHomeModelSelector'
 import { useHomeNetworkNotice } from '@/composables/home/useHomeNetworkNotice'
 import { useHomeScroll } from '@/composables/home/useHomeScroll'
@@ -9,6 +10,7 @@ import { useHomeSessionActions } from '@/composables/home/useHomeSessionActions'
 import { useHomeToolDetail } from '@/composables/home/useHomeToolDetail'
 import { useHomeUiState } from '@/composables/home/useHomeUiState'
 import { useChatStore } from '@/stores/chat'
+import type { ApprovalMode } from '@/types/settings'
 
 export function useHomeChatPage() {
   const { t } = useI18n()
@@ -16,6 +18,7 @@ export function useHomeChatPage() {
   const toast = useToast()
   const uiState = useHomeUiState()
   const modelState = useHomeModelSelector()
+  const approvalMode = ref<ApprovalMode>('standard')
   const isEmptySession = computed(() => !uiState.loading.value && store.messages.length === 0)
   const currentSessionPlanConfirmationVisible = computed(() => (
     !!store.pendingPlanConfirmation &&
@@ -71,6 +74,32 @@ export function useHomeChatPage() {
     t: (key, params) => t(key, params as never),
     store,
     toast,
+  })
+
+  async function loadApprovalMode() {
+    try {
+      const settings = await settingAPI.get()
+      approvalMode.value = settings.approvalMode || 'standard'
+    } catch {
+      approvalMode.value = 'standard'
+    }
+  }
+
+  async function onApprovalModeChange(mode: ApprovalMode) {
+    if (mode === approvalMode.value) return
+    const previous = approvalMode.value
+    approvalMode.value = mode
+    try {
+      await settingAPI.update({ approvalMode: mode })
+      toast.success(t('saveSuccess'))
+    } catch {
+      approvalMode.value = previous
+      toast.error(t('approvalModeSaveFailed'))
+    }
+  }
+
+  onMounted(() => {
+    void loadApprovalMode()
   })
 
   watch(
@@ -133,11 +162,13 @@ export function useHomeChatPage() {
     stopDisabled,
     currentSessionPlanConfirmationVisible,
     planMode: computed(() => store.planMode),
+    approvalMode,
     sendMessage: sessionActions.sendMessage,
     stopMessage: sessionActions.stopMessage,
     onSelectFiles: sessionActions.onSelectFiles,
     removePendingFile: sessionActions.removePendingFile,
     onPlanToggle: store.togglePlanMode,
+    onApprovalModeChange,
   })
 
   const tools = reactive({
