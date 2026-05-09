@@ -106,6 +106,7 @@ export interface ThinkingHistoryItem {
 
 export type ToolCallStatus =
   | "pending"
+  | "reviewing"
   | "rejected"
   | "executing"
   | "completed"
@@ -117,9 +118,26 @@ export interface ToolCallStartData {
   command: string;
   params: Record<string, unknown>;
   requiresApproval: boolean;
+  reviewStatus?: string;
+  reviewRisk?: string;
+  reviewReason?: string;
   preamble?: string;
   parentToolCallId?: string;
   subagentRunId?: string;
+}
+
+export interface ToolCallReviewData {
+  toolCallId: string;
+  toolName: string;
+  command: string;
+  reviewStatus: string;
+  reviewRisk?: string;
+  reviewReason?: string;
+}
+
+export interface ToolApprovalRequiredData extends ToolCallReviewData {
+  params: Record<string, unknown>;
+  requiresApproval: boolean;
 }
 
 export interface ToolCallResultData {
@@ -298,7 +316,7 @@ export const SUPPORTED_COMMANDS: CommandMeta[] = [
   { command: "/session", description: "Open session menu to switch or delete" },
   { command: "/model", description: "Choose the default model" },
   { command: "/subagent_model", description: "Choose sub-agent model" },
-  { command: "/approval", description: "Toggle approval mode (standard/auto)" },
+  { command: "/approval", description: "Toggle approval mode (standard/auto review/auto)" },
   { command: "/effort", description: "Toggle thinking level (off/low/medium/high)" },
   { command: "/skills", description: "View and manage installed skills" },
   { command: "/mcp", description: "Manage MCP configurations" },

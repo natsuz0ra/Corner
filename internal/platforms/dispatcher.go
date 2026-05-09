@@ -92,6 +92,9 @@ func (d *Dispatcher) HandleInbound(ctx context.Context, message InboundMessage, 
 				askQuestionsIDs[req.ToolCallID] = fmt.Sprintf("%v", req.Params["questions"])
 				return nil
 			}
+			if req.ReviewStatus == string(chatsvc.ApprovalReviewStatusReviewing) {
+				return sender.SendText(chatID, "Automatic approval review is checking this tool call: "+formatToolStartSummary(req))
+			}
 			if req.RequiresApproval {
 				if d.approvals == nil {
 					return fmt.Errorf("dispatcher approvals is not initialized")
@@ -103,6 +106,26 @@ func (d *Dispatcher) HandleInbound(ctx context.Context, message InboundMessage, 
 				return sender.SendApprovalKeyboard(chatID, formatToolApprovalPrompt(req), approveData, rejectData)
 			}
 			return sender.SendText(chatID, formatToolStartSummary(req))
+		},
+		OnToolApprovalReview: func(event chatsvc.ApprovalReviewEvent) error {
+			if event.ReviewStatus == string(chatsvc.ApprovalReviewStatusReviewing) {
+				return nil
+			}
+			text := fmt.Sprintf("Automatic approval review %s for %s.%s", event.ReviewStatus, event.ToolName, event.Command)
+			if strings.TrimSpace(event.ReviewReason) != "" {
+				text += "\nReason: " + strings.TrimSpace(event.ReviewReason)
+			}
+			return sender.SendText(chatID, text)
+		},
+		OnToolApprovalRequired: func(req chatsvc.ApprovalRequest) error {
+			if d.approvals == nil {
+				return fmt.Errorf("dispatcher approvals is not initialized")
+			}
+			approveData, rejectData, err := d.approvals.Register(req.ToolCallID, chatID, constants.AgentApprovalTimeout+10*time.Second)
+			if err != nil {
+				return err
+			}
+			return sender.SendApprovalKeyboard(chatID, formatToolApprovalPrompt(req), approveData, rejectData)
 		},
 		WaitApproval: func(waitCtx context.Context, toolCallID string) (*chatsvc.ApprovalResponse, error) {
 			// ask_questions: auto-approve with a default response.

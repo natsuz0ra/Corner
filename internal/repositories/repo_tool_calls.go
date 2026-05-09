@@ -72,7 +72,7 @@ func (r *Repository) FinishOpenToolCallsForRequest(ctx context.Context, sessionI
 	now := time.Now()
 	return r.dbWithContext(ctx).Model(&domain.ToolCallRecord{}).
 		Where("session_id = ? AND request_id = ?", sessionID, requestID).
-		Where("status IN ?", []string{constants.ToolCallStatusPending, constants.ToolCallStatusExecuting}).
+		Where("status IN ?", []string{constants.ToolCallStatusPending, constants.ToolCallStatusReviewing, constants.ToolCallStatusExecuting}).
 		Updates(map[string]any{
 			"status":      constants.ToolCallStatusError,
 			"error":       trimmedError,

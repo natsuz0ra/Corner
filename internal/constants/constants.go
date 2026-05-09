@@ -14,6 +14,7 @@ const (
 	SettingMessagePlatformDefaultModel = "messagePlatformDefaultModel"
 	SettingWebSearchAPIKey             = "WEB_SEARCH_API_KEY"
 	ToolCallStatusPending              = "pending"
+	ToolCallStatusReviewing            = "reviewing"
 	ToolCallStatusExecuting            = "executing"
 	ToolCallStatusCompleted            = "completed"
 	ToolCallStatusError                = "error"
@@ -23,6 +24,7 @@ const (
 	// MaxSubagentDepth is max nesting: 0 = main only; 1 = one child level (child cannot run_subagent).
 	MaxSubagentDepth               = 1
 	AgentApprovalTimeout           = 120 * time.Second
+	AgentApprovalReviewTimeout     = 25 * time.Second
 	MaxToolNameLen                 = 64
 	MaxSkillZipBytes               = 20 * 1024 * 1024
 	MaxSkillExtractedBytes         = 50 * 1024 * 1024
@@ -57,9 +59,10 @@ const (
 	MCPFuncNameMaxLen              = 64
 	MCPFuncHashLen                 = 8
 
-	SettingApprovalMode  = "approvalMode"
-	ApprovalModeStandard = "standard"
-	ApprovalModeAuto     = "auto"
+	SettingApprovalMode    = "approvalMode"
+	ApprovalModeStandard   = "standard"
+	ApprovalModeAutoReview = "auto_review"
+	ApprovalModeAuto       = "auto"
 
 	SettingThinkingLevel = "thinkingLevel"
 

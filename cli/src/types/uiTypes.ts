@@ -1,4 +1,4 @@
-export type ApprovalMode = "standard" | "auto";
+export type ApprovalMode = "standard" | "auto_review" | "auto";
 export type ThinkingLevel = "off" | "low" | "medium" | "high" | "max";
 
 export interface QAQuestion {

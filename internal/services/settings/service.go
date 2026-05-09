@@ -2,6 +2,7 @@ package settings
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"slimebot/internal/constants"
 	"slimebot/internal/domain"
@@ -105,7 +106,11 @@ func (s *SettingsService) Update(ctx context.Context, input UpdateSettingsInput)
 		}
 	}
 	if strings.TrimSpace(input.ApprovalMode) != "" {
-		if err := s.store.SetSetting(ctx, constants.SettingApprovalMode, input.ApprovalMode); err != nil {
+		approvalMode := strings.TrimSpace(input.ApprovalMode)
+		if !isValidApprovalMode(approvalMode) {
+			return fmt.Errorf("invalid approval mode: %s", approvalMode)
+		}
+		if err := s.store.SetSetting(ctx, constants.SettingApprovalMode, approvalMode); err != nil {
 			return err
 		}
 	}
@@ -115,4 +120,13 @@ func (s *SettingsService) Update(ctx context.Context, input UpdateSettingsInput)
 		}
 	}
 	return nil
+}
+
+func isValidApprovalMode(mode string) bool {
+	switch strings.TrimSpace(mode) {
+	case constants.ApprovalModeStandard, constants.ApprovalModeAutoReview, constants.ApprovalModeAuto:
+		return true
+	default:
+		return false
+	}
 }

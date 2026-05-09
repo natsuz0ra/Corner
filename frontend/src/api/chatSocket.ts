@@ -9,6 +9,8 @@ export type ChatSocketHandlers = {
   onDone: (sessionId?: string, answer?: string, meta?: { isInterrupted?: boolean; isStopPlaceholder?: boolean; planId?: string; planBody?: string; finishedAt?: string; durationMs?: number }) => void
   onError: (error: string, sessionId?: string) => void
   onToolCallStart?: (data: ToolCallStartData, sessionId?: string) => void
+  onToolCallReview?: (data: ToolCallReviewData, sessionId?: string) => void
+  onToolApprovalRequired?: (data: ToolApprovalRequiredData, sessionId?: string) => void
   onToolCallResult?: (data: ToolCallResultData, sessionId?: string) => void
   onSubagentStart?: (data: SubagentStartData, sessionId?: string) => void
   onSubagentChunk?: (data: SubagentChunkData, sessionId?: string) => void
@@ -36,10 +38,27 @@ export interface ToolCallStartData {
   command: string
   params: Record<string, unknown>
   requiresApproval: boolean
+  reviewStatus?: string
+  reviewRisk?: string
+  reviewReason?: string
   preamble?: string
   startedAt?: string
   parentToolCallId?: string
   subagentRunId?: string
+}
+
+export interface ToolCallReviewData {
+  toolCallId: string
+  toolName: string
+  command: string
+  reviewStatus: string
+  reviewRisk?: string
+  reviewReason?: string
+}
+
+export interface ToolApprovalRequiredData extends ToolCallReviewData {
+  params: Record<string, unknown>
+  requiresApproval: boolean
 }
 
 export interface ToolCallResultData {
@@ -120,6 +139,9 @@ type WSIncoming = {
   command?: string
   params?: Record<string, unknown>
   requiresApproval?: boolean
+  reviewStatus?: string
+  reviewRisk?: string
+  reviewReason?: string
   status?: ToolCallStatus
   preamble?: string
   output?: string
@@ -204,10 +226,37 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
       command: data.command || '',
       params: data.params || {},
       requiresApproval: !!data.requiresApproval,
+      reviewStatus: data.reviewStatus || '',
+      reviewRisk: data.reviewRisk || '',
+      reviewReason: data.reviewReason || '',
       preamble: data.preamble || '',
       startedAt: data.startedAt,
       parentToolCallId: data.parentToolCallId,
       subagentRunId: data.subagentRunId,
+    }, data.sessionId)
+  }
+
+  if (data.type === 'tool_call_review') {
+    handlers?.onToolCallReview?.({
+      toolCallId: data.toolCallId || '',
+      toolName: data.toolName || '',
+      command: data.command || '',
+      reviewStatus: data.reviewStatus || '',
+      reviewRisk: data.reviewRisk || '',
+      reviewReason: data.reviewReason || '',
+    }, data.sessionId)
+  }
+
+  if (data.type === 'tool_call_approval_required') {
+    handlers?.onToolApprovalRequired?.({
+      toolCallId: data.toolCallId || '',
+      toolName: data.toolName || '',
+      command: data.command || '',
+      params: data.params || {},
+      requiresApproval: !!data.requiresApproval,
+      reviewStatus: data.reviewStatus || '',
+      reviewRisk: data.reviewRisk || '',
+      reviewReason: data.reviewReason || '',
     }, data.sessionId)
   }
 

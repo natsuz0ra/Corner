@@ -123,7 +123,7 @@ export function hasCollapsibleReplyContent(timeline: AssistantReplyTimelineItem[
 }
 
 export function normalizeToolStatus(status?: string, fallbackError?: string): ToolCallStatus {
-  if (status === 'pending' || status === 'rejected' || status === 'executing' || status === 'completed' || status === 'error') {
+  if (status === 'pending' || status === 'reviewing' || status === 'rejected' || status === 'executing' || status === 'completed' || status === 'error') {
     return status
   }
   return fallbackError ? 'error' : 'completed'
@@ -131,7 +131,7 @@ export function normalizeToolStatus(status?: string, fallbackError?: string): To
 
 function normalizeHistoryToolStatus(item: SessionHistoryToolCallItem, interrupted: boolean): ToolCallStatus {
   const status = normalizeToolStatus(item.status, item.error)
-  if (interrupted && (status === 'pending' || status === 'executing')) {
+  if (interrupted && (status === 'pending' || status === 'reviewing' || status === 'executing')) {
     return 'error'
   }
   return status
@@ -139,7 +139,7 @@ function normalizeHistoryToolStatus(item: SessionHistoryToolCallItem, interrupte
 
 function normalizeHistoryToolError(item: SessionHistoryToolCallItem, interrupted: boolean) {
   const status = normalizeToolStatus(item.status, item.error)
-  if (interrupted && (status === 'pending' || status === 'executing')) {
+  if (interrupted && (status === 'pending' || status === 'reviewing' || status === 'executing')) {
     return item.error || 'Execution cancelled.'
   }
   return item.error

@@ -8,7 +8,7 @@ type SettingsPayload = {
   defaultModel?: string
   messagePlatformDefaultModel?: string
   webSearchApiKey?: string
-  approvalMode?: 'standard' | 'auto'
+  approvalMode?: 'standard' | 'auto_review' | 'auto'
 }
 
 export const settingAPI = {

@@ -18,8 +18,8 @@ A personal AI agent demo: an extensible foundation for conversational AI apps. I
   - Multimodal support
 - **Tools & agent**
   - Multi-turn agent tool-call flow
-  - Approval modes: **standard** (manual confirm for sensitive tools) and **auto** (execute directly)
-  - User approval for sensitive built-in tools (today: `exec`) in web UI, CLI, and Telegram flows
+  - Approval modes: **standard** (manual confirm for sensitive tools), **auto review** (model reviews uncertain sensitive tools first), and **auto** (execute directly)
+  - User approval for sensitive built-in tools (today: `exec`, `file_edit`, `file_write`) in web UI, CLI, and Telegram flows
   - Tool results stored in history with detail views
   - Built-in tools: `command line`, `web request`, `web search` (Tavily), `to-do`
   - Supports coding-agent-like file read/write capabilities for text editing workflows
@@ -151,7 +151,7 @@ make compose-down
 - `/model` — set default model
 - `/skills` — view / remove skills
 - `/mcp` — MCP CRUD with multiline editor
-- `/mode` — toggle approval mode (`standard` / `auto`)
+- `/approval` — toggle approval mode (`standard` / `auto_review` / `auto`)
 - `/effort` — set thinking level (`off` / `low` / `medium` / `high`)
 - `/plan` — toggle plan mode (`on` / `off`)
 - `/help` — help
@@ -196,7 +196,7 @@ Variables read by the server (defaults shown where applicable):
 - `WEB_SEARCH_API_KEY` — Tavily API key for `web_search`
 - `JWT_SECRET` — **required in server mode**; server fails to start if unset (CLI headless mode can auto-generate one)
 - `JWT_EXPIRE` — JWT lifetime in minutes (default `21600` ≈ 15 days)
-- `approvalMode` (app setting) — `standard` or `auto`
+- `approvalMode` (app setting) — `standard`, `auto_review`, or `auto`
 - `thinkingLevel` (app setting) — `off` / `low` / `medium` / `high`
 
 The file created on first boot follows the embedded template in [internal/runtime/env.template](internal/runtime/env.template). You can add the optional keys above manually if needed.
@@ -235,7 +235,7 @@ VITE_WS_URL=ws://localhost:8080
 **Done**
 
 - Sessions and WebSocket streaming (including errors, tool-call, subagent, and thinking events)
-- Agent tools and approvals (`exec` requires confirmation in standard mode; optional auto approval mode)
+- Agent tools and approvals (`exec`, `file_edit`, and `file_write` require confirmation in standard mode; optional auto-review and auto approval modes)
 - Plan mode with plan generation, approve/reject/modify flow, and execution after approval
 - Thinking level controls (`off` / `low` / `medium` / `high`) with streamed reasoning display
 - Subagent / nested agent (`run_subagent`), nested tool UI, and persisted parent linkage in tool-call history

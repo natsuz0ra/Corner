@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slimebot/internal/constants"
 	"slimebot/internal/runtime"
 	"testing"
 )
@@ -70,5 +71,25 @@ func TestSettingsService_GetReturnsEnvErrors(t *testing.T) {
 	_, err := svc.Get(context.Background())
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected os.ErrNotExist, got %v", err)
+	}
+}
+
+func TestSettingsService_UpdateValidatesApprovalMode(t *testing.T) {
+	store := &memorySettingsStore{values: map[string]string{}}
+	svc := NewSettingsService(store)
+
+	if err := svc.Update(context.Background(), UpdateSettingsInput{ApprovalMode: constants.ApprovalModeAutoReview}); err != nil {
+		t.Fatalf("Update auto_review failed: %v", err)
+	}
+	if got := store.values[constants.SettingApprovalMode]; got != constants.ApprovalModeAutoReview {
+		t.Fatalf("approvalMode = %q, want %q", got, constants.ApprovalModeAutoReview)
+	}
+
+	err := svc.Update(context.Background(), UpdateSettingsInput{ApprovalMode: "danger"})
+	if err == nil {
+		t.Fatal("expected invalid approval mode error")
+	}
+	if got := store.values[constants.SettingApprovalMode]; got != constants.ApprovalModeAutoReview {
+		t.Fatalf("invalid mode should not overwrite existing value, got %q", got)
 	}
 }

@@ -627,6 +627,9 @@ func (w *Controller) buildCallbacks(
 				"command":          req.Command,
 				"params":           req.Params,
 				"requiresApproval": req.RequiresApproval,
+				"reviewStatus":     req.ReviewStatus,
+				"reviewRisk":       req.ReviewRisk,
+				"reviewReason":     req.ReviewReason,
 				"preamble":         req.Preamble,
 				"startedAt":        time.Now().Format(time.RFC3339Nano),
 			}
@@ -635,6 +638,42 @@ func (w *Controller) buildCallbacks(
 			}
 			if req.SubagentRunID != "" {
 				payload["subagentRunId"] = req.SubagentRunID
+			}
+			if !enqueue(payload) {
+				return context.Canceled
+			}
+			return nil
+		},
+		OnToolApprovalReview: func(event chatsvc.ApprovalReviewEvent) error {
+			payload := map[string]any{
+				"type":         "tool_call_review",
+				"sessionId":    sessionID,
+				"toolCallId":   event.ToolCallID,
+				"toolName":     event.ToolName,
+				"command":      event.Command,
+				"reviewStatus": event.ReviewStatus,
+				"reviewRisk":   event.ReviewRisk,
+				"reviewReason": event.ReviewReason,
+				"reviewedAt":   time.Now().Format(time.RFC3339Nano),
+			}
+			if !enqueue(payload) {
+				return context.Canceled
+			}
+			return nil
+		},
+		OnToolApprovalRequired: func(req chatsvc.ApprovalRequest) error {
+			payload := map[string]any{
+				"type":             "tool_call_approval_required",
+				"sessionId":        sessionID,
+				"toolCallId":       req.ToolCallID,
+				"toolName":         req.ToolName,
+				"command":          req.Command,
+				"params":           req.Params,
+				"requiresApproval": req.RequiresApproval,
+				"reviewStatus":     req.ReviewStatus,
+				"reviewRisk":       req.ReviewRisk,
+				"reviewReason":     req.ReviewReason,
+				"requiredAt":       time.Now().Format(time.RFC3339Nano),
 			}
 			if !enqueue(payload) {
 				return context.Canceled

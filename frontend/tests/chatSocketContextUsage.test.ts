@@ -76,3 +76,50 @@ test('dispatchChatSocketMessage routes context_compacted with nested usage', () 
   assert.equal(calls[0]!.usage.usedPercent, 24)
   assert.equal(calls[0]!.usage.isCompacted, true)
 })
+
+test('dispatchChatSocketMessage routes auto approval review events', () => {
+  const reviews: Array<{ status: string; reason?: string }> = []
+  const required: Array<{ toolCallId: string; command: string; params: Record<string, unknown>; reason?: string }> = []
+  const handlers: ChatSocketHandlers = {
+    onSession: () => {},
+    onStart: () => {},
+    onChunk: () => {},
+    onSessionTitle: () => {},
+    onDone: () => {},
+    onError: () => {},
+    onToolCallReview: (data) => {
+      reviews.push({ status: data.reviewStatus, reason: data.reviewReason })
+    },
+    onToolApprovalRequired: (data) => {
+      required.push({ toolCallId: data.toolCallId, command: data.command, params: data.params, reason: data.reviewReason })
+    },
+  }
+
+  dispatchChatSocketMessage(JSON.stringify({
+    type: 'tool_call_review',
+    sessionId: 'sid-1',
+    toolCallId: 'call-1',
+    toolName: 'exec',
+    command: 'run',
+    reviewStatus: 'reviewing',
+  }), handlers)
+  dispatchChatSocketMessage(JSON.stringify({
+    type: 'tool_call_approval_required',
+    sessionId: 'sid-1',
+    toolCallId: 'call-1',
+    toolName: 'exec',
+    command: 'run',
+    params: { command: 'rm -rf /tmp/example' },
+    requiresApproval: true,
+    reviewStatus: 'needs_user',
+    reviewReason: 'destructive command',
+  }), handlers)
+
+  assert.deepEqual(reviews, [{ status: 'reviewing', reason: '' }])
+  assert.deepEqual(required, [{
+    toolCallId: 'call-1',
+    command: 'run',
+    params: { command: 'rm -rf /tmp/example' },
+    reason: 'destructive command',
+  }])
+})

@@ -18,6 +18,26 @@ func TestSystemPrompt_InstructsVisibleReasoningToFollowUserLanguage(t *testing.T
 	}
 }
 
+func TestSystemPrompt_PrioritizesLatestUserLanguageAndFallsBackToEnglish(t *testing.T) {
+	prompt := SystemPrompt()
+	latestLanguageRule := "First infer the primary language of the user's latest message"
+	defaultEnglishRule := "Only default to English"
+	for _, want := range []string{
+		latestLanguageRule,
+		"current turn's user conversation language",
+		"English latest message",
+		"Chinese latest message",
+		defaultEnglishRule,
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("system prompt missing %q", want)
+		}
+	}
+	if strings.Index(prompt, latestLanguageRule) > strings.Index(prompt, defaultEnglishRule) {
+		t.Fatalf("latest user language rule should appear before default English fallback")
+	}
+}
+
 func TestSystemPrompt_EncouragesBoundedSubagentDelegation(t *testing.T) {
 	prompt := SystemPrompt()
 	for _, want := range []string{
