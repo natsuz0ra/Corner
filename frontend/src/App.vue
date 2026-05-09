@@ -3,8 +3,10 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppToast from '@/components/ui/AppToast.vue'
 import { useTheme } from '@/composables/useTheme'
+import { useLanguagePreference } from '@/composables/useLanguagePreference'
 
 const { init } = useTheme()
+const { loadLanguage } = useLanguagePreference()
 const route = useRoute()
 const LOGIN_HOME_TRANSITION_TOKEN = 'slimebot:transition:login-home'
 const shouldPlayLoginToHome = ref(false)
@@ -62,7 +64,10 @@ function onRouteEnterDone() {
   clearLoginToHomeToken()
 }
 
-onMounted(() => init())
+onMounted(() => {
+  init()
+  void loadLanguage({ allowRemote: true })
+})
 </script>
 
 <template>
