@@ -85,6 +85,13 @@ test("getChatFooterHint returns toggle hint in auto mode", () => {
   );
 });
 
+test("getChatFooterHint returns toggle hint in auto review mode", () => {
+  assert.equal(
+    getChatFooterHint(false, "auto_review"),
+    "/ for commands | Shift+Tab to toggle | Esc to cancel",
+  );
+});
+
 test("getChatFooterHint returns default hint in standard mode", () => {
   assert.equal(
     getChatFooterHint(false, "standard"),

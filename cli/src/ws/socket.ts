@@ -4,7 +4,7 @@
  */
 
 import WebSocket from "ws";
-import type { ContextUsage, SubagentChunkData, SubagentDoneData, SubagentStartData, TodoUpdateData, ToolCallStartData, ToolCallResultData } from "../types.js";
+import type { ContextUsage, SubagentChunkData, SubagentDoneData, SubagentStartData, TodoUpdateData, ToolApprovalRequiredData, ToolCallReviewData, ToolCallStartData, ToolCallResultData } from "../types.js";
 
 export interface ThinkingEventData {
   content?: string;
@@ -23,6 +23,8 @@ export interface WSHandlers {
   ) => void;
   onError: (error: string, sessionId?: string) => void;
   onToolCallStart?: (data: ToolCallStartData, sessionId?: string) => void;
+  onToolCallReview?: (data: ToolCallReviewData, sessionId?: string) => void;
+  onToolApprovalRequired?: (data: ToolApprovalRequiredData, sessionId?: string) => void;
   onToolCallResult?: (data: ToolCallResultData, sessionId?: string) => void;
   onSubagentStart?: (data: SubagentStartData, sessionId?: string) => void;
   onSubagentChunk?: (data: SubagentChunkData, sessionId?: string) => void;
@@ -50,6 +52,9 @@ interface WSIncoming {
   command?: string;
   params?: Record<string, unknown>;
   requiresApproval?: boolean;
+  reviewStatus?: string;
+  reviewRisk?: string;
+  reviewReason?: string;
   preamble?: string;
   status?: string;
   output?: string;
@@ -253,9 +258,42 @@ export function dispatchWSMessage(raw: string, handlers: WSHandlers | null): voi
         command: msg.command || "",
         params: msg.params || {},
         requiresApproval: !!msg.requiresApproval,
+        reviewStatus: msg.reviewStatus || "",
+        reviewRisk: msg.reviewRisk || "",
+        reviewReason: msg.reviewReason || "",
         preamble: msg.preamble || "",
         parentToolCallId: msg.parentToolCallId,
         subagentRunId: msg.subagentRunId,
+      },
+      msg.sessionId,
+    );
+  }
+
+  if (msg.type === "tool_call_review") {
+    handlers?.onToolCallReview?.(
+      {
+        toolCallId: msg.toolCallId || "",
+        toolName: msg.toolName || "",
+        command: msg.command || "",
+        reviewStatus: msg.reviewStatus || "",
+        reviewRisk: msg.reviewRisk || "",
+        reviewReason: msg.reviewReason || "",
+      },
+      msg.sessionId,
+    );
+  }
+
+  if (msg.type === "tool_call_approval_required") {
+    handlers?.onToolApprovalRequired?.(
+      {
+        toolCallId: msg.toolCallId || "",
+        toolName: msg.toolName || "",
+        command: msg.command || "",
+        params: msg.params || {},
+        requiresApproval: !!msg.requiresApproval,
+        reviewStatus: msg.reviewStatus || "",
+        reviewRisk: msg.reviewRisk || "",
+        reviewReason: msg.reviewReason || "",
       },
       msg.sessionId,
     );

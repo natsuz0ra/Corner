@@ -18,7 +18,16 @@ type resolvedToolInvocation struct {
 	command          string
 	isMCP            bool
 	requiresApproval bool
+	approvalPolicy   toolApprovalPolicy
 }
+
+type toolApprovalPolicy string
+
+const (
+	toolApprovalPolicyNone       toolApprovalPolicy = "none"
+	toolApprovalPolicyManual     toolApprovalPolicy = "manual"
+	toolApprovalPolicyAutoReview toolApprovalPolicy = "auto_review"
+)
 
 // resolveToolInvocation normalizes a model function name into a tool invocation.
 func resolveToolInvocation(tc llmsvc.ToolCallInfo, mcpToolMeta map[string]mcp.ToolMeta, approvalMode string) (resolvedToolInvocation, error) {
@@ -28,6 +37,7 @@ func resolveToolInvocation(tc llmsvc.ToolCallInfo, mcpToolMeta map[string]mcp.To
 			command:          "activate",
 			isMCP:            false,
 			requiresApproval: false,
+			approvalPolicy:   toolApprovalPolicyNone,
 		}, nil
 	}
 	if tc.Name == constants.RunSubagentTool {
@@ -36,25 +46,30 @@ func resolveToolInvocation(tc llmsvc.ToolCallInfo, mcpToolMeta map[string]mcp.To
 			command:          "run",
 			isMCP:            false,
 			requiresApproval: false,
+			approvalPolicy:   toolApprovalPolicyNone,
 		}, nil
 	}
 	toolName, command, err := parseToolCallName(tc.Name)
 	if mcpMeta, ok := mcpToolMeta[tc.Name]; ok {
+		policy := determineToolApprovalPolicy(mcpMeta.ServerAlias, true, approvalMode)
 		return resolvedToolInvocation{
 			toolName:         mcpMeta.ServerAlias,
 			command:          mcpMeta.ToolName,
 			isMCP:            true,
-			requiresApproval: requiresToolApproval(mcpMeta.ServerAlias, true, approvalMode),
+			requiresApproval: policy != toolApprovalPolicyNone,
+			approvalPolicy:   policy,
 		}, nil
 	}
 	if err != nil {
 		return resolvedToolInvocation{}, err
 	}
+	policy := determineToolApprovalPolicy(toolName, false, approvalMode)
 	return resolvedToolInvocation{
 		toolName:         toolName,
 		command:          command,
 		isMCP:            false,
-		requiresApproval: requiresToolApproval(toolName, false, approvalMode),
+		requiresApproval: policy != toolApprovalPolicyNone,
+		approvalPolicy:   policy,
 	}, nil
 }
 
@@ -76,9 +91,35 @@ func waitApprovalIfNeeded(
 	invocation resolvedToolInvocation,
 	params map[string]any,
 	preamble string,
+	review func(context.Context, ApprovalReviewRequest) (*ApprovalReviewResult, error),
 ) (bool, string, string) {
 	if !invocation.requiresApproval {
 		return true, "", ""
+	}
+	if invocation.approvalPolicy == toolApprovalPolicyAutoReview {
+		reviewResult := runApprovalReview(ctx, callbacks, tc, invocation, params, preamble, review)
+		if reviewResult != nil && reviewResult.Decision == ApprovalReviewDecisionApprove {
+			return true, "", ""
+		}
+		if callbacks.OnToolApprovalRequired != nil {
+			if err := callbacks.OnToolApprovalRequired(ApprovalRequest{
+				ToolCallID:       tc.ID,
+				ToolName:         invocation.toolName,
+				Command:          invocation.command,
+				Params:           params,
+				RequiresApproval: true,
+				ReviewStatus:     string(ApprovalReviewStatusNeedsUser),
+				ReviewRisk:       reviewResultRisk(reviewResult),
+				ReviewReason:     reviewResultReason(reviewResult),
+				Preamble:         preamble,
+			}); err != nil {
+				notifyToolResult(callbacks, ToolCallResult{
+					ToolCallID: tc.ID, ToolName: invocation.toolName, Command: invocation.command,
+					RequiresApproval: invocation.requiresApproval, Status: constants.ToolCallStatusError, Error: "Approval review failed to request user approval.",
+				})
+				return false, "Approval review failed to request user approval. The tool call was cancelled.", ""
+			}
+		}
 	}
 	approvalCtx, cancel := context.WithTimeout(ctx, constants.AgentApprovalTimeout)
 	defer cancel()
@@ -101,6 +142,96 @@ func waitApprovalIfNeeded(
 	_ = params
 	_ = preamble
 	return true, "", approval.Answers
+}
+
+func runApprovalReview(
+	ctx context.Context,
+	callbacks AgentCallbacks,
+	tc llmsvc.ToolCallInfo,
+	invocation resolvedToolInvocation,
+	params map[string]any,
+	preamble string,
+	review func(context.Context, ApprovalReviewRequest) (*ApprovalReviewResult, error),
+) *ApprovalReviewResult {
+	if callbacks.OnToolApprovalReview != nil {
+		_ = callbacks.OnToolApprovalReview(ApprovalReviewEvent{
+			ToolCallID:   tc.ID,
+			ToolName:     invocation.toolName,
+			Command:      invocation.command,
+			ReviewStatus: string(ApprovalReviewStatusReviewing),
+		})
+	}
+	result := &ApprovalReviewResult{
+		Decision: ApprovalReviewDecisionAskUser,
+		Risk:     "unknown",
+		Reason:   "Automatic approval review is unavailable.",
+	}
+	if review != nil {
+		reviewCtx, cancel := context.WithTimeout(ctx, constants.AgentApprovalReviewTimeout)
+		defer cancel()
+		if got, err := review(reviewCtx, ApprovalReviewRequest{
+			ToolCallID: tc.ID,
+			ToolName:   invocation.toolName,
+			Command:    invocation.command,
+			Params:     params,
+			Preamble:   preamble,
+		}); err == nil && got != nil {
+			result = normalizeApprovalReviewResult(got)
+		}
+	}
+	status := ApprovalReviewStatusNeedsUser
+	if result.Decision == ApprovalReviewDecisionApprove {
+		status = ApprovalReviewStatusApproved
+	}
+	if callbacks.OnToolApprovalReview != nil {
+		_ = callbacks.OnToolApprovalReview(ApprovalReviewEvent{
+			ToolCallID:   tc.ID,
+			ToolName:     invocation.toolName,
+			Command:      invocation.command,
+			ReviewStatus: string(status),
+			ReviewRisk:   result.Risk,
+			ReviewReason: result.Reason,
+		})
+	}
+	return result
+}
+
+func normalizeApprovalReviewResult(result *ApprovalReviewResult) *ApprovalReviewResult {
+	if result == nil {
+		return &ApprovalReviewResult{Decision: ApprovalReviewDecisionAskUser, Risk: "unknown", Reason: "Automatic approval review returned no decision."}
+	}
+	decision := result.Decision
+	if decision != ApprovalReviewDecisionApprove && decision != ApprovalReviewDecisionAskUser {
+		decision = ApprovalReviewDecisionAskUser
+	}
+	risk := strings.ToLower(strings.TrimSpace(result.Risk))
+	switch risk {
+	case "low", "medium", "high", "critical":
+	default:
+		risk = "unknown"
+	}
+	if decision == ApprovalReviewDecisionApprove && risk != "low" && risk != "medium" {
+		decision = ApprovalReviewDecisionAskUser
+	}
+	reason := strings.TrimSpace(result.Reason)
+	if reason == "" {
+		reason = "Automatic approval review did not provide a reason."
+	}
+	return &ApprovalReviewResult{Decision: decision, Risk: risk, Reason: reason}
+}
+
+func reviewResultRisk(result *ApprovalReviewResult) string {
+	if result == nil {
+		return "unknown"
+	}
+	return result.Risk
+}
+
+func reviewResultReason(result *ApprovalReviewResult) string {
+	if result == nil {
+		return "Automatic approval review is unavailable."
+	}
+	return result.Reason
 }
 
 // executeInvocation dispatches to MCP or built-in tool execution.

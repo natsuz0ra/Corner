@@ -1,4 +1,4 @@
-export type ApprovalMode = 'standard' | 'auto'
+export type ApprovalMode = 'standard' | 'auto_review' | 'auto'
 export type SettingsTabKey = 'basic' | 'llm' | 'mcp' | 'skills' | 'platform' | 'about'
 
 export interface AppSettings {

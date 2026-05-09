@@ -37,7 +37,7 @@ function nestedForParent(parentId: string) {
 
 const totalCount = computed(() => orderedToolCalls.value.length)
 const inProgressCount = computed(() => {
-  return orderedToolCalls.value.filter((item) => item.status === 'pending' || item.status === 'executing').length
+  return orderedToolCalls.value.filter((item) => item.status === 'pending' || item.status === 'reviewing' || item.status === 'executing').length
 })
 const doneCount = computed(() => orderedToolCalls.value.filter((item) => item.status === 'completed').length)
 const failedCount = computed(() => orderedToolCalls.value.filter((item) => item.status === 'error' || item.status === 'rejected').length)

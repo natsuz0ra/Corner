@@ -62,7 +62,7 @@ export function useHomeToolDetail(options: {
     if (count === 0) return ''
     if (batch.collapsed) return t('toolExecutionCount', { count })
 
-    const runningCall = [...calls].reverse().find((item) => item.status === 'pending' || item.status === 'executing')
+    const runningCall = [...calls].reverse().find((item) => item.status === 'pending' || item.status === 'reviewing' || item.status === 'executing')
     if (runningCall) {
       const desc = getToolCallDesc(runningCall).trim()
       if (desc !== '') {

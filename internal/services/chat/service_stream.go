@@ -353,6 +353,9 @@ func (s *ChatService) executeChatTurn(
 			if req.RequiresApproval {
 				startStatus = constants.ToolCallStatusPending
 			}
+			if req.ReviewStatus == string(ApprovalReviewStatusReviewing) {
+				startStatus = constants.ToolCallStatusReviewing
+			}
 			if err := s.recordToolCallStart(ctx, sessionID, requestID, req, startStatus); err != nil {
 				callbackMu.Unlock()
 				return err
@@ -371,6 +374,24 @@ func (s *ChatService) executeChatTurn(
 				return nil
 			}
 			return callbacks.OnToolCallStart(req)
+		},
+		OnToolApprovalReview: func(event ApprovalReviewEvent) error {
+			if callbacks.OnToolApprovalReview == nil {
+				return nil
+			}
+			return callbacks.OnToolApprovalReview(event)
+		},
+		OnToolApprovalRequired: func(req ApprovalRequest) error {
+			callbackMu.Lock()
+			if err := s.recordToolCallStart(ctx, sessionID, requestID, req, constants.ToolCallStatusPending); err != nil {
+				callbackMu.Unlock()
+				return err
+			}
+			callbackMu.Unlock()
+			if callbacks.OnToolApprovalRequired == nil {
+				return nil
+			}
+			return callbacks.OnToolApprovalRequired(req)
 		},
 		WaitApproval: callbacks.WaitApproval,
 		OnToolCallResult: func(result ToolCallResult) error {

@@ -189,10 +189,10 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     try {
       const settings = await apiRef.current.getSettings();
       const current = settings.approvalMode || "standard";
-      const next = current === "auto" ? "standard" : "auto";
+      const next = current === "standard" ? "auto_review" : current === "auto_review" ? "auto" : "standard";
       await apiRef.current.updateSettings({ approvalMode: next });
       dispatch({ type: "SET_APPROVAL_MODE", mode: next } as AppAction);
-      const label = next === "auto" ? "Auto Execute" : "Standard";
+      const label = next === "auto" ? "Auto Execute" : next === "auto_review" ? "Auto Review" : "Standard";
       appendSystem(`Approval mode switched to: ${label}`);
     } catch (error) {
       appendSystem(`Failed to switch approval mode: ${(error as Error).message}`);
@@ -347,7 +347,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       { title: "/new", desc: "Create a new chat (lazy session creation)", data: null },
       { title: "/session", desc: "Browse, switch, or delete sessions", data: null },
       { title: "/model", desc: "Switch default model", data: null },
-      { title: "/approval", desc: "Toggle approval mode (standard/auto)", data: null },
+      { title: "/approval", desc: "Toggle approval mode (standard/auto review/auto)", data: null },
       { title: "/effort", desc: "Toggle thinking level (off/low/medium/high)", data: null },
       { title: "/skills", desc: "Browse and delete installed skills", data: null },
       { title: "/mcp", desc: "Manage MCP configs", data: null },
@@ -1015,6 +1015,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           </Text>
           <Box>
             {state.planMode && <Text color="#22d3ee" bold>◆ Plan </Text>}
+            {state.approvalMode === "auto_review" && <Text color="#eab308" bold>◆ Auto Review </Text>}
             {state.approvalMode === "auto" && <Text color="#eab308" bold>◆ Auto </Text>}
           </Box>
         </Box>

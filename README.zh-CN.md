@@ -18,8 +18,8 @@
   - 多模态能力
 - **工具与 Agent**
   - Agent 多轮 tool call 执行链路
-  - 审批模式支持：**标准模式**（敏感工具需确认）与**自动执行**（直接执行）
-  - 敏感内置工具需用户确认（当前为 `exec`），支持 Web、CLI、Telegram 等流程
+  - 审批模式支持：**标准模式**（敏感工具需确认）、**自动审查**（先由模型审查不确定的敏感工具）与**自动执行**（直接执行）
+  - 敏感内置工具需用户确认（当前为 `exec`、`file_edit`、`file_write`），支持 Web、CLI、Telegram 等流程
   - 工具结果写入会话历史并支持详情查看
   - 内置工具：`命令行`、`网络请求`、`网络搜索`（Tavily）、`待办事项`
   - 支持面向代码编辑场景的文件读写能力，用于文本文件编辑场景
@@ -151,7 +151,7 @@ make compose-down
 - `/model` 模型菜单（切换全局默认模型）
 - `/skills` 技能菜单（查看信息 / 删除）
 - `/mcp` MCP 菜单（增删改查，内置多行编辑）
-- `/mode` 切换审批模式（`standard` / `auto`）
+- `/approval` 切换审批模式（`standard` / `auto_review` / `auto`）
 - `/effort` 设置思考等级（`off` / `low` / `medium` / `high`）
 - `/plan` 切换规划模式（`on` / `off`）
 - `/help` 帮助
@@ -199,7 +199,7 @@ make compose-down
 - `WEB_SEARCH_API_KEY`：Tavily API Key，供 `web_search` 使用
 - `JWT_SECRET`：**服务端模式必填**，未配置将启动失败（CLI 无头模式可自动生成）
 - `JWT_EXPIRE`：JWT 过期时间（单位：分钟，默认 `21600` 即约 15 天）
-- `approvalMode`（应用设置）：`standard` 或 `auto`
+- `approvalMode`（应用设置）：`standard`、`auto_review` 或 `auto`
 - `thinkingLevel`（应用设置）：`off` / `low` / `medium` / `high`
 
 首次启动生成的 `.env` 与嵌入式模板一致，见 [internal/runtime/env.template](internal/runtime/env.template)。其他键可按需自行追加。
@@ -238,7 +238,7 @@ VITE_WS_URL=ws://localhost:8080
 ### 已完成
 
 - 会话管理与 WebSocket 流式回复（含错误、工具调用、子代理与思考事件）
-- Agent 工具与审批（标准模式下 `exec` 需确认；支持可选自动审批模式）
+- Agent 工具与审批（标准模式下 `exec`、`file_edit`、`file_write` 需确认；支持可选自动审查与自动审批模式）
 - 规划模式：计划生成、同意/拒绝/修改流程，以及审批后执行
 - 思考等级控制（`off` / `low` / `medium` / `high`）与流式思考展示
 - 子代理 / 嵌套 Agent（`run_subagent`）、嵌套工具 UI，以及工具历史中的父子关联持久化

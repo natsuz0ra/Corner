@@ -94,14 +94,14 @@ export function useCliSocket({
             toolName: data.toolName,
             command: data.command,
             params: data.params,
-            status: data.requiresApproval ? "pending" : "executing",
+            status: data.reviewStatus === "reviewing" ? "reviewing" : data.requiresApproval ? "pending" : "executing",
             content: "",
             parentToolCallId: data.parentToolCallId,
             subagentRunId: data.subagentRunId,
           },
         });
 
-        if (!data.requiresApproval) return;
+        if (!data.requiresApproval || data.reviewStatus === "reviewing") return;
         const questionsRaw = data.params?.questions;
         if (data.toolName === "ask_questions" && typeof questionsRaw === "string") {
           try {
@@ -118,6 +118,42 @@ export function useCliSocket({
           }
           return;
         }
+        dispatch({
+          type: "ADD_PENDING_APPROVAL",
+          item: {
+            toolCallId: data.toolCallId,
+            toolName: data.toolName,
+            command: data.command,
+            params: data.params,
+          },
+        });
+      },
+      onToolCallReview: (data) => {
+        dispatch({
+          type: "UPSERT_TOOL_ENTRY",
+          entry: {
+            kind: "tool",
+            toolCallId: data.toolCallId,
+            toolName: data.toolName,
+            command: data.command,
+            status: data.reviewStatus === "approved" ? "executing" : data.reviewStatus === "reviewing" ? "reviewing" : "pending",
+            content: data.reviewReason || "",
+          },
+        });
+      },
+      onToolApprovalRequired: (data) => {
+        dispatch({
+          type: "UPSERT_TOOL_ENTRY",
+          entry: {
+            kind: "tool",
+            toolCallId: data.toolCallId,
+            toolName: data.toolName,
+            command: data.command,
+            params: data.params,
+            status: "pending",
+            content: data.reviewReason || "",
+          },
+        });
         dispatch({
           type: "ADD_PENDING_APPROVAL",
           item: {

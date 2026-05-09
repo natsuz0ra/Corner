@@ -123,7 +123,7 @@ func (a *AgentService) executeRunSubagentTool(
 		}
 	}
 
-	approved, rejectionMessage, _ := waitApprovalIfNeeded(ctx, callbacks, tc, invocation, params, preamble)
+	approved, rejectionMessage, _ := waitApprovalIfNeeded(ctx, callbacks, tc, invocation, params, preamble, nil)
 	if !approved {
 		return &tools.ExecuteResult{Output: rejectionMessage}, nil
 	}

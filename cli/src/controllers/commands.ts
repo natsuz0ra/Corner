@@ -22,7 +22,7 @@ export function handleChatShortcut(input: string, key: Key, dispatch: React.Disp
 }
 
 export function getChatFooterHint(planMode: boolean, approvalMode: AppState["approvalMode"]): string {
-  return planMode || approvalMode === "auto"
+  return planMode || approvalMode === "auto" || approvalMode === "auto_review"
     ? "/ for commands | Shift+Tab to toggle | Esc to cancel"
     : "/ for commands | Shift+Tab plan mode | Esc to cancel";
 }
