@@ -21,15 +21,17 @@ import { mcpAPI } from '@/api/mcp'
 import { settingAPI } from '@/api/settings'
 import { skillsAPI } from '@/api/skills'
 import { messagePlatformAPI } from '@/api/messagePlatform'
-import type { AppSettings, ApprovalMode, LLMConfig, MCPConfig, MessagePlatformConfig, SettingsTabKey, SkillItem, ThinkingLevel } from '@/types/settings'
+import type { AppSettings, ApprovalMode, LLMConfig, MCPConfig, MessagePlatformConfig, SandboxMode, SettingsTabKey, SkillItem, ThinkingLevel } from '@/types/settings'
 import { useToast } from '@/composables/useToast'
 import { useSettingsLLM } from '@/composables/settings/useSettingsLLM'
 import { useSettingsMCP } from '@/composables/settings/useSettingsMCP'
 import { useSettingsSkills } from '@/composables/settings/useSettingsSkills'
+import { sortSkillRows } from '@/utils/skills'
 import { useSettingsMessagePlatform } from '@/composables/settings/useSettingsMessagePlatform'
 import { useSettingsConfirmDialog } from '@/composables/settings/useSettingsConfirmDialog'
 import { useSettingsWebSearch } from '@/composables/settings/useSettingsWebSearch'
 import { useLanguagePreference, type LanguageCode } from '@/composables/useLanguagePreference'
+import { createWebSandboxModeOptions, toWebSandboxMode } from '@/utils/sandboxSettings'
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
 import { useRouter } from 'vue-router'
@@ -67,6 +69,8 @@ const llmSubmitting = ref(false)
 const mcpSubmitting = ref(false)
 const skillsUploading = ref(false)
 const skillsDropActive = ref(false)
+const sandboxMode = ref<SandboxMode>('workspace-write')
+const sandboxNetworkEnabled = ref(true)
 const skillsFileInputRef = ref<HTMLInputElement | null>(null)
 const accountDialogVisible = ref(false)
 const messagePlatformDialogVisible = ref(false)
@@ -74,6 +78,7 @@ const messagePlatformSubmitting = ref(false)
 const messagePlatformDefaultModel = ref('')
 const messagePlatformThinkingLevel = ref<ThinkingLevel>('off')
 const messagePlatformApprovalMode = ref<ApprovalMode>('standard')
+const sandboxModeOptions = computed(() => createWebSandboxModeOptions((key) => t(key)))
 const { confirmDialogVisible, openConfirmDialog, runConfirmDialog } = useSettingsConfirmDialog()
 const {
   webSearchDialogVisible,
@@ -124,13 +129,7 @@ const {
   t: (key) => t(key),
 })
 
-const skillsRows = computed(() =>
-  [...(skillsList.value || [])].sort((a, b) => {
-    const aTime = new Date(a.uploadedAt || 0).getTime()
-    const bTime = new Date(b.uploadedAt || 0).getTime()
-    return bTime - aTime
-  }),
-)
+const skillsRows = computed(() => sortSkillRows(skillsList.value || []))
 
 const skillsActions = useSettingsSkills({
   skillsList,
@@ -148,6 +147,7 @@ const {
   onSkillsDragOver,
   onSkillsDragLeave,
   deleteSkill: removeSkill,
+  setSkillEnabled,
 } = skillsActions
 
 const {
@@ -183,6 +183,8 @@ async function loadData() {
     messagePlatformThinkingLevel.value = appSettings.messagePlatformThinkingLevel || 'off'
     messagePlatformApprovalMode.value = appSettings.messagePlatformApprovalMode || 'standard'
     webSearchKey.value = appSettings.webSearchKey || ''
+    sandboxMode.value = toWebSandboxMode(appSettings.sandboxMode || 'workspace-write')
+    sandboxNetworkEnabled.value = appSettings.sandboxNetworkEnabled !== undefined ? appSettings.sandboxNetworkEnabled : true
     llmList.value = await llmAPI.list()
     mcpList.value = await mcpAPI.list()
     skillsList.value = await skillsAPI.list()
@@ -194,6 +196,30 @@ async function loadData() {
 
 async function onLanguageChange(nextLanguage: LanguageCode) {
   await changeLanguage(nextLanguage, { allowRemote: true, showSuccessToast: true })
+}
+
+async function onSandboxModeChange(nextMode: SandboxMode) {
+  const previousMode = sandboxMode.value
+  sandboxMode.value = nextMode
+  try {
+    await settingAPI.update({ sandboxMode: nextMode })
+  } catch (err: unknown) {
+    sandboxMode.value = previousMode
+    const response = err as { response?: { data?: { error?: string } } }
+    toast.error(response.response?.data?.error || t('sandboxSaveFailed'))
+  }
+}
+
+async function onSandboxNetworkChange(enabled: boolean) {
+  const previousEnabled = sandboxNetworkEnabled.value
+  sandboxNetworkEnabled.value = enabled
+  try {
+    await settingAPI.update({ sandboxNetworkEnabled: enabled })
+  } catch (err: unknown) {
+    sandboxNetworkEnabled.value = previousEnabled
+    const response = err as { response?: { data?: { error?: string } } }
+    toast.error(response.response?.data?.error || t('sandboxSaveFailed'))
+  }
 }
 
 function openAccountDialog() {
@@ -227,6 +253,10 @@ function deleteSkill(id: string) {
   openConfirmDialog(async () => {
     await removeSkill(id)
   })
+}
+
+function toggleSkillEnabled(id: string, enabled: boolean) {
+  void setSkillEnabled(id, enabled)
 }
 
 onMounted(loadData)
@@ -281,10 +311,15 @@ onMounted(loadData)
           :language="language"
           :language-select-options="languageSelectOptions"
           :saving-language="savingLanguage"
+          :sandbox-mode="sandboxMode"
+          :sandbox-mode-options="sandboxModeOptions"
+          :sandbox-network-enabled="sandboxNetworkEnabled"
           @open-account="openAccountDialog"
           @open-web-search="openWebSearchDialog"
           @logout="logout"
           @language-change="onLanguageChange"
+          @sandbox-mode-change="onSandboxModeChange"
+          @sandbox-network-change="onSandboxNetworkChange"
         />
 
         <SettingsLLMTab v-if="tab === 'llm'" :llm-rows="llmRows" @add="openLLMDialog" @edit="openLLMEditDialog" @delete="deleteLLM" />
@@ -309,6 +344,7 @@ onMounted(loadData)
           @drag-over="onSkillsDragOver"
           @drag-leave="onSkillsDragLeave"
           @delete="deleteSkill"
+          @toggle-enabled="toggleSkillEnabled"
         >
           <template #file-input>
             <input

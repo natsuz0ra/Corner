@@ -9,6 +9,8 @@ storage
 *.db
 .env
 .env.*
+config.cfg
+config.cfg.*
 slimebot
 slimebot.exe
 *.exe

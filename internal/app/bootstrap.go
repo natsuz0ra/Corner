@@ -40,7 +40,9 @@ func RunFromEnvWithMode(mode RunMode, runCLI func(context.Context, *Core) error)
 			return err
 		}
 		core.WarmupInBackground(context.Background())
-		core.ChatService.SetRunContext(buildRunContext(true))
+		rc := buildRunContext(true)
+		core.ChatService.SetRunContext(rc)
+		configureSkillSources(core, rc.IsCLI, rc.WorkingDir)
 		appCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stopSignals()
 		defer func() {

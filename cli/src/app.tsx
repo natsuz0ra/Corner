@@ -25,6 +25,7 @@ import { reducer, createInitialState } from "./reducer.js";
 import { completeCommand, isCommand, matchCommandHints, moveCommandHintCursor } from "./utils/commands.js";
 import { formatTimestamp, formatWaitingStatsSuffix } from "./utils/format.js";
 import { mapHistoryMessages } from "./utils/history.js";
+import { buildSandboxMenuItems, type SandboxMenuAction } from "./utils/sandboxSettings.js";
 import { clearScreen, setTerminalTitle } from "./utils/terminal.js";
 import { SHOW_CLI_THINKING } from "./utils/timelineFormat.js";
 import { CLISocket } from "./ws/socket.js";
@@ -307,7 +308,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       const skills = await apiRef.current.listSkills();
       const items: MenuItem[] = skills.map((s: Skill) => ({
         title: s.name,
-        desc: s.description,
+        desc: `${s.sourceLabel || "SlimeBot"}${s.readOnly ? " · read-only" : ""}${s.enabled === false ? " · disabled" : ""} · ${s.description}`,
         data: s,
       }));
       dispatch({
@@ -342,6 +343,21 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     }
   }, [appendSystem]);
 
+  const loadSandboxSettings = useCallback(async () => {
+    try {
+      const settings = await apiRef.current.getSettings();
+      dispatch({
+        type: "SET_MENU",
+        kind: "sandbox",
+        title: "Sandbox Settings",
+        items: buildSandboxMenuItems(settings),
+        hint: "Arrow keys to navigate | Enter to apply | Esc to close",
+      } as AppAction);
+    } catch (error) {
+      appendSystem(`Failed to load sandbox settings: ${(error as Error).message}`);
+    }
+  }, [appendSystem]);
+
   const showHelp = useCallback(() => {
     const items: MenuItem[] = [
       { title: "/new", desc: "Create a new chat (lazy session creation)", data: null },
@@ -349,6 +365,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       { title: "/model", desc: "Switch default model", data: null },
       { title: "/approval", desc: "Toggle approval mode (standard/auto review/auto)", data: null },
       { title: "/effort", desc: "Toggle thinking level (off/low/medium/high)", data: null },
+      { title: "/sandbox", desc: "Configure sandbox mode and network access", data: null },
       { title: "/skills", desc: "Browse and delete installed skills", data: null },
       { title: "/mcp", desc: "Manage MCP configs", data: null },
       { title: "/help", desc: "Show available commands", data: null },
@@ -430,6 +447,18 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         }
         return;
       }
+      if (state.menuKind === "sandbox") {
+        const action = item.data as SandboxMenuAction;
+        if (action.type === "mode") {
+          await apiRef.current.updateSettings({ cliSandboxMode: action.mode });
+          appendSystem(`Sandbox mode set to: ${action.mode}`);
+        } else {
+          await apiRef.current.updateSettings({ cliSandboxNetworkEnabled: action.enabled });
+          appendSystem(`Sandbox network access ${action.enabled ? "enabled" : "disabled"}.`);
+        }
+        await loadSandboxSettings();
+        return;
+      }
       if (state.menuKind === "mcp") {
         const mcp = item.data as MCPConfig;
         dispatch({
@@ -445,7 +474,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     } catch (error) {
       appendSystem(`Menu action failed: ${(error as Error).message}`);
     }
-  }, [appendSystem, refreshContextUsage, state.menuKind, state.sessionId, switchSession]);
+  }, [appendSystem, loadSandboxSettings, refreshContextUsage, state.menuKind, state.sessionId, switchSession]);
 
   const handleMenuDelete = useCallback(async (item: MenuItem | undefined) => {
     if (!item || !state.menuKind) return;
@@ -464,6 +493,10 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       }
       if (state.menuKind === "skills") {
         const skill = item.data as Skill;
+        if (skill.readOnly) {
+          appendSystem("External skills are read-only. Use the web settings page to enable or disable them.");
+          return;
+        }
         await apiRef.current.deleteSkill(skill.id);
         await loadSkills();
         return;
@@ -647,6 +680,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       setThinkingLevel,
       loadSkills,
       loadMCPConfigs,
+      loadSandboxSettings,
       showHelp,
       togglePlanMode: () => dispatch({ type: "TOGGLE_PLAN_MODE" } as AppAction),
       unknownCommand: (cmd) => appendSystem(`Unknown command: ${cmd}`),
@@ -657,6 +691,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     clearScreenDeferred,
     loadMCPConfigs,
     loadModels,
+    loadSandboxSettings,
     loadSessions,
     loadSkills,
     loadSubagentModels,

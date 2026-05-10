@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	sandboxpolicy "slimebot/internal/sandbox"
 	llmsvc "slimebot/internal/services/llm"
 )
 
@@ -55,12 +56,14 @@ type ApprovalReviewResult struct {
 }
 
 type ApprovalReviewEvent struct {
-	ToolCallID   string `json:"toolCallId"`
-	ToolName     string `json:"toolName"`
-	Command      string `json:"command"`
-	ReviewStatus string `json:"reviewStatus"`
-	ReviewRisk   string `json:"reviewRisk,omitempty"`
-	ReviewReason string `json:"reviewReason,omitempty"`
+	ToolCallID       string `json:"toolCallId"`
+	ToolName         string `json:"toolName"`
+	Command          string `json:"command"`
+	ReviewStatus     string `json:"reviewStatus"`
+	ReviewRisk       string `json:"reviewRisk,omitempty"`
+	ReviewReason     string `json:"reviewReason,omitempty"`
+	ParentToolCallID string `json:"parentToolCallId,omitempty"`
+	SubagentRunID    string `json:"subagentRunId,omitempty"`
 }
 
 // ToolCallResult is pushed to the client after tool execution.
@@ -137,4 +140,5 @@ type AgentLoopOptions struct {
 	SubagentModelID string
 	LatestUsage     *llmsvc.TokenUsage
 	OnProviderUsage func(usage llmsvc.TokenUsage) error
+	SandboxPolicy   *sandboxpolicy.Policy
 }

@@ -47,11 +47,25 @@ export interface Skill {
   name: string;
   description: string;
   relativePath: string;
+  source?: string;
+  sourceLabel?: string;
+  provider?: string;
+  readOnly?: boolean;
+  enabled?: boolean;
+  absolutePath?: string;
 }
 
 export interface Settings {
   defaultModel: string;
   approvalMode?: string;
+  sandboxMode?: string;
+  sandboxWritableRoots?: string[];
+  sandboxNetworkEnabled?: boolean;
+  sandboxNetworkAllowedDomains?: string[];
+  cliSandboxMode?: string;
+  cliSandboxWritableRoots?: string[];
+  cliSandboxNetworkEnabled?: boolean;
+  cliSandboxNetworkAllowedDomains?: string[];
   [key: string]: unknown;
 }
 
@@ -133,6 +147,8 @@ export interface ToolCallReviewData {
   reviewStatus: string;
   reviewRisk?: string;
   reviewReason?: string;
+  parentToolCallId?: string;
+  subagentRunId?: string;
 }
 
 export interface ToolApprovalRequiredData extends ToolCallReviewData {
@@ -208,6 +224,7 @@ export type MenuKind =
   | "mcp"
   | "effort"
   | "subagent_model"
+  | "sandbox"
   | "help";
 
 // ===== MCP Template types =====
@@ -318,6 +335,7 @@ export const SUPPORTED_COMMANDS: CommandMeta[] = [
   { command: "/subagent_model", description: "Choose sub-agent model" },
   { command: "/approval", description: "Toggle approval mode (standard/auto review/auto)" },
   { command: "/effort", description: "Toggle thinking level (off/low/medium/high)" },
+  { command: "/sandbox", description: "Configure sandbox mode and network access" },
   { command: "/skills", description: "View and manage installed skills" },
   { command: "/mcp", description: "Manage MCP configurations" },
   { command: "/plan", description: "Toggle plan mode (on/off)" },

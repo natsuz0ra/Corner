@@ -188,6 +188,9 @@ func (f *fileEditTool) editOne(ctx context.Context, req fileEditRequest) (FileTo
 	if err != nil {
 		return FileToolMetadata{}, "", err
 	}
+	if err := checkSandboxWrite(ctx, path); err != nil {
+		return FileToolMetadata{}, "", err
+	}
 	info, statErr := os.Stat(path)
 	if statErr != nil && !os.IsNotExist(statErr) {
 		return FileToolMetadata{}, "", fmt.Errorf("failed to stat file: %w", statErr)

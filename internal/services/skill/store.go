@@ -90,6 +90,7 @@ func (s *FileSystemSkillStore) CreateSkill(item domain.Skill) (*domain.Skill, er
 	if strings.TrimSpace(item.RelativePath) == "" {
 		item.RelativePath = s.relativePath(item.Name)
 	}
+	item = markLocalSkill(item)
 	return &item, nil
 }
 
@@ -138,7 +139,7 @@ func (s *FileSystemSkillStore) readSkill(name string) (*domain.Skill, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &domain.Skill{
+	item := domain.Skill{
 		ID:           name,
 		Name:         name,
 		RelativePath: s.relativePath(name),
@@ -146,7 +147,9 @@ func (s *FileSystemSkillStore) readSkill(name string) (*domain.Skill, error) {
 		UploadedAt:   fileInfo.ModTime(),
 		CreatedAt:    fileInfo.ModTime(),
 		UpdatedAt:    fileInfo.ModTime(),
-	}, nil
+	}
+	item = markLocalSkill(item)
+	return &item, nil
 }
 
 func (s *FileSystemSkillStore) relativePath(name string) string {

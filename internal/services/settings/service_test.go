@@ -28,7 +28,7 @@ func TestSettingsService_GetIncludesWebSearchAPIKey(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	envPath := filepath.Join(runtime.SlimeBotHomeDir(), ".env")
+	envPath := filepath.Join(runtime.SlimeBotHomeDir(), "config.cfg")
 	if err := os.MkdirAll(filepath.Dir(envPath), 0o755); err != nil {
 		t.Fatalf("mkdir env dir failed: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestSettingsService_GetIncludesMessagePlatformRuntimeDefaults(t *testing.T)
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	envPath := filepath.Join(runtime.SlimeBotHomeDir(), ".env")
+	envPath := filepath.Join(runtime.SlimeBotHomeDir(), "config.cfg")
 	if err := os.MkdirAll(filepath.Dir(envPath), 0o755); err != nil {
 		t.Fatalf("mkdir env dir failed: %v", err)
 	}
@@ -123,6 +123,103 @@ func TestSettingsService_GetIncludesMessagePlatformRuntimeDefaults(t *testing.T)
 	}
 	if got.MessagePlatformApprovalMode != constants.ApprovalModeStandard {
 		t.Fatalf("message platform approval mode = %q, want %q", got.MessagePlatformApprovalMode, constants.ApprovalModeStandard)
+	}
+}
+
+func TestSettingsService_GetIncludesSandboxDefaults(t *testing.T) {
+	store := &memorySettingsStore{values: map[string]string{}}
+	svc := NewSettingsService(store)
+
+	settings, err := svc.Get(context.Background())
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if settings.SandboxMode != "workspace-write" {
+		t.Fatalf("sandbox mode = %q, want workspace-write", settings.SandboxMode)
+	}
+	if settings.SandboxNetworkEnabled != true {
+		t.Fatal("sandbox network should default to enabled")
+	}
+	if settings.CLISandboxMode != "workspace-write" {
+		t.Fatalf("cli sandbox mode = %q, want workspace-write", settings.CLISandboxMode)
+	}
+	if settings.CLISandboxNetworkEnabled != true {
+		t.Fatal("cli sandbox network should default to enabled")
+	}
+	if len(settings.CLISandboxWritableRoots) != 0 {
+		t.Fatalf("cli sandbox writable roots = %#v, want empty", settings.CLISandboxWritableRoots)
+	}
+	if len(settings.CLISandboxNetworkAllowedDomains) != 0 {
+		t.Fatalf("cli sandbox allowed domains = %#v, want empty", settings.CLISandboxNetworkAllowedDomains)
+	}
+}
+
+func TestSettingsService_UpdateValidatesSandboxMode(t *testing.T) {
+	store := &memorySettingsStore{values: map[string]string{}}
+	svc := NewSettingsService(store)
+
+	if err := svc.Update(context.Background(), UpdateSettingsInput{SandboxMode: stringPtr("read-only")}); err != nil {
+		t.Fatalf("Update read-only failed: %v", err)
+	}
+	if got := store.values[constants.SettingSandboxMode]; got != "read-only" {
+		t.Fatalf("sandbox mode = %q, want read-only", got)
+	}
+
+	err := svc.Update(context.Background(), UpdateSettingsInput{SandboxMode: stringPtr("root")})
+	if err == nil {
+		t.Fatal("expected invalid sandbox mode error")
+	}
+	if got := store.values[constants.SettingSandboxMode]; got != "read-only" {
+		t.Fatalf("invalid update should preserve sandbox mode, got %q", got)
+	}
+}
+
+func TestSettingsService_UpdateValidatesCLISandboxMode(t *testing.T) {
+	store := &memorySettingsStore{values: map[string]string{}}
+	svc := NewSettingsService(store)
+
+	if err := svc.Update(context.Background(), UpdateSettingsInput{CLISandboxMode: stringPtr("danger-full-access")}); err != nil {
+		t.Fatalf("Update CLI sandbox mode failed: %v", err)
+	}
+	if got := store.values[constants.SettingCLISandboxMode]; got != "danger-full-access" {
+		t.Fatalf("cli sandbox mode = %q, want danger-full-access", got)
+	}
+
+	err := svc.Update(context.Background(), UpdateSettingsInput{CLISandboxMode: stringPtr("root")})
+	if err == nil {
+		t.Fatal("expected invalid CLI sandbox mode error")
+	}
+	if got := store.values[constants.SettingCLISandboxMode]; got != "danger-full-access" {
+		t.Fatalf("invalid update should preserve CLI sandbox mode, got %q", got)
+	}
+}
+
+func TestSettingsService_UpdateStoresCLISandboxFieldsSeparately(t *testing.T) {
+	store := &memorySettingsStore{values: map[string]string{}}
+	svc := NewSettingsService(store)
+	roots := []string{"/tmp/cli-work"}
+	domains := []string{"api.example.com"}
+	network := false
+
+	if err := svc.Update(context.Background(), UpdateSettingsInput{
+		CLISandboxWritableRoots:         &roots,
+		CLISandboxNetworkEnabled:        &network,
+		CLISandboxNetworkAllowedDomains: &domains,
+	}); err != nil {
+		t.Fatalf("Update CLI sandbox fields failed: %v", err)
+	}
+
+	if got := store.values[constants.SettingCLISandboxWritableRoots]; got != `["/tmp/cli-work"]` {
+		t.Fatalf("cli sandbox writable roots = %q", got)
+	}
+	if got := store.values[constants.SettingCLISandboxNetworkEnabled]; got != "false" {
+		t.Fatalf("cli sandbox network enabled = %q", got)
+	}
+	if got := store.values[constants.SettingCLISandboxNetworkAllowedDomains]; got != `["api.example.com"]` {
+		t.Fatalf("cli sandbox allowed domains = %q", got)
+	}
+	if _, exists := store.values[constants.SettingSandboxWritableRoots]; exists {
+		t.Fatalf("CLI update should not write web sandbox roots: %#v", store.values)
 	}
 }
 

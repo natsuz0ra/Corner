@@ -1,10 +1,12 @@
 package tools
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	sandboxpolicy "slimebot/internal/sandbox"
 	"strings"
 	"unicode/utf8"
 )
@@ -35,6 +37,20 @@ func resolveFilePath(raw string) (string, error) {
 		return "", fmt.Errorf("failed to resolve file_path: %w", err)
 	}
 	return filepath.Clean(abs), nil
+}
+
+func checkSandboxRead(ctx context.Context, path string) error {
+	if policy, ok := sandboxpolicy.FromContext(ctx); ok {
+		return policy.CheckRead(path)
+	}
+	return nil
+}
+
+func checkSandboxWrite(ctx context.Context, path string) error {
+	if policy, ok := sandboxpolicy.FromContext(ctx); ok {
+		return policy.CheckWrite(path)
+	}
+	return nil
 }
 
 func isBlockedDevicePath(path string) bool {

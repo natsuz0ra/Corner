@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import test from 'node:test'
 import type { ToolCallItem } from '../src/api/chat'
-import { shouldAutoExpandToolCall } from '../src/utils/toolApprovalExpansion'
+import { hasPendingNestedApproval, shouldAutoExpandToolCall } from '../src/utils/toolApprovalExpansion'
 
 test('HomePage no longer mounts the standalone approval drawer', () => {
   const homePage = readFileSync(resolve(import.meta.dirname, '../src/pages/HomePage.vue'), 'utf8')
@@ -34,6 +34,43 @@ test('parent tool call auto-expands when a nested child is awaiting approval', (
   ]
 
   assert.equal(shouldAutoExpandToolCall(parent, nestedTools), true)
+})
+
+test('tool call auto-expands when itself is awaiting approval', () => {
+  const item: ToolCallItem = {
+    toolCallId: 'exec-tool',
+    toolName: 'exec',
+    command: 'shell_command',
+    params: { command: 'npm test' },
+    requiresApproval: true,
+    status: 'pending',
+  }
+
+  assert.equal(shouldAutoExpandToolCall(item, []), true)
+})
+
+test('subagent timeline auto-expands only while a nested child awaits approval', () => {
+  const parent: ToolCallItem = {
+    toolCallId: 'parent-tool',
+    toolName: 'run_subagent',
+    command: 'run',
+    params: {},
+    requiresApproval: false,
+    status: 'executing',
+  }
+  const pendingNestedTool: ToolCallItem = {
+    toolCallId: 'nested-tool',
+    toolName: 'exec',
+    command: 'shell_command',
+    params: { command: 'npm test' },
+    requiresApproval: true,
+    status: 'pending',
+    parentToolCallId: parent.toolCallId,
+  }
+
+  assert.equal(hasPendingNestedApproval(parent, [pendingNestedTool]), true)
+  assert.equal(hasPendingNestedApproval(parent, [{ ...pendingNestedTool, status: 'executing' }]), false)
+  assert.equal(hasPendingNestedApproval({ ...parent, toolName: 'exec' }, [pendingNestedTool]), false)
 })
 
 test('parent tool call does not auto-expand after nested approval is resolved', () => {
@@ -115,6 +152,19 @@ test('approval and plan prompts align timeline targets before falling back to bo
   assert.match(planBlockSource, /data-plan-block="true"/)
   assert.match(planBlockSource, /:data-plan-block-active="activeTarget \? 'true' : undefined"/)
   assert.match(assistantBodySource, /:active-target="currentSessionHasPendingPlanConfirmation && index === lastReadyPlanIndex"/)
+})
+
+test('approval prompts wait for expansion before forcing scroll to bottom', () => {
+  const homeScrollSource = readFileSync(resolve(import.meta.dirname, '../src/composables/home/useHomeScroll.ts'), 'utf8')
+
+  assert.match(homeScrollSource, /ACTION_EXPANSION_SETTLE_MS/)
+  assert.match(homeScrollSource, /async function scrollToBottomAfterActionExpansion\(\)/)
+  assert.match(homeScrollSource, /await waitForActionExpansionToSettle\(\)/)
+  assert.match(homeScrollSource, /scrollMessagesToBottom\(true\)/)
+  assert.match(
+    homeScrollSource,
+    /const hasApprovalRequest = next\[0\] !== '' \|\| next\[1\] !== ''[\s\S]*if \(hasApprovalRequest\) \{[\s\S]*scrollToBottomAfterActionExpansion\(\)/,
+  )
 })
 
 test('chat socket done event forwards plan metadata while plan_body stays separate', () => {
@@ -229,6 +279,17 @@ test('ToolCallInline collapses subagent tool calls and thinking when the outer c
   assert.match(
     toolCallInlineSource,
     /function toggleExpanded\(\) \{[\s\S]*expanded\.value = shouldAutoExpand\.value \? true : !expanded\.value[\s\S]*if \(!expanded\.value\) subagentTimelineExpanded\.value = false[\s\S]*\}/,
+  )
+})
+
+test('ToolCallInline auto-expands subagent tool calls and thinking for nested approvals', () => {
+  const toolCallInlineSource = readFileSync(resolve(import.meta.dirname, '../src/components/chat/ToolCallInline.vue'), 'utf8')
+
+  assert.match(toolCallInlineSource, /hasPendingNestedApproval/)
+  assert.match(toolCallInlineSource, /shouldAutoExpandSubagentTimeline/)
+  assert.match(
+    toolCallInlineSource,
+    /watch\(\s*shouldAutoExpandSubagentTimeline,\s*\(value\) => \{[\s\S]*if \(value\) subagentTimelineExpanded\.value = true[\s\S]*\}/,
   )
 })
 

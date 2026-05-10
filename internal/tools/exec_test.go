@@ -87,8 +87,55 @@ func TestParseExecRunConfigRequiresDescription(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected missing description error")
 	}
-	if !strings.Contains(err.Error(), "description is required") {
+	if !strings.Contains(err.Error(), "description or reason is required") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestParseExecRunConfigAcceptsReasonAsAuditDescription(t *testing.T) {
+	cfg, err := parseExecRunConfig(map[string]any{
+		"command": "go version",
+		"reason":  "Check the installed Go toolchain",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.description != "Check the installed Go toolchain" {
+		t.Fatalf("description should fall back to reason, got %q", cfg.description)
+	}
+}
+
+func TestParseExecRunConfigSandboxPermissionsDefaultAndValidation(t *testing.T) {
+	cfg, err := parseExecRunConfig(map[string]any{
+		"command":     "go version",
+		"description": "Check Go version",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.sandboxPermissions != "default" {
+		t.Fatalf("expected default sandbox permissions, got %q", cfg.sandboxPermissions)
+	}
+
+	cfg, err = parseExecRunConfig(map[string]any{
+		"command":             "go version",
+		"description":         "Check Go version",
+		"sandbox_permissions": "required_approval",
+	})
+	if err != nil {
+		t.Fatalf("unexpected required_approval error: %v", err)
+	}
+	if cfg.sandboxPermissions != "required_approval" {
+		t.Fatalf("expected required_approval, got %q", cfg.sandboxPermissions)
+	}
+
+	_, err = parseExecRunConfig(map[string]any{
+		"command":             "go version",
+		"description":         "Check Go version",
+		"sandbox_permissions": "full_access",
+	})
+	if err == nil || !strings.Contains(err.Error(), "sandbox_permissions") {
+		t.Fatalf("expected sandbox_permissions validation error, got %v", err)
 	}
 }
 

@@ -61,6 +61,7 @@ type skillPackageService interface {
 type skillRuntimeService interface {
 	ListSkills() ([]domain.Skill, error)
 	DeleteSkillByID(id string) error
+	SetSkillEnabled(id string, enabled bool) error
 }
 
 type chatUploadService interface {

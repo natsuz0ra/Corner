@@ -60,6 +60,17 @@
   color: var(--text-primary);
 }
 
+.settings-select {
+  min-width: 160px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  padding: 0 10px;
+  font-size: 13px;
+}
+
 .settings-item-name {
   color: var(--text-primary);
 }

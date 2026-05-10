@@ -114,3 +114,28 @@ func (h *HTTPController) DeleteSkill(c WebContext) {
 	}
 	c.Status(http.StatusNoContent)
 }
+
+// SetSkillEnabled updates the SlimeBot enabled flag for an external skill.
+func (h *HTTPController) SetSkillEnabled(c WebContext) {
+	id := strings.TrimSpace(c.Param("id"))
+	if id == "" {
+		jsonError(c, http.StatusBadRequest, "id is required.")
+		return
+	}
+	if h.skillRuntime == nil {
+		jsonError(c, http.StatusInternalServerError, "Skills runtime service is not initialized.")
+		return
+	}
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		jsonError(c, http.StatusBadRequest, "Invalid request body.")
+		return
+	}
+	if err := h.skillRuntime.SetSkillEnabled(id, req.Enabled); err != nil {
+		jsonInternalError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
