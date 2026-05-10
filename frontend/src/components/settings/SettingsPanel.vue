@@ -26,6 +26,7 @@ import { useToast } from '@/composables/useToast'
 import { useSettingsLLM } from '@/composables/settings/useSettingsLLM'
 import { useSettingsMCP } from '@/composables/settings/useSettingsMCP'
 import { useSettingsSkills } from '@/composables/settings/useSettingsSkills'
+import { sortSkillRows } from '@/utils/skills'
 import { useSettingsMessagePlatform } from '@/composables/settings/useSettingsMessagePlatform'
 import { useSettingsConfirmDialog } from '@/composables/settings/useSettingsConfirmDialog'
 import { useSettingsWebSearch } from '@/composables/settings/useSettingsWebSearch'
@@ -124,13 +125,7 @@ const {
   t: (key) => t(key),
 })
 
-const skillsRows = computed(() =>
-  [...(skillsList.value || [])].sort((a, b) => {
-    const aTime = new Date(a.uploadedAt || 0).getTime()
-    const bTime = new Date(b.uploadedAt || 0).getTime()
-    return bTime - aTime
-  }),
-)
+const skillsRows = computed(() => sortSkillRows(skillsList.value || []))
 
 const skillsActions = useSettingsSkills({
   skillsList,
@@ -148,6 +143,7 @@ const {
   onSkillsDragOver,
   onSkillsDragLeave,
   deleteSkill: removeSkill,
+  setSkillEnabled,
 } = skillsActions
 
 const {
@@ -227,6 +223,10 @@ function deleteSkill(id: string) {
   openConfirmDialog(async () => {
     await removeSkill(id)
   })
+}
+
+function toggleSkillEnabled(id: string, enabled: boolean) {
+  void setSkillEnabled(id, enabled)
 }
 
 onMounted(loadData)
@@ -309,6 +309,7 @@ onMounted(loadData)
           @drag-over="onSkillsDragOver"
           @drag-leave="onSkillsDragLeave"
           @delete="deleteSkill"
+          @toggle-enabled="toggleSkillEnabled"
         >
           <template #file-input>
             <input

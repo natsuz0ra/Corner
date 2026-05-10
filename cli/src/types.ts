@@ -47,6 +47,12 @@ export interface Skill {
   name: string;
   description: string;
   relativePath: string;
+  source?: string;
+  sourceLabel?: string;
+  provider?: string;
+  readOnly?: boolean;
+  enabled?: boolean;
+  absolutePath?: string;
 }
 
 export interface Settings {

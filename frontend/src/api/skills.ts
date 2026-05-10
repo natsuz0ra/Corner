@@ -8,5 +8,6 @@ export const skillsAPI = {
     files.forEach((file) => formData.append('files', file))
     return (await apiClient.post('/api/skills/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } })).data
   },
-  remove: async (id: string) => apiClient.delete(`/api/skills/${id}`),
+  remove: async (id: string) => apiClient.delete(`/api/skills/${encodeURIComponent(id)}`),
+  setEnabled: async (id: string, enabled: boolean) => apiClient.patch(`/api/skills/${encodeURIComponent(id)}/enabled`, { enabled }),
 }

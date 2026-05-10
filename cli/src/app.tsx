@@ -307,7 +307,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       const skills = await apiRef.current.listSkills();
       const items: MenuItem[] = skills.map((s: Skill) => ({
         title: s.name,
-        desc: s.description,
+        desc: `${s.sourceLabel || "SlimeBot"}${s.readOnly ? " · read-only" : ""}${s.enabled === false ? " · disabled" : ""} · ${s.description}`,
         data: s,
       }));
       dispatch({
@@ -464,6 +464,10 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       }
       if (state.menuKind === "skills") {
         const skill = item.data as Skill;
+        if (skill.readOnly) {
+          appendSystem("External skills are read-only. Use the web settings page to enable or disable them.");
+          return;
+        }
         await apiRef.current.deleteSkill(skill.id);
         await loadSkills();
         return;

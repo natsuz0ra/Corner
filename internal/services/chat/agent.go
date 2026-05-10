@@ -245,6 +245,9 @@ func buildTodoUpdateToolDef() llmsvc.ToolDef {
 // buildRuntimeToolDefs merges built-in, skill, and MCP tools and returns MCP name mapping.
 func (a *AgentService) buildRuntimeToolDefs(ctx context.Context, configs []domain.MCPConfig, depth int) ([]llmsvc.ToolDef, map[string]mcp.ToolMeta, error) {
 	cacheKey := buildToolDefsCacheKey(configs, depth)
+	if a.skillRuntime != nil {
+		cacheKey += "|s:" + a.skillRuntime.ToolCacheKey()
+	}
 	if defs, metaByFunc, ok := a.getCachedToolDefs(cacheKey); ok {
 		return defs, metaByFunc, nil
 	}

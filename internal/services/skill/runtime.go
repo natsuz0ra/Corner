@@ -18,6 +18,9 @@ import (
 type SkillRuntimeService struct {
 	store         domain.SkillStore
 	skillsRootAbs string
+	statePath     string
+	sourcesMu     sync.RWMutex
+	sources       []SkillSource
 	catalogMu     sync.RWMutex
 	cachedPrompt  string
 	cachedSkills  []domain.Skill
@@ -28,16 +31,44 @@ const catalogCacheTTL = 30 * time.Second
 
 // NewSkillRuntimeService creates a skill runtime service.
 func NewSkillRuntimeService(store domain.SkillStore, skillsRoot string) *SkillRuntimeService {
+	return NewSkillRuntimeServiceWithOptions(store, skillsRoot, SkillRuntimeOptions{})
+}
+
+// NewSkillRuntimeServiceWithOptions creates a skill runtime service with external discovery sources.
+func NewSkillRuntimeServiceWithOptions(store domain.SkillStore, skillsRoot string, opts SkillRuntimeOptions) *SkillRuntimeService {
 	absRoot, _ := filepath.Abs(strings.TrimSpace(skillsRoot))
+	stateDir := strings.TrimSpace(opts.StateDir)
+	if stateDir == "" {
+		stateDir = absRoot
+	}
+	stateDirAbs, _ := filepath.Abs(stateDir)
 	return &SkillRuntimeService{
 		store:         store,
 		skillsRootAbs: absRoot,
+		statePath:     filepath.Join(stateDirAbs, externalSkillStateFilename),
+		sources:       cloneSources(opts.Sources),
 	}
 }
 
-// ListSkills returns installed skills.
+// SetSources replaces external skill discovery sources and clears the catalog cache.
+func (s *SkillRuntimeService) SetSources(sources []SkillSource) {
+	s.sourcesMu.Lock()
+	s.sources = cloneSources(sources)
+	s.sourcesMu.Unlock()
+	s.clearCatalogCache()
+}
+
+// AddSources appends external skill discovery sources and clears the catalog cache.
+func (s *SkillRuntimeService) AddSources(sources []SkillSource) {
+	s.sourcesMu.Lock()
+	s.sources = cloneSources(append(s.sources, sources...))
+	s.sourcesMu.Unlock()
+	s.clearCatalogCache()
+}
+
+// ListSkills returns installed and discovered skills, including disabled external skills for UI management.
 func (s *SkillRuntimeService) ListSkills() ([]domain.Skill, error) {
-	items, err := s.store.ListSkills()
+	items, err := s.listAllSkills()
 	if err != nil {
 		return nil, err
 	}
@@ -45,6 +76,47 @@ func (s *SkillRuntimeService) ListSkills() ([]domain.Skill, error) {
 		return items[i].Name < items[j].Name
 	})
 	return items, nil
+}
+
+func (s *SkillRuntimeService) listAllSkills() ([]domain.Skill, error) {
+	localItems, err := s.store.ListSkills()
+	if err != nil {
+		return nil, err
+	}
+	items := make([]domain.Skill, 0, len(localItems))
+	for _, item := range localItems {
+		items = append(items, markLocalSkill(item))
+	}
+
+	state, err := loadSkillState(s.statePath)
+	if err != nil {
+		return nil, err
+	}
+	s.sourcesMu.RLock()
+	sources := cloneSources(s.sources)
+	s.sourcesMu.RUnlock()
+	for _, source := range sources {
+		discovered, err := discoverSourceSkills(source, state)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, discovered...)
+	}
+	return items, nil
+}
+
+func (s *SkillRuntimeService) enabledSkills() ([]domain.Skill, error) {
+	items, err := s.ListSkills()
+	if err != nil {
+		return nil, err
+	}
+	enabled := items[:0]
+	for _, item := range items {
+		if item.Enabled {
+			enabled = append(enabled, item)
+		}
+	}
+	return enabled, nil
 }
 
 // BuildCatalogPrompt builds the skill catalog text for model context.
@@ -59,7 +131,7 @@ func (s *SkillRuntimeService) BuildCatalogPrompt() (string, []domain.Skill, erro
 	}
 	s.catalogMu.RUnlock()
 
-	items, err := s.ListSkills()
+	items, err := s.enabledSkills()
 	if err != nil {
 		return "", nil, err
 	}
@@ -79,8 +151,10 @@ func (s *SkillRuntimeService) BuildCatalogPrompt() (string, []domain.Skill, erro
 	b.WriteString("<available_skills>\n")
 	for _, item := range items {
 		b.WriteString("  <skill>\n")
-		b.WriteString("    <name>" + escapeXML(item.Name) + "</name>\n")
+		b.WriteString("    <name>" + escapeXML(item.ID) + "</name>\n")
+		b.WriteString("    <display_name>" + escapeXML(item.Name) + "</display_name>\n")
 		b.WriteString("    <description>" + escapeXML(item.Description) + "</description>\n")
+		b.WriteString("    <source>" + escapeXML(item.SourceLabel) + "</source>\n")
 		b.WriteString("    <location>" + escapeXML(item.RelativePath) + "/SKILL.md</location>\n")
 		b.WriteString("  </skill>\n")
 	}
@@ -104,7 +178,13 @@ func (s *SkillRuntimeService) BuildActivateSkillToolDef(skills []domain.Skill) *
 	}
 	enumValues := make([]any, 0, len(skills))
 	for _, item := range skills {
-		enumValues = append(enumValues, item.Name)
+		if !item.Enabled {
+			continue
+		}
+		enumValues = append(enumValues, item.ID)
+	}
+	if len(enumValues) == 0 {
+		return nil
 	}
 
 	return &llmsvc.ToolDef{
@@ -115,13 +195,27 @@ func (s *SkillRuntimeService) BuildActivateSkillToolDef(skills []domain.Skill) *
 			"properties": map[string]any{
 				"name": map[string]any{
 					"type":        "string",
-					"description": "Skill name to activate.",
+					"description": "Skill name or ID to activate.",
 					"enum":        enumValues,
 				},
 			},
 			"required": []string{"name"},
 		},
 	}
+}
+
+// ToolCacheKey returns a compact key for skill tool definition caching.
+func (s *SkillRuntimeService) ToolCacheKey() string {
+	items, err := s.enabledSkills()
+	if err != nil {
+		return "skills:error"
+	}
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		parts = append(parts, item.ID+":"+item.UpdatedAt.UTC().Format(time.RFC3339Nano))
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, "|")
 }
 
 // ActivateSkill loads SKILL.md by name and marks the skill active for this session.
@@ -134,7 +228,7 @@ func (s *SkillRuntimeService) ActivateSkill(name string, activated map[string]st
 		return fmt.Sprintf("<skill_content name=\"%s\">\nThis skill is already activated in the current session.\n</skill_content>", escapeXML(name)), true, nil
 	}
 
-	item, err := s.store.GetSkillByName(name)
+	item, err := s.findEnabledSkill(name)
 	if err != nil {
 		return "", false, err
 	}
@@ -161,7 +255,7 @@ func (s *SkillRuntimeService) ActivateSkill(name string, activated map[string]st
 	}
 
 	var b strings.Builder
-	b.WriteString("<skill_content name=\"" + escapeXML(item.Name) + "\">\n")
+	b.WriteString("<skill_content name=\"" + escapeXML(item.ID) + "\" display_name=\"" + escapeXML(item.Name) + "\">\n")
 	b.WriteString(body)
 	b.WriteString("\n\nSkill directory: " + filepath.ToSlash(skillDir) + "\n")
 	b.WriteString("Relative paths in this skill are relative to the skill directory.\n")
@@ -177,25 +271,45 @@ func (s *SkillRuntimeService) ActivateSkill(name string, activated map[string]st
 	}
 	b.WriteString("</skill_content>")
 
-	activated[name] = struct{}{}
+	activated[item.ID] = struct{}{}
 	return b.String(), false, nil
 }
 
 // DeleteSkillByID removes the skill directory and clears runtime cache.
 func (s *SkillRuntimeService) DeleteSkillByID(id string) error {
+	item, err := s.findSkill(id)
+	if err != nil {
+		return err
+	}
+	if item != nil && item.ReadOnly {
+		return fmt.Errorf("skill %s is read-only and cannot be deleted from SlimeBot", id)
+	}
 	if err := s.store.DeleteSkill(id); err != nil {
 		return err
 	}
-	s.catalogMu.Lock()
-	s.cachedPrompt = ""
-	s.cachedSkills = nil
-	s.cacheUntil = time.Time{}
-	s.catalogMu.Unlock()
+	s.clearCatalogCache()
 	return nil
 }
 
 // resolveSkillDir resolves the skill directory from stored paths and checks traversal safety.
 func (s *SkillRuntimeService) resolveSkillDir(item domain.Skill) (string, error) {
+	if item.ReadOnly {
+		dir := strings.TrimSpace(item.AbsolutePath)
+		if dir == "" {
+			dir = filepath.FromSlash(strings.TrimSpace(item.RelativePath))
+		}
+		if dir == "" {
+			return "", fmt.Errorf("invalid skill path")
+		}
+		info, err := os.Stat(dir)
+		if err != nil {
+			return "", err
+		}
+		if !info.IsDir() {
+			return "", fmt.Errorf("skill path is not a directory")
+		}
+		return dir, nil
+	}
 	base := filepath.Clean(s.skillsRootAbs)
 	candidate := filepath.Join(base, item.Name)
 	if rel := strings.TrimSpace(item.RelativePath); rel != "" {
@@ -209,6 +323,70 @@ func (s *SkillRuntimeService) resolveSkillDir(item domain.Skill) (string, error)
 		return "", fmt.Errorf("skill path is out of root")
 	}
 	return candidate, nil
+}
+
+// SetSkillEnabled updates the SlimeBot enabled flag for an external read-only skill.
+func (s *SkillRuntimeService) SetSkillEnabled(id string, enabled bool) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("skill id cannot be empty")
+	}
+	item, err := s.findSkill(id)
+	if err != nil {
+		return err
+	}
+	if item == nil {
+		return fmt.Errorf("skill not found: %s", id)
+	}
+	if !item.ReadOnly {
+		return fmt.Errorf("local SlimeBot skills cannot be disabled")
+	}
+	state, err := loadSkillState(s.statePath)
+	if err != nil {
+		return err
+	}
+	state[item.ID] = enabled
+	if err := saveSkillState(s.statePath, state); err != nil {
+		return err
+	}
+	s.clearCatalogCache()
+	return nil
+}
+
+func (s *SkillRuntimeService) findEnabledSkill(nameOrID string) (*domain.Skill, error) {
+	items, err := s.enabledSkills()
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range items {
+		if item.ID == nameOrID || (!item.ReadOnly && item.Name == nameOrID) {
+			copy := item
+			return &copy, nil
+		}
+	}
+	return nil, nil
+}
+
+func (s *SkillRuntimeService) findSkill(id string) (*domain.Skill, error) {
+	items, err := s.ListSkills()
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range items {
+		if item.ID == id || (!item.ReadOnly && item.Name == id) {
+			copy := item
+			return &copy, nil
+		}
+	}
+	return nil, nil
+}
+
+func (s *SkillRuntimeService) clearCatalogCache() {
+	s.catalogMu.Lock()
+	s.cachedPrompt = ""
+	s.cachedSkills = nil
+	s.cacheUntil = time.Time{}
+	s.catalogMu.Unlock()
 }
 
 // stripFrontmatter parses and strips YAML frontmatter from SKILL.md.

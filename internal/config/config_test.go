@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -54,5 +55,19 @@ func TestLoadExpandsTildePath(t *testing.T) {
 	}
 	if cfg.DefaultContextSize != 2048 {
 		t.Fatalf("expected DEFAULT_CONTEXT_SIZE=2048, got=%d", cfg.DefaultContextSize)
+	}
+}
+
+func TestLoadParsesHermesSkillRoots(t *testing.T) {
+	t.Setenv("HERMES_SKILLS_ROOTS", "~/one"+string(os.PathListSeparator)+"/tmp/two")
+	cfg := Load()
+	if len(cfg.HermesSkillsRoots) != 2 {
+		t.Fatalf("expected 2 Hermes roots, got %#v", cfg.HermesSkillsRoots)
+	}
+	if cfg.HermesSkillsRoots[0] == "~/one" {
+		t.Fatalf("expected Hermes root to expand home directory")
+	}
+	if cfg.HermesSkillsRoots[1] != "/tmp/two" {
+		t.Fatalf("unexpected second Hermes root: %s", cfg.HermesSkillsRoots[1])
 	}
 }

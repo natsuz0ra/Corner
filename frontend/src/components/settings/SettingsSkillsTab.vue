@@ -3,9 +3,11 @@ import { useI18n } from 'vue-i18n'
 import { mdiDeleteOutline, mdiPlus } from '@mdi/js'
 import MdiIcon from '@/components/ui/MdiIcon.vue'
 import LoadingSpinner from '@/components/ui/LoadingSpinner.vue'
+import { canDeleteSkill } from '@/utils/skills'
+import type { SkillItem } from '@/types/settings'
 
 defineProps<{
-  skillsRows: { id: string; name: string; description?: string; relativePath?: string }[]
+  skillsRows: SkillItem[]
   skillsUploading: boolean
   skillsDropActive: boolean
 }>()
@@ -16,9 +18,14 @@ const emit = defineEmits<{
   dragOver: [event: DragEvent]
   dragLeave: [event: DragEvent]
   delete: [id: string]
+  toggleEnabled: [id: string, enabled: boolean]
 }>()
 
 const { t } = useI18n()
+
+function readChecked(event: Event) {
+  return (event.target as HTMLInputElement).checked
+}
 </script>
 
 <template>
@@ -56,12 +63,82 @@ const { t } = useI18n()
         <div class="flex-1 min-w-0">
           <div class="text-sm font-medium settings-item-name">{{ item.name }}</div>
           <div v-if="item.description" class="text-xs settings-item-sub mt-0.5">{{ item.description }}</div>
+          <div class="flex flex-wrap items-center gap-1.5 mt-2">
+            <span class="skill-badge">{{ item.sourceLabel || item.provider || 'SlimeBot' }}</span>
+            <span v-if="item.readOnly" class="skill-badge">{{ t('skillsReadOnly') }}</span>
+            <span class="skill-badge" :class="item.enabled ? 'skill-badge-enabled' : 'skill-badge-disabled'">
+              {{ item.enabled ? t('skillsEnabled') : t('skillsDisabled') }}
+            </span>
+          </div>
           <div v-if="item.relativePath" class="text-xs mt-0.5 font-mono sb-text-muted">{{ item.relativePath }}</div>
         </div>
-        <button type="button" class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-150 cursor-pointer delete-btn" @click="emit('delete', item.id)">
+        <label v-if="item.readOnly" class="skill-switch flex-shrink-0" :title="t('skillsToggle')">
+          <input
+            type="checkbox"
+            class="sr-only"
+            :checked="item.enabled"
+            @change="emit('toggleEnabled', item.id, readChecked($event))"
+          >
+          <span class="skill-switch-track" />
+        </label>
+        <button v-if="canDeleteSkill(item)" type="button" class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-150 cursor-pointer delete-btn" @click="emit('delete', item.id)">
           <MdiIcon :path="mdiDeleteOutline" :size="15" />
         </button>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.skill-badge {
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 7px;
+}
+
+.skill-badge-enabled {
+  color: var(--color-accent);
+}
+
+.skill-badge-disabled {
+  color: var(--color-danger);
+}
+
+.skill-switch {
+  cursor: pointer;
+  display: inline-flex;
+  padding-top: 2px;
+}
+
+.skill-switch-track {
+  background: var(--card-border);
+  border-radius: 999px;
+  height: 18px;
+  position: relative;
+  transition: background-color 0.15s ease;
+  width: 32px;
+}
+
+.skill-switch-track::after {
+  background: var(--card-bg);
+  border-radius: 999px;
+  content: '';
+  height: 14px;
+  left: 2px;
+  position: absolute;
+  top: 2px;
+  transition: transform 0.15s ease;
+  width: 14px;
+}
+
+.skill-switch input:checked + .skill-switch-track {
+  background: var(--sb-brand);
+}
+
+.skill-switch input:checked + .skill-switch-track::after {
+  transform: translateX(14px);
+}
+</style>
