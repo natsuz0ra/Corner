@@ -9,6 +9,13 @@ test("matchCommandHints returns matching command prefixes", () => {
   );
 });
 
+test("matchCommandHints includes sandbox command", () => {
+  assert.deepEqual(
+    matchCommandHints("/s").map((hint) => hint.command),
+    ["/session", "/subagent_model", "/sandbox", "/skills"],
+  );
+});
+
 test("matchCommandHints ignores completed commands with trailing content", () => {
   assert.deepEqual(matchCommandHints("/model "), []);
   assert.deepEqual(matchCommandHints("/model abc"), []);
