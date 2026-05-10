@@ -1,12 +1,16 @@
 export type ApprovalMode = 'standard' | 'auto_review' | 'auto'
+export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high' | 'max'
 export type SettingsTabKey = 'basic' | 'llm' | 'mcp' | 'skills' | 'platform' | 'about'
 
 export interface AppSettings {
   language: 'zh-CN' | 'en-US'
   defaultModel?: string
   messagePlatformDefaultModel?: string
+  messagePlatformThinkingLevel?: ThinkingLevel
+  messagePlatformApprovalMode?: ApprovalMode
   webSearchKey?: string
   approvalMode?: ApprovalMode
+  thinkingLevel?: ThinkingLevel
 }
 
 export interface LLMConfig {

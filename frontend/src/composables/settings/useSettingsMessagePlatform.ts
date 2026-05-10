@@ -1,7 +1,9 @@
 import { computed, ref, type MaybeRefOrGetter, toValue, type Ref } from 'vue'
 import { settingAPI } from '@/api/settings'
 import { messagePlatformAPI } from '@/api/messagePlatform'
-import type { LLMConfig, MessagePlatformConfig } from '@/types/settings'
+import type { ApprovalMode, LLMConfig, MessagePlatformConfig, ThinkingLevel } from '@/types/settings'
+import { getApprovalModeOptions } from '@/utils/approvalMode'
+import { createMessagePlatformThinkingOptions, shouldSaveMessagePlatformDefaultModel } from '@/utils/messagePlatformSettings'
 
 type ToastLike = {
   error(message: string): void
@@ -14,6 +16,8 @@ export function useSettingsMessagePlatform(options: {
   messagePlatformDialogVisible: Ref<boolean>
   messagePlatformSubmitting: Ref<boolean>
   messagePlatformDefaultModel: Ref<string>
+  messagePlatformThinkingLevel: Ref<ThinkingLevel>
+  messagePlatformApprovalMode: Ref<ApprovalMode>
   llmRows: MaybeRefOrGetter<LLMConfig[]>
   toast: ToastLike
   t: Translate
@@ -23,6 +27,8 @@ export function useSettingsMessagePlatform(options: {
     messagePlatformDialogVisible,
     messagePlatformSubmitting,
     messagePlatformDefaultModel,
+    messagePlatformThinkingLevel,
+    messagePlatformApprovalMode,
     llmRows,
     toast,
     t,
@@ -41,6 +47,10 @@ export function useSettingsMessagePlatform(options: {
     const base = (toValue(llmRows) || []).map((item) => ({ value: item.id, label: item.name }))
     return [{ value: '', label: t('messagePlatformModelUnset') }, ...base]
   })
+  const messagePlatformThinkingOptions = computed(() => createMessagePlatformThinkingOptions(t))
+  const messagePlatformApprovalOptions = computed(() =>
+    getApprovalModeOptions().map((item) => ({ value: item.value, label: t(item.labelKey) })),
+  )
 
   function getBotTokenFromAuthConfig(raw: string) {
     try {
@@ -120,17 +130,31 @@ export function useSettingsMessagePlatform(options: {
 
   async function saveMessagePlatformDefaultModel(modelId: string) {
     messagePlatformDefaultModel.value = modelId
-    if (!modelId) return
+    if (!shouldSaveMessagePlatformDefaultModel(modelId)) return
     await settingAPI.update({ messagePlatformDefaultModel: modelId })
+  }
+
+  async function saveMessagePlatformThinkingLevel(level: ThinkingLevel) {
+    messagePlatformThinkingLevel.value = level
+    await settingAPI.update({ messagePlatformThinkingLevel: level })
+  }
+
+  async function saveMessagePlatformApprovalMode(mode: ApprovalMode) {
+    messagePlatformApprovalMode.value = mode
+    await settingAPI.update({ messagePlatformApprovalMode: mode })
   }
 
   return {
     messagePlatformForm,
     telegramConfig,
     messagePlatformModelOptions,
+    messagePlatformThinkingOptions,
+    messagePlatformApprovalOptions,
     openMessagePlatformDialog,
     saveMessagePlatformConfig,
     toggleTelegramEnabled,
     saveMessagePlatformDefaultModel,
+    saveMessagePlatformThinkingLevel,
+    saveMessagePlatformApprovalMode,
   }
 }

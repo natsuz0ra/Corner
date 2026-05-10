@@ -653,7 +653,7 @@ func TestHandleChatStream_ParallelSubagentThinkingRecordsKeepSeparateScopes(t *t
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := svc.HandleChatStream(ctx, session.ID, "request-1", "delegate parallel subagents", "", model.ID, nil, "high", false, "", AgentCallbacks{
+		_, err := svc.HandleChatStream(ctx, session.ID, "request-1", "delegate parallel subagents", "", model.ID, nil, "high", false, "", "", AgentCallbacks{
 			OnChunk: func(string) error { return nil },
 		})
 		done <- err
