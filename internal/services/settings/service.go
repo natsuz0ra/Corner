@@ -2,11 +2,13 @@ package settings
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"slimebot/internal/constants"
 	"slimebot/internal/domain"
 	"slimebot/internal/runtime"
+	sandboxpolicy "slimebot/internal/sandbox"
 	"strings"
 )
 
@@ -20,6 +22,10 @@ type AppSettings struct {
 	WebSearchAPIKey              string
 	ApprovalMode                 string
 	ThinkingLevel                string
+	SandboxMode                  string
+	SandboxWritableRoots         []string
+	SandboxNetworkEnabled        bool
+	SandboxNetworkAllowedDomains []string
 }
 
 // UpdateSettingsInput is the domain input for partial settings updates.
@@ -32,6 +38,10 @@ type UpdateSettingsInput struct {
 	WebSearchAPIKey              *string
 	ApprovalMode                 *string
 	ThinkingLevel                *string
+	SandboxMode                  *string
+	SandboxWritableRoots         *[]string
+	SandboxNetworkEnabled        *bool
+	SandboxNetworkAllowedDomains *[]string
 }
 
 type SettingsService struct {
@@ -88,6 +98,25 @@ func (s *SettingsService) Get(ctx context.Context) (*AppSettings, error) {
 	if err != nil {
 		return nil, err
 	}
+	sandboxMode, err := s.store.GetSetting(ctx, constants.SettingSandboxMode)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(sandboxMode) == "" {
+		sandboxMode = string(sandboxpolicy.ModeWorkspaceWrite)
+	}
+	sandboxWritableRoots, err := s.getStringSliceSetting(ctx, constants.SettingSandboxWritableRoots)
+	if err != nil {
+		return nil, err
+	}
+	sandboxNetworkEnabled, err := s.getBoolStringSetting(ctx, constants.SettingSandboxNetworkEnabled, true)
+	if err != nil {
+		return nil, err
+	}
+	sandboxNetworkAllowedDomains, err := s.getStringSliceSetting(ctx, constants.SettingSandboxNetworkAllowedDomains)
+	if err != nil {
+		return nil, err
+	}
 	return &AppSettings{
 		Language:                     language,
 		DefaultModel:                 defaultModel,
@@ -97,6 +126,10 @@ func (s *SettingsService) Get(ctx context.Context) (*AppSettings, error) {
 		WebSearchAPIKey:              webSearchAPIKey,
 		ApprovalMode:                 approvalMode,
 		ThinkingLevel:                thinkingLevel,
+		SandboxMode:                  sandboxMode,
+		SandboxWritableRoots:         sandboxWritableRoots,
+		SandboxNetworkEnabled:        sandboxNetworkEnabled,
+		SandboxNetworkAllowedDomains: sandboxNetworkAllowedDomains,
 	}, nil
 }
 
@@ -157,6 +190,30 @@ func (s *SettingsService) Update(ctx context.Context, input UpdateSettingsInput)
 			return err
 		}
 	}
+	if input.SandboxMode != nil && strings.TrimSpace(*input.SandboxMode) != "" {
+		mode := strings.TrimSpace(*input.SandboxMode)
+		if !isValidSandboxMode(mode) {
+			return fmt.Errorf("invalid sandbox mode: %s", mode)
+		}
+		if err := s.store.SetSetting(ctx, constants.SettingSandboxMode, mode); err != nil {
+			return err
+		}
+	}
+	if input.SandboxWritableRoots != nil {
+		if err := s.setStringSliceSetting(ctx, constants.SettingSandboxWritableRoots, *input.SandboxWritableRoots); err != nil {
+			return err
+		}
+	}
+	if input.SandboxNetworkEnabled != nil {
+		if err := s.store.SetSetting(ctx, constants.SettingSandboxNetworkEnabled, fmt.Sprintf("%t", *input.SandboxNetworkEnabled)); err != nil {
+			return err
+		}
+	}
+	if input.SandboxNetworkAllowedDomains != nil {
+		if err := s.setStringSliceSetting(ctx, constants.SettingSandboxNetworkAllowedDomains, *input.SandboxNetworkAllowedDomains); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -166,5 +223,66 @@ func isValidApprovalMode(mode string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func isValidSandboxMode(mode string) bool {
+	switch strings.TrimSpace(mode) {
+	case string(sandboxpolicy.ModeReadOnly), string(sandboxpolicy.ModeWorkspaceWrite), string(sandboxpolicy.ModeDangerFullAccess):
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *SettingsService) getStringSliceSetting(ctx context.Context, key string) ([]string, error) {
+	raw, err := s.store.GetSetting(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(raw) == "" {
+		return []string{}, nil
+	}
+	var values []string
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		return nil, fmt.Errorf("invalid %s setting: %w", key, err)
+	}
+	clean := make([]string, 0, len(values))
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			clean = append(clean, trimmed)
+		}
+	}
+	return clean, nil
+}
+
+func (s *SettingsService) setStringSliceSetting(ctx context.Context, key string, values []string) error {
+	clean := make([]string, 0, len(values))
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			clean = append(clean, trimmed)
+		}
+	}
+	raw, err := json.Marshal(clean)
+	if err != nil {
+		return err
+	}
+	return s.store.SetSetting(ctx, key, string(raw))
+}
+
+func (s *SettingsService) getBoolStringSetting(ctx context.Context, key string, fallback bool) (bool, error) {
+	raw, err := s.store.GetSetting(ctx, key)
+	if err != nil {
+		return false, err
+	}
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "":
+		return fallback, nil
+	case "true", "1", "yes", "on":
+		return true, nil
+	case "false", "0", "no", "off":
+		return false, nil
+	default:
+		return false, fmt.Errorf("invalid boolean setting %s: %s", key, raw)
 	}
 }

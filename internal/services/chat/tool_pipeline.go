@@ -73,6 +73,14 @@ func resolveToolInvocation(tc llmsvc.ToolCallInfo, mcpToolMeta map[string]mcp.To
 	}, nil
 }
 
+func applyParamApprovalPolicy(invocation resolvedToolInvocation, params map[string]any) resolvedToolInvocation {
+	if invocation.toolName == constants.ExecToolName && strings.EqualFold(strings.TrimSpace(fmt.Sprintf("%v", params["sandbox_permissions"])), "required_approval") {
+		invocation.requiresApproval = true
+		invocation.approvalPolicy = toolApprovalPolicyManual
+	}
+	return invocation
+}
+
 // notifyToolResult wraps the tool-result callback with consistent logging on failure.
 func notifyToolResult(callbacks AgentCallbacks, result ToolCallResult) {
 	if callbacks.OnToolCallResult == nil {

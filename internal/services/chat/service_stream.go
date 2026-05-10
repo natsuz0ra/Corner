@@ -516,6 +516,11 @@ func (s *ChatService) executeChatTurn(
 		}
 	}
 
+	sandboxPolicy, err := s.resolveSandboxPolicy(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	agentStart := time.Now()
 	var planCompleted bool
 	var latestUsage llmsvc.TokenUsage
@@ -526,6 +531,7 @@ func (s *ChatService) executeChatTurn(
 		SubagentModelID: subagentModelID,
 		LatestUsage:     &latestUsage,
 		OnProviderUsage: usageTracker.calibrateProviderUsage,
+		SandboxPolicy:   sandboxPolicy,
 	})
 	logging.Span("agent_loop", agentStart)
 	s.mergeSessionActivatedSkills(sessionID, activatedSkills)

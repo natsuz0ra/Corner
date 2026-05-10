@@ -182,7 +182,8 @@ func TestDetermineToolApprovalPolicy_AutoReviewForSensitiveBuiltins(t *testing.T
 		{name: "file edit auto review", toolName: "file_edit", approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyAutoReview},
 		{name: "file write auto review", toolName: "file_write", approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyAutoReview},
 		{name: "file read auto review", toolName: "file_read", approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyNone},
-		{name: "mcp auto review unchanged", toolName: "github", isMCP: true, approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyNone},
+		{name: "mcp auto review requires review", toolName: "github", isMCP: true, approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyAutoReview},
+		{name: "mcp auto still requires manual", toolName: "github", isMCP: true, approvalMode: constants.ApprovalModeAuto, want: toolApprovalPolicyManual},
 		{name: "exec auto execute", toolName: constants.ExecToolName, approvalMode: constants.ApprovalModeAuto, want: toolApprovalPolicyNone},
 		{name: "ask questions always manual", toolName: constants.AskQuestionsTool, approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyManual},
 	}
@@ -194,6 +195,22 @@ func TestDetermineToolApprovalPolicy_AutoReviewForSensitiveBuiltins(t *testing.T
 				t.Fatalf("policy = %s, want %s", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestApplyParamApprovalPolicy_RequiredApprovalForcesManual(t *testing.T) {
+	invocation := resolvedToolInvocation{
+		toolName:         constants.ExecToolName,
+		command:          "run",
+		requiresApproval: false,
+		approvalPolicy:   toolApprovalPolicyNone,
+	}
+	got := applyParamApprovalPolicy(invocation, map[string]any{"sandbox_permissions": "required_approval"})
+	if !got.requiresApproval {
+		t.Fatal("required_approval should force approval")
+	}
+	if got.approvalPolicy != toolApprovalPolicyManual {
+		t.Fatalf("approval policy = %s, want manual", got.approvalPolicy)
 	}
 }
 

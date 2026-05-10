@@ -13,6 +13,7 @@ import (
 
 	"slimebot/internal/constants"
 	"slimebot/internal/mcp"
+	sandboxpolicy "slimebot/internal/sandbox"
 	llmsvc "slimebot/internal/services/llm"
 	skillsvc "slimebot/internal/services/skill"
 	"slimebot/internal/tools"
@@ -544,6 +545,7 @@ func (a *AgentService) RunAgentLoop(
 				messages = appendToolMessage(messages, tc.ID, fmt.Sprintf("failed to parse arguments: %s", err.Error()))
 				continue
 			}
+			invocation = applyParamApprovalPolicy(invocation, params)
 
 			if tc.Name == constants.ActivateSkillTool && a.skillRuntime != nil {
 				flushParallelJobs()
@@ -622,7 +624,10 @@ func (a *AgentService) RunAgentLoop(
 					}
 					approved, rejectionMessage, _ := waitApprovalIfNeeded(approvalCtx, callbacks, tcCopy, invocationCopy, paramsCopy, "", review)
 					if approved {
-						return approvalDecision{approved: true}
+						return approvalDecision{
+							approved:        true,
+							escalationGrant: strings.EqualFold(strings.TrimSpace(fmt.Sprintf("%v", paramsCopy["sandbox_permissions"])), "required_approval"),
+						}
 					}
 					status := constants.ToolCallStatusRejected
 					errText := "Execution was rejected by the user."
@@ -654,6 +659,9 @@ func (a *AgentService) RunAgentLoop(
 							return &tools.ExecuteResult{Error: err.Error()}
 						}
 						return execResult
+					}
+					if opts.SandboxPolicy != nil {
+						execCtx = sandboxpolicy.WithPolicy(execCtx, opts.SandboxPolicy)
 					}
 					execCtx = tools.WithReadFileState(execCtx, readFileState)
 					return a.executeInvocation(execCtx, tcCopy, invocationCopy, paramsCopy, sessionID, mcpConfigs)
@@ -817,10 +825,13 @@ func determineToolApprovalPolicy(toolName string, isMCP bool, approvalMode strin
 	if toolName == constants.AskQuestionsTool {
 		return toolApprovalPolicyManual
 	}
-	if approvalMode == constants.ApprovalModeAuto {
-		return toolApprovalPolicyNone
-	}
 	if isMCP {
+		if approvalMode == constants.ApprovalModeAutoReview {
+			return toolApprovalPolicyAutoReview
+		}
+		return toolApprovalPolicyManual
+	}
+	if approvalMode == constants.ApprovalModeAuto {
 		return toolApprovalPolicyNone
 	}
 	if toolName != constants.ExecToolName && toolName != "file_edit" && toolName != "file_write" {

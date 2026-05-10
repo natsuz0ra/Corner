@@ -130,6 +130,9 @@ func (f *fileReadTool) readOne(ctx context.Context, req fileReadRequest) (string
 	if err != nil {
 		return "", err
 	}
+	if err := checkSandboxRead(ctx, path); err != nil {
+		return "", err
+	}
 	if isBlockedDevicePath(path) {
 		return "", fmt.Errorf("cannot read %q: this device file would block or produce infinite output", path)
 	}

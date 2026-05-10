@@ -19,6 +19,7 @@ import (
 	"golang.org/x/text/encoding/unicode"
 	"golang.org/x/text/transform"
 	"slimebot/internal/constants"
+	sandboxpolicy "slimebot/internal/sandbox"
 )
 
 const (
@@ -61,6 +62,7 @@ type execOutputPayload struct {
 	WorkingDirectory   string `json:"working_directory"`
 	DurationMs         int64  `json:"duration_ms"`
 	SandboxPermissions string `json:"sandbox_permissions"`
+	SandboxMode        string `json:"sandbox_mode"`
 }
 
 func init() {
@@ -113,59 +115,41 @@ func (e *execTool) run(ctx context.Context, params map[string]any) (*ExecuteResu
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(cfg.timeoutMs)*time.Millisecond)
-	defer cancel()
-
 	invocation, err := buildExecInvocation(runtime.GOOS, cfg)
 	if err != nil {
 		return nil, err
 	}
+	if cfg.sandboxPermissions == execSandboxPermissionsReqApproval && !sandboxpolicy.HasEscalationGrant(ctx) {
+		return nil, fmt.Errorf("sandbox escalation requires approval before execution")
+	}
+	policy, _ := sandboxpolicy.FromContext(ctx)
+	sandboxMode := string(sandboxpolicy.ModeDangerFullAccess)
+	if policy != nil {
+		sandboxMode = string(policy.Mode())
+	}
+	result, err := sandboxpolicy.RunCommand(ctx, policy, sandboxpolicy.CommandRequest{
+		CommandName: invocation.commandName,
+		CommandArgs: invocation.commandArgs,
+		Dir:         invocation.workingDirectory,
+		Timeout:     time.Duration(cfg.timeoutMs) * time.Millisecond,
+	})
 
-	cmd := exec.CommandContext(ctx, invocation.commandName, invocation.commandArgs...)
-	cmd.Dir = invocation.workingDirectory
-
-	var stdoutBuf bytes.Buffer
-	var stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-
-	start := time.Now()
-	err = cmd.Run()
-	durationMs := time.Since(start).Milliseconds()
-
-	stdoutTrimmed, stdoutTruncated := trimOutput(stdoutBuf.Bytes())
-	stderrTrimmed, stderrTruncated := trimOutput(stderrBuf.Bytes())
+	stdoutTrimmed, stdoutTruncated := trimOutput(result.Stdout)
+	stderrTrimmed, stderrTruncated := trimOutput(result.Stderr)
 	payload := execOutputPayload{
 		Stdout:             decodeCommandOutput(runtime.GOOS, stdoutTrimmed),
 		Stderr:             decodeCommandOutput(runtime.GOOS, stderrTrimmed),
-		ExitCode:           0,
-		TimedOut:           false,
+		ExitCode:           result.ExitCode,
+		TimedOut:           result.TimedOut,
 		Truncated:          stdoutTruncated || stderrTruncated,
 		Shell:              invocation.shell,
 		WorkingDirectory:   invocation.workingDirectory,
-		DurationMs:         durationMs,
+		DurationMs:         result.DurationMs,
 		SandboxPermissions: cfg.sandboxPermissions,
+		SandboxMode:        sandboxMode,
 	}
 
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			payload.TimedOut = true
-			payload.ExitCode = -1
-			out, encodeErr := encodeExecOutput(payload)
-			if encodeErr != nil {
-				return nil, encodeErr
-			}
-			return &ExecuteResult{Output: out}, nil
-		}
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			payload.ExitCode = exitErr.ExitCode()
-			out, encodeErr := encodeExecOutput(payload)
-			if encodeErr != nil {
-				return nil, encodeErr
-			}
-			return &ExecuteResult{Output: out}, nil
-		}
 		return nil, formatExecError(err)
 	}
 

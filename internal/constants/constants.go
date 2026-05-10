@@ -67,6 +67,10 @@ const (
 	SettingThinkingLevel                = "thinkingLevel"
 	SettingMessagePlatformThinkingLevel = "messagePlatformThinkingLevel"
 	SettingMessagePlatformApprovalMode  = "messagePlatformApprovalMode"
+	SettingSandboxMode                  = "sandboxMode"
+	SettingSandboxWritableRoots         = "sandboxWritableRoots"
+	SettingSandboxNetworkEnabled        = "sandboxNetworkEnabled"
+	SettingSandboxNetworkAllowedDomains = "sandboxNetworkAllowedDomains"
 
 	// Plan mode
 	PlanStartTool      = "plan_start"

@@ -39,6 +39,7 @@ internal/
 │  └─ telegram/              # Telegram platform adapter
 ├─ repositories/             # Persistence/data access
 ├─ runtime/                  # Runtime state and lifecycle
+├─ sandbox/                  # Tool sandbox policies and OS sandbox runners
 ├─ server/
 │  ├─ apierrors/             # HTTP API error mapping
 │  ├─ controller/            # HTTP handlers/controllers
@@ -100,6 +101,7 @@ Quick index (feature -> first place to inspect):
 - HTTP route definitions: `internal/server/router/`
 - HTTP controller behavior: `internal/server/controller/`
 - WebSocket server flow: `internal/server/ws/`
+- Sandbox policy and command isolation: `internal/sandbox/`
 - LLM abstraction/provider wiring: `internal/services/llm/`, `internal/services/openai/`, `internal/services/anthropic/`
 - Tool implementations: `internal/tools/`
 - Web settings page UI: `frontend/src/components/settings/`, `frontend/src/composables/settings/`, `frontend/src/pages/`
