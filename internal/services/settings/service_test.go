@@ -28,7 +28,7 @@ func TestSettingsService_GetIncludesWebSearchAPIKey(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	envPath := filepath.Join(runtime.SlimeBotHomeDir(), ".env")
+	envPath := filepath.Join(runtime.SlimeBotHomeDir(), "config.cfg")
 	if err := os.MkdirAll(filepath.Dir(envPath), 0o755); err != nil {
 		t.Fatalf("mkdir env dir failed: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestSettingsService_GetIncludesMessagePlatformRuntimeDefaults(t *testing.T)
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	envPath := filepath.Join(runtime.SlimeBotHomeDir(), ".env")
+	envPath := filepath.Join(runtime.SlimeBotHomeDir(), "config.cfg")
 	if err := os.MkdirAll(filepath.Dir(envPath), 0o755); err != nil {
 		t.Fatalf("mkdir env dir failed: %v", err)
 	}

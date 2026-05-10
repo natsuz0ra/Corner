@@ -37,7 +37,7 @@ function parseEnvFile(content: string): Record<string, string> {
 
 function loadSlimeBotEnv(): Record<string, string> {
   const configHome = process.env.SLIMEBOT_HOME || join(homedir(), '.slimebot')
-  const envPath = join(configHome, '.env')
+  const envPath = join(configHome, 'config.cfg')
   if (!existsSync(envPath)) {
     return {}
   }

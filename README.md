@@ -100,7 +100,7 @@ npm install --prefix frontend
 npm run dev
 ```
 
-On first run, `~/.slimebot/.env` is created if missing; missing keys from the embedded template are appended over time.
+On first run, `~/.slimebot/config.cfg` is created if missing; missing keys from the embedded template are appended over time. If an older `~/.slimebot/.env` exists and `config.cfg` does not, SlimeBot copies it to `config.cfg` and keeps the old file untouched.
 
 **First-time login (web server):** if no user exists yet, a default account is seeded (**username `admin`**, password **`admin`**) and you are prompted to change the password. Change it immediately for anything beyond local development.
 
@@ -164,14 +164,14 @@ make compose-down
 
 ```text
 ~/.slimebot/
-  .env
+  config.cfg
   skills/
   storage/
     data.db
     chat_uploads/
 ```
 
-- `.env` — configuration
+- `config.cfg` — runtime configuration
 - `storage/data.db` — SQLite
 - `storage/chat_uploads` — chat attachments
 - `skills/` — installed skills
@@ -186,7 +186,7 @@ make compose-down
 - The latest user message is protected. If that message alone cannot fit in the context window, the request fails and asks you to shorten the input or increase context size.
 - Web and CLI clients receive `context_usage` / `context_compacted` events with used tokens, available percentage, and compaction state.
 
-## Configuration (`~/.slimebot/.env`)
+## Configuration (`~/.slimebot/config.cfg`)
 
 Variables read by SlimeBot components (defaults shown where applicable):
 
@@ -204,7 +204,7 @@ Variables read by SlimeBot components (defaults shown where applicable):
 - `approvalMode` (app setting) — `standard`, `auto_review`, or `auto`
 - `thinkingLevel` (app setting) — `off` / `low` / `medium` / `high`
 
-The file created on first boot follows the embedded template in [internal/runtime/env.template](internal/runtime/env.template). You can add the optional keys above manually if needed.
+The file created on first boot follows the embedded template in [internal/runtime/env.template](internal/runtime/env.template). You can add the optional keys above manually if needed. Older `~/.slimebot/.env` files are copied to `config.cfg` on first boot for compatibility.
 
 Example:
 
@@ -228,7 +228,7 @@ JWT_EXPIRE=21600
 
 - `VITE_API_BASE_URL` — HTTP base (e.g. `http://localhost:6247`)
 - `VITE_WS_URL` — WebSocket base (e.g. `ws://localhost:6247`)
-- `FRONTEND_PORT` — Vite development server port; read from the process environment or `~/.slimebot/.env`
+- `FRONTEND_PORT` — Vite development server port; read from the process environment or `~/.slimebot/config.cfg`
 
 Example:
 

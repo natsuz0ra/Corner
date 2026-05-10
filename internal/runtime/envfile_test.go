@@ -13,7 +13,7 @@ const testTemplate = "" +
 	"EMBEDDING_ORT_LIB_PATH=\n"
 
 func TestEnsureAndLoadEnv_CreatesMissingFile(t *testing.T) {
-	envPath := filepath.Join(t.TempDir(), ".env")
+	envPath := filepath.Join(t.TempDir(), "config.cfg")
 
 	if err := ensureAndLoadEnv(envPath, testTemplate); err != nil {
 		t.Fatalf("ensureAndLoadEnv failed: %v", err)
@@ -29,7 +29,7 @@ func TestEnsureAndLoadEnv_CreatesMissingFile(t *testing.T) {
 }
 
 func TestEnsureAndLoadEnv_AppendsOnlyMissingKeys(t *testing.T) {
-	envPath := filepath.Join(t.TempDir(), ".env")
+	envPath := filepath.Join(t.TempDir(), "config.cfg")
 	origin := "" +
 		"SERVER_PORT=9090\n" +
 		"# keep comments\n"
@@ -62,7 +62,7 @@ func TestEnsureAndLoadEnv_AppendsOnlyMissingKeys(t *testing.T) {
 }
 
 func TestEnsureAndLoadEnv_IsIdempotent(t *testing.T) {
-	envPath := filepath.Join(t.TempDir(), ".env")
+	envPath := filepath.Join(t.TempDir(), "config.cfg")
 	if err := ensureAndLoadEnv(envPath, testTemplate); err != nil {
 		t.Fatalf("first ensureAndLoadEnv failed: %v", err)
 	}
@@ -88,6 +88,74 @@ func TestEnsureAndLoadEnv_IsIdempotent(t *testing.T) {
 	}
 	if jwtFirst != jwtSecond {
 		t.Fatal("JWT_SECRET should stay stable on repeated ensureAndLoadEnv runs")
+	}
+}
+
+func TestEnsureAndLoadEnv_MigratesLegacyEnvFile(t *testing.T) {
+	dir := t.TempDir()
+	envPath := filepath.Join(dir, "config.cfg")
+	legacyPath := filepath.Join(dir, ".env")
+	origin := "" +
+		"SERVER_PORT=6248\n" +
+		"# legacy comment\n"
+	if err := os.WriteFile(legacyPath, []byte(origin), 0o644); err != nil {
+		t.Fatalf("write legacy env failed: %v", err)
+	}
+
+	if err := ensureAndLoadEnv(envPath, testTemplate); err != nil {
+		t.Fatalf("ensureAndLoadEnv failed: %v", err)
+	}
+
+	raw, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatalf("read migrated config failed: %v", err)
+	}
+	content := string(raw)
+	if !strings.Contains(content, "SERVER_PORT=6248") {
+		t.Fatal("legacy SERVER_PORT should be preserved in config.cfg")
+	}
+	if !strings.Contains(content, "# legacy comment") {
+		t.Fatal("legacy comments should be preserved in config.cfg")
+	}
+	if _, err := os.Stat(legacyPath); err != nil {
+		t.Fatalf("legacy .env should remain after migration: %v", err)
+	}
+	jwtSecret := findEnvValue(content, "JWT_SECRET")
+	if strings.TrimSpace(jwtSecret) == "" || jwtSecret == "CHANGE_ME" {
+		t.Fatal("migrated config should append generated JWT_SECRET")
+	}
+}
+
+func TestReadAndUpsertEnvValueUseConfigFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	configPath := filepath.Join(SlimeBotHomeDir(), "config.cfg")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatalf("mkdir config dir failed: %v", err)
+	}
+	if err := os.WriteFile(configPath, []byte("WEB_SEARCH_API_KEY=old\n"), 0o644); err != nil {
+		t.Fatalf("write config failed: %v", err)
+	}
+
+	got, err := ReadEnvValue("WEB_SEARCH_API_KEY")
+	if err != nil {
+		t.Fatalf("ReadEnvValue failed: %v", err)
+	}
+	if got != "old" {
+		t.Fatalf("expected old value, got %q", got)
+	}
+
+	if err := UpsertEnvValue("WEB_SEARCH_API_KEY", "new"); err != nil {
+		t.Fatalf("UpsertEnvValue failed: %v", err)
+	}
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config failed: %v", err)
+	}
+	if !strings.Contains(string(raw), "WEB_SEARCH_API_KEY=new") {
+		t.Fatalf("expected updated config value, got:\n%s", string(raw))
 	}
 }
 

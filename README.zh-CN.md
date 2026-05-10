@@ -100,7 +100,7 @@ npm install --prefix frontend
 npm run dev
 ```
 
-首次启动会在缺失时创建 `~/.slimebot/.env`；后续若嵌入式模板新增键名，会按需追加到现有文件。
+首次启动会在缺失时创建 `~/.slimebot/config.cfg`；后续若嵌入式模板新增键名，会按需追加到现有文件。若存在旧的 `~/.slimebot/.env` 且不存在 `config.cfg`，SlimeBot 会复制旧配置到 `config.cfg`，并保留旧文件不动。
 
 **首次登录（Web 服务模式）：** 若数据库中尚无用户，会种子一个默认账号（用户名 **`admin`**，密码 **`admin`**），并引导修改密码。除本机尝鲜外请尽快修改。
 
@@ -166,14 +166,14 @@ make compose-down
 
 ```text
 ~/.slimebot/
-  .env
+  config.cfg
   skills/
   storage/
     data.db
     chat_uploads/
 ```
 
-- `.env`：配置文件
+- `config.cfg`：运行时配置文件
 - `storage/data.db`：SQLite 主数据库
 - `storage/chat_uploads`：聊天附件
 - `skills`：Skills 存储目录
@@ -189,7 +189,7 @@ make compose-down
 - 最新一条用户输入会被保护：若它单独就超过上下文窗口，会直接报错，提示缩短输入或调大上下文大小。
 - Web 与 CLI 会通过 `context_usage` / `context_compacted` 事件展示已用 token、可用比例和是否已压缩。
 
-## 配置文件（`~/.slimebot/.env`）
+## 配置文件（`~/.slimebot/config.cfg`）
 
 SlimeBot 各组件会读取下列变量（括号内为默认值或说明）：
 
@@ -207,7 +207,7 @@ SlimeBot 各组件会读取下列变量（括号内为默认值或说明）：
 - `approvalMode`（应用设置）：`standard`、`auto_review` 或 `auto`
 - `thinkingLevel`（应用设置）：`off` / `low` / `medium` / `high`
 
-首次启动生成的 `.env` 与嵌入式模板一致，见 [internal/runtime/env.template](internal/runtime/env.template)。其他键可按需自行追加。
+首次启动生成的 `config.cfg` 与嵌入式模板一致，见 [internal/runtime/env.template](internal/runtime/env.template)。其他键可按需自行追加。旧的 `~/.slimebot/.env` 会在首次启动时复制迁移到 `config.cfg`。
 
 示例：
 
@@ -231,7 +231,7 @@ JWT_EXPIRE=21600
 
 - `VITE_API_BASE_URL`：后端 HTTP 地址（例如 `http://localhost:6247`）
 - `VITE_WS_URL`：后端 WebSocket 地址（例如 `ws://localhost:6247`）
-- `FRONTEND_PORT`：Vite 开发服务端口；从进程环境变量或 `~/.slimebot/.env` 读取
+- `FRONTEND_PORT`：Vite 开发服务端口；从进程环境变量或 `~/.slimebot/config.cfg` 读取
 
 示例：
 

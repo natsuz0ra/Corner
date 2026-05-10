@@ -49,11 +49,11 @@ test('vite config reads development ports from environment variables first', asy
   assert.equal(config.server?.proxy?.['/ws']?.target, 'ws://localhost:18081')
 })
 
-test('vite config reads development ports from SLIMEBOT_HOME env file', async () => {
+test('vite config reads development ports from SLIMEBOT_HOME config file', async () => {
   resetPortEnv()
   const home = mkdtempSync(join(tmpdir(), 'slimebot-vite-config-'))
   mkdirSync(home, { recursive: true })
-  writeFileSync(join(home, '.env'), 'SERVER_PORT=18082\nFRONTEND_PORT=15175\n')
+  writeFileSync(join(home, 'config.cfg'), 'SERVER_PORT=18082\nFRONTEND_PORT=15175\n')
   process.env.SLIMEBOT_HOME = home
 
   const config = await loadViteConfig('file-ports')
