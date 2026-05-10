@@ -56,13 +56,17 @@
 
 ![会话页预览](assets/chat.png)
 
+### 规划模式
+
+![规划模式](assets/plan.png)
+
 ### 工具执行
 
 ![工具执行](assets/tool_exec.png)
 
 ### 消息平台（Telegram）
 
-<img src="assets/tg_chat.jpg" alt="消息平台预览" width="220" />
+<img src="assets/tg_chat.png" alt="消息平台预览" width="220" />
 
 ### CLI
 

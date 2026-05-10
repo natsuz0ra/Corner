@@ -56,13 +56,17 @@ A personal AI agent demo: an extensible foundation for conversational AI apps. I
 
 ![Chat](assets/chat.png)
 
+### Plan mode
+
+![Plan mode](assets/plan.png)
+
 ### Tool execution
 
 ![Tool execution](assets/tool_exec.png)
 
 ### Telegram
 
-<img src="assets/tg_chat.jpg" alt="Telegram preview" width="220" />
+<img src="assets/tg_chat.png" alt="Telegram preview" width="220" />
 
 ### CLI
 
