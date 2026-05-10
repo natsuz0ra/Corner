@@ -19,11 +19,12 @@ A personal AI agent demo: an extensible foundation for conversational AI apps. I
 - **Tools & agent**
   - Multi-turn agent tool-call flow
   - Approval modes: **standard** (manual confirm for sensitive tools), **auto review** (model reviews uncertain sensitive tools first), and **auto** (execute directly)
-  - User approval for sensitive built-in tools (today: `exec`, `file_edit`, `file_write`) in web UI, CLI, and Telegram flows
+  - User approval for sensitive built-in actions such as command execution and file modification in web UI, CLI, and Telegram flows
+  - Codex-style sandbox policy for command execution, file access, and built-in HTTP requests, with `read-only`, `workspace-write`, and `danger-full-access` modes
   - Tool results stored in history with detail views
-  - Built-in tools: `command line`, `web request`, `web search` (Tavily), `to-do`
+  - Built-in capabilities: command line, web requests, Tavily-powered web search, and task tracking
   - Supports coding-agent-like file read/write capabilities for text editing workflows
-  - **Subagent:** the main agent can delegate a self-contained task to an inner agent with **isolated context** (no parent chat history). Only **one nesting level** is allowed (the subagent cannot call `run_subagent` again). Inner tool calls are shown **nested under** the parent tool in the web UI and CLI; session history stores `parentToolCallId` so grouping survives a reload.
+  - **Subagent:** the main agent can delegate a self-contained task to an inner agent with **isolated context** (no parent chat history). Only **one nesting level** is allowed. Inner tool calls are shown **nested under** the parent tool in the web UI and CLI; session history stores the parent-child relationship so grouping survives a reload.
 - **Planning & reasoning controls**
   - Plan mode for “draft first, execute after approval” workflow
   - Plan lifecycle: generate, approve/reject, modify-and-regenerate, execute
@@ -160,6 +161,18 @@ make compose-down
 - `/plan` — toggle plan mode (`on` / `off`)
 - `/help` — help
 
+## Tool sandbox
+
+SlimeBot applies one sandbox policy across command execution, file tools, and built-in HTTP requests.
+
+- `read-only` allows file reads but blocks file writes.
+- `workspace-write` is the default. It allows reads and writes under the server working directory plus configured writable roots.
+- `danger-full-access` keeps the legacy unrestricted host behavior and should only be enabled intentionally.
+- Denied paths, when configured, take priority over writable roots.
+- Command execution runs through `/usr/bin/sandbox-exec` on macOS and `bubblewrap` (`bwrap`) on Linux. If the platform sandbox is unavailable, SlimeBot fails closed instead of silently running on the host. Windows OS-level sandboxing is not implemented yet.
+- Network access is controlled by the sandbox network setting. Built-in HTTP requests also support an allowed-domain list; sandboxed subprocesses currently support the network on/off switch.
+- Tool calls that request elevated sandbox permissions are treated as escalation requests. Approval applies to the current tool call only.
+
 ## Data layout (`~/.slimebot`)
 
 ```text
@@ -198,11 +211,9 @@ Variables read by SlimeBot components (defaults shown where applicable):
 - `CONTEXT_HISTORY_ROUNDS` — retained history-round setting (default `20`, clamped to `5`–`50`)
 - `DEFAULT_CONTEXT_SIZE` — default context size for new model configs (default `1000000`)
 - `FRONTEND_ORIGIN` — set to `http://localhost:7391` when using Vite; empty for same-origin production
-- `WEB_SEARCH_API_KEY` — Tavily API key for `web_search`
+- `WEB_SEARCH_API_KEY` — Tavily API key for web search
 - `JWT_SECRET` — **required in server mode**; server fails to start if unset (CLI headless mode can auto-generate one)
 - `JWT_EXPIRE` — JWT lifetime in minutes (default `21600` ≈ 15 days)
-- `approvalMode` (app setting) — `standard`, `auto_review`, or `auto`
-- `thinkingLevel` (app setting) — `off` / `low` / `medium` / `high`
 
 The file created on first boot follows the embedded template in [internal/runtime/env.template](internal/runtime/env.template). You can add the optional keys above manually if needed. Older `~/.slimebot/.env` files are copied to `config.cfg` on first boot for compatibility.
 
@@ -242,10 +253,10 @@ VITE_WS_URL=ws://localhost:6247
 **Done**
 
 - Sessions and WebSocket streaming (including errors, tool-call, subagent, and thinking events)
-- Agent tools and approvals (`exec`, `file_edit`, and `file_write` require confirmation in standard mode; optional auto-review and auto approval modes)
+- Agent tools, approvals, and sandbox enforcement for command execution, file access, and built-in HTTP requests
 - Plan mode with plan generation, approve/reject/modify flow, and execution after approval
 - Thinking level controls (`off` / `low` / `medium` / `high`) with streamed reasoning display
-- Subagent / nested agent (`run_subagent`), nested tool UI, and persisted parent linkage in tool-call history
+- Subagent / nested agent, nested tool UI, and persisted parent linkage in tool-call history
 - MCP and skills
 - SQLite-backed compact session summaries and context usage tracking
 - Telegram integration
