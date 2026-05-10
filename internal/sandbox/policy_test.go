@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -82,5 +83,36 @@ func TestPolicyNetworkAllowlist(t *testing.T) {
 	}
 	if err := policy.CheckNetworkURL("https://evil.example.test"); err == nil {
 		t.Fatal("non-allowlisted domain should be rejected")
+	}
+}
+
+func TestPolicyDangerFullAccessStillRejectsNetworkWhenDisabled(t *testing.T) {
+	policy, err := NewPolicy(Config{
+		Mode:    ModeDangerFullAccess,
+		CWD:     t.TempDir(),
+		Network: NetworkPolicy{Enabled: false},
+	})
+	if err != nil {
+		t.Fatalf("new policy: %v", err)
+	}
+
+	err = policy.CheckNetworkURL("https://example.com")
+	if err == nil || !strings.Contains(err.Error(), "network is disabled") {
+		t.Fatalf("expected disabled network rejection, got %v", err)
+	}
+}
+
+func TestPolicyDangerFullAccessAllowsNetworkWhenEnabled(t *testing.T) {
+	policy, err := NewPolicy(Config{
+		Mode:    ModeDangerFullAccess,
+		CWD:     t.TempDir(),
+		Network: NetworkPolicy{Enabled: true},
+	})
+	if err != nil {
+		t.Fatalf("new policy: %v", err)
+	}
+
+	if err := policy.CheckNetworkURL("https://example.com"); err != nil {
+		t.Fatalf("enabled network should be allowed: %v", err)
 	}
 }
