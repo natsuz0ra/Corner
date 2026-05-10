@@ -109,6 +109,19 @@ export function useSettingsSkills(options: {
     await refreshSkills()
   }
 
+  async function setSkillEnabled(id: string, enabled: boolean) {
+    const previous = skillsList.value
+    skillsList.value = skillsList.value.map((skill) => (skill.id === id ? { ...skill, enabled } : skill))
+    try {
+      await skillsAPI.setEnabled(id, enabled)
+      await refreshSkills()
+    } catch (err: unknown) {
+      skillsList.value = previous
+      const response = err as { response?: { data?: { error?: string } } }
+      toast.error(response.response?.data?.error || t('skillsToggleFailed'))
+    }
+  }
+
   return {
     openSkillsPicker,
     onSkillsInputChange,
@@ -117,5 +130,6 @@ export function useSettingsSkills(options: {
     onSkillsDragLeave,
     uploadSkills,
     deleteSkill,
+    setSkillEnabled,
   }
 }

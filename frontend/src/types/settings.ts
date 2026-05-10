@@ -37,6 +37,12 @@ export interface SkillItem {
   name: string
   relativePath: string
   description: string
+  source: string
+  sourceLabel: string
+  provider: string
+  readOnly: boolean
+  enabled: boolean
+  absolutePath?: string
   uploadedAt: string
   createdAt?: string
   updatedAt?: string

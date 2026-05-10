@@ -82,7 +82,9 @@ func New(cfg config.Config) (*App, error) {
 	}
 	core.WarmupInBackground(context.Background())
 
-	core.ChatService.SetRunContext(buildRunContext(false))
+	rc := buildRunContext(false)
+	core.ChatService.SetRunContext(rc)
+	configureSkillSources(core, rc.IsCLI, rc.WorkingDir)
 
 	return app, nil
 }
@@ -142,7 +144,9 @@ func NewHeadless(cfg config.Config) (*App, error) {
 	}
 	core.WarmupInBackground(context.Background())
 
-	core.ChatService.SetRunContext(buildRunContext(true))
+	rc := buildRunContext(true)
+	core.ChatService.SetRunContext(rc)
+	configureSkillSources(core, rc.IsCLI, rc.WorkingDir)
 
 	return app, nil
 }

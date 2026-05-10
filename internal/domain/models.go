@@ -155,6 +155,12 @@ type Skill struct {
 	Name         string    `json:"name"`
 	RelativePath string    `json:"relativePath"`
 	Description  string    `json:"description"`
+	Source       string    `json:"source"`
+	SourceLabel  string    `json:"sourceLabel"`
+	Provider     string    `json:"provider"`
+	ReadOnly     bool      `json:"readOnly"`
+	Enabled      bool      `json:"enabled"`
+	AbsolutePath string    `json:"absolutePath,omitempty"`
 	UploadedAt   time.Time `json:"uploadedAt"`
 	CreatedAt    time.Time `json:"createdAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
