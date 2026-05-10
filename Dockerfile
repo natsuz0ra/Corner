@@ -36,5 +36,5 @@ RUN chown -R slimebot:slimebot /app /home/slimebot
 ENV HOME=/home/slimebot
 USER slimebot
 
-EXPOSE 8080
+EXPOSE 6247
 ENTRYPOINT ["/app/slimebot"]

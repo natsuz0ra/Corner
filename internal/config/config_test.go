@@ -9,6 +9,7 @@ import (
 
 func TestLoadDefaultRuntimePaths(t *testing.T) {
 	t.Setenv("DB_PATH", "")
+	t.Setenv("SERVER_PORT", "")
 	t.Setenv("SKILLS_ROOT", "")
 	t.Setenv("CHAT_UPLOAD_ROOT", "")
 	t.Setenv("EMBEDDING_MODEL_PATH", "")
@@ -28,6 +29,9 @@ func TestLoadDefaultRuntimePaths(t *testing.T) {
 	}
 	if cfg.ChatUploadRoot != filepath.Join(home, "storage", "chat_uploads") {
 		t.Fatalf("unexpected CHAT_UPLOAD_ROOT default: %s", cfg.ChatUploadRoot)
+	}
+	if cfg.ServerPort != "6247" {
+		t.Fatalf("unexpected SERVER_PORT default: %s", cfg.ServerPort)
 	}
 	if cfg.ContextHistoryRounds != 20 {
 		t.Fatalf("unexpected CONTEXT_HISTORY_ROUNDS default: %d", cfg.ContextHistoryRounds)

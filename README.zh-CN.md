@@ -75,7 +75,7 @@
 ## 架构与技术栈
 
 - **生产**：Go 进程同时提供 REST/WebSocket，并通过 `go:embed` 嵌入 `web/dist` 静态资源，单一可执行文件交付。
-- **开发**：`npm run dev` 同时启动 Go 与 Vite；Vite 将 `/api`、`/ws` 代理到 `8080`。
+- **开发**：`npm run dev` 同时启动 Go 与 Vite；Vite 将 `/api`、`/ws` 代理到配置的后端端口（默认 `6247`）。
 - **数据**：默认 SQLite，路径 `~/.slimebot/storage/data.db`，会话压缩摘要也持久化在其中。
 - **记忆**：当前为会话内上下文压缩记忆。系统在需要时生成隐藏 `<context_summary>`，并与最新消息一起注入模型上下文。
 
@@ -83,7 +83,7 @@
 
 ## 如何启动
 
-默认端口：后端 **8080**，Vite **5173**。
+默认端口：后端 **6247**，Vite **7391**。
 
 在仓库根目录：
 
@@ -191,15 +191,16 @@ make compose-down
 
 ## 配置文件（`~/.slimebot/.env`）
 
-后端会读取下列变量（括号内为默认值或说明）：
+SlimeBot 各组件会读取下列变量（括号内为默认值或说明）：
 
-- `SERVER_PORT`：服务端口，默认 `8080`
+- `SERVER_PORT`：服务端口，默认 `6247`
+- `FRONTEND_PORT`：Vite 开发服务端口，默认 `7391`
 - `DB_PATH`：SQLite 文件路径，默认 `~/.slimebot/storage/data.db`
 - `SKILLS_ROOT`：Skills 根目录，默认 `~/.slimebot/skills`
 - `CHAT_UPLOAD_ROOT`：聊天附件目录，默认 `~/.slimebot/storage/chat_uploads`
 - `CONTEXT_HISTORY_ROUNDS`：历史轮数配置保留项，默认 `20`，内部限制为 `5` 到 `50`
 - `DEFAULT_CONTEXT_SIZE`：新建模型配置的默认上下文大小，默认 `1000000`
-- `FRONTEND_ORIGIN`：与 Vite 联调时设为 `http://localhost:5173`；生产同源可留空
+- `FRONTEND_ORIGIN`：与 Vite 联调时设为 `http://localhost:7391`；生产同源可留空
 - `WEB_SEARCH_API_KEY`：Tavily API Key，供 `web_search` 使用
 - `JWT_SECRET`：**服务端模式必填**，未配置将启动失败（CLI 无头模式可自动生成）
 - `JWT_EXPIRE`：JWT 过期时间（单位：分钟，默认 `21600` 即约 15 天）
@@ -211,7 +212,8 @@ make compose-down
 示例：
 
 ```env
-SERVER_PORT=8080
+SERVER_PORT=6247
+FRONTEND_PORT=7391
 DB_PATH=~/.slimebot/storage/data.db
 SKILLS_ROOT=~/.slimebot/skills
 CHAT_UPLOAD_ROOT=~/.slimebot/storage/chat_uploads
@@ -222,19 +224,20 @@ JWT_EXPIRE=21600
 # CONTEXT_HISTORY_ROUNDS=20
 # DEFAULT_CONTEXT_SIZE=1000000
 
-# FRONTEND_ORIGIN=http://localhost:5173
+# FRONTEND_ORIGIN=http://localhost:7391
 ```
 
 ### 前端配置：`frontend/.env`
 
-- `VITE_API_BASE_URL`：后端 HTTP 地址（例如 `http://localhost:8080`）
-- `VITE_WS_URL`：后端 WebSocket 地址（例如 `ws://localhost:8080`）
+- `VITE_API_BASE_URL`：后端 HTTP 地址（例如 `http://localhost:6247`）
+- `VITE_WS_URL`：后端 WebSocket 地址（例如 `ws://localhost:6247`）
+- `FRONTEND_PORT`：Vite 开发服务端口；从进程环境变量或 `~/.slimebot/.env` 读取
 
 示例：
 
 ```env
-VITE_API_BASE_URL=http://localhost:8080
-VITE_WS_URL=ws://localhost:8080
+VITE_API_BASE_URL=http://localhost:6247
+VITE_WS_URL=ws://localhost:6247
 ```
 
 ## 功能状态与待办
