@@ -22,8 +22,10 @@ import (
 )
 
 const (
-	defaultTimeoutMs = constants.ExecDefaultTimeoutMs
-	maxTimeoutMs     = constants.ExecMaxTimeoutMs
+	defaultTimeoutMs                  = constants.ExecDefaultTimeoutMs
+	maxTimeoutMs                      = constants.ExecMaxTimeoutMs
+	execSandboxPermissionsDefault     = "default"
+	execSandboxPermissionsReqApproval = "required_approval"
 )
 
 var execLookPath = exec.LookPath
@@ -33,11 +35,12 @@ type execTool struct{}
 
 // execRunConfig is the parsed configuration for exec__run.
 type execRunConfig struct {
-	command          string
-	shell            string
-	timeoutMs        int
-	workingDirectory string
-	description      string
+	command            string
+	shell              string
+	timeoutMs          int
+	workingDirectory   string
+	description        string
+	sandboxPermissions string
 }
 
 // execInvocation is a single os/exec invocation.
@@ -49,14 +52,15 @@ type execInvocation struct {
 }
 
 type execOutputPayload struct {
-	Stdout           string `json:"stdout"`
-	Stderr           string `json:"stderr"`
-	ExitCode         int    `json:"exit_code"`
-	TimedOut         bool   `json:"timed_out"`
-	Truncated        bool   `json:"truncated"`
-	Shell            string `json:"shell"`
-	WorkingDirectory string `json:"working_directory"`
-	DurationMs       int64  `json:"duration_ms"`
+	Stdout             string `json:"stdout"`
+	Stderr             string `json:"stderr"`
+	ExitCode           int    `json:"exit_code"`
+	TimedOut           bool   `json:"timed_out"`
+	Truncated          bool   `json:"truncated"`
+	Shell              string `json:"shell"`
+	WorkingDirectory   string `json:"working_directory"`
+	DurationMs         int64  `json:"duration_ms"`
+	SandboxPermissions string `json:"sandbox_permissions"`
 }
 
 func init() {
@@ -66,20 +70,22 @@ func init() {
 func (e *execTool) Name() string { return "exec" }
 
 func (e *execTool) Description() string {
-	return "Execute one terminal command using shell auto-routing (Windows=PowerShell, Linux/macOS=bash/sh). Use for host command execution only. Prefer specialized tools for file reads/writes/search. Avoid interactive commands and dangerous destructive operations unless explicitly requested and approved."
+	return "Execute one terminal command using shell auto-routing (Windows=PowerShell, Linux/macOS=bash/sh). Use for host command execution only, including from subagents under the parent approval flow. Prefer specialized tools for file reads/writes/search. Avoid interactive commands and dangerous destructive operations unless explicitly requested and approved."
 }
 
 func (e *execTool) Commands() []Command {
 	return []Command{
 		{
 			Name:        "run",
-			Description: "Run exactly one command and return structured JSON output: stdout/stderr/exit_code/timed_out/truncated/shell/working_directory/duration_ms. Keep command concise, quote paths with spaces, avoid unnecessary sleep/poll loops, and use safer git operations by default.",
+			Description: "Run exactly one command and return structured JSON output: stdout/stderr/exit_code/timed_out/truncated/shell/working_directory/duration_ms/sandbox_permissions. Subagent calls inherit the parent approval mode and must include a bounded description or reason. Keep command concise, quote paths with spaces, avoid unnecessary sleep/poll loops, and use safer git operations by default.",
 			Params: []CommandParam{
 				{Name: "command", Required: true, Description: "Single command string to execute.", Example: "go test ./..."},
 				{Name: "timeout_ms", Required: false, Description: "Optional timeout in milliseconds. Default 30000, max 600000.", Example: "120000"},
 				{Name: "shell", Required: false, Description: "Shell selection: auto|bash|sh|powershell|cmd. Default auto.", Example: "auto"},
 				{Name: "working_directory", Required: false, Description: "Optional working directory. Must exist and be a directory.", Example: "g:\\gitCode\\SlimeBot"},
-				{Name: "description", Required: true, Description: "Required short human-readable intent for approval and audit.", Example: "Run unit tests for tools package"},
+				{Name: "description", Required: false, Description: "Short human-readable intent for approval and audit. Required unless reason is provided.", Example: "Run unit tests for tools package"},
+				{Name: "reason", Required: false, Description: "Alternative short audit reason when description is not provided.", Example: "Verify the subagent's code change"},
+				{Name: "sandbox_permissions", Required: false, Description: "Permission intent for approval context: default or required_approval. This does not bypass approval; subagents inherit the parent approval flow.", Example: "required_approval", Schema: map[string]any{"type": "string", "enum": []string{execSandboxPermissionsDefault, execSandboxPermissionsReqApproval}}},
 			},
 		},
 	}
@@ -130,14 +136,15 @@ func (e *execTool) run(ctx context.Context, params map[string]any) (*ExecuteResu
 	stdoutTrimmed, stdoutTruncated := trimOutput(stdoutBuf.Bytes())
 	stderrTrimmed, stderrTruncated := trimOutput(stderrBuf.Bytes())
 	payload := execOutputPayload{
-		Stdout:           decodeCommandOutput(runtime.GOOS, stdoutTrimmed),
-		Stderr:           decodeCommandOutput(runtime.GOOS, stderrTrimmed),
-		ExitCode:         0,
-		TimedOut:         false,
-		Truncated:        stdoutTruncated || stderrTruncated,
-		Shell:            invocation.shell,
-		WorkingDirectory: invocation.workingDirectory,
-		DurationMs:       durationMs,
+		Stdout:             decodeCommandOutput(runtime.GOOS, stdoutTrimmed),
+		Stderr:             decodeCommandOutput(runtime.GOOS, stderrTrimmed),
+		ExitCode:           0,
+		TimedOut:           false,
+		Truncated:          stdoutTruncated || stderrTruncated,
+		Shell:              invocation.shell,
+		WorkingDirectory:   invocation.workingDirectory,
+		DurationMs:         durationMs,
+		SandboxPermissions: cfg.sandboxPermissions,
 	}
 
 	if err != nil {
@@ -174,9 +181,19 @@ func parseExecRunConfig(params map[string]any) (execRunConfig, error) {
 	cfg := execRunConfig{}
 	cfg.command = paramStringTrim(params, "command")
 	cfg.description = paramStringTrim(params, "description")
+	if cfg.description == "" {
+		cfg.description = paramStringTrim(params, "reason")
+	}
 	cfg.shell = normalizeShell(paramString(params, "shell"))
 	if cfg.shell == "" {
 		cfg.shell = "auto"
+	}
+	cfg.sandboxPermissions = normalizeSandboxPermissions(paramString(params, "sandbox_permissions"))
+	if cfg.sandboxPermissions == "" {
+		cfg.sandboxPermissions = execSandboxPermissionsDefault
+	}
+	if cfg.sandboxPermissions != execSandboxPermissionsDefault && cfg.sandboxPermissions != execSandboxPermissionsReqApproval {
+		return execRunConfig{}, fmt.Errorf("invalid sandbox_permissions value: %s (allowed: default|required_approval)", cfg.sandboxPermissions)
 	}
 	cfg.timeoutMs = resolveTimeoutMs(paramString(params, "timeout_ms"))
 
@@ -189,9 +206,13 @@ func parseExecRunConfig(params map[string]any) (execRunConfig, error) {
 		return execRunConfig{}, fmt.Errorf("command is required")
 	}
 	if cfg.description == "" {
-		return execRunConfig{}, fmt.Errorf("description is required")
+		return execRunConfig{}, fmt.Errorf("description or reason is required")
 	}
 	return cfg, nil
+}
+
+func normalizeSandboxPermissions(raw string) string {
+	return strings.ToLower(strings.TrimSpace(raw))
 }
 
 func resolveTimeoutMs(raw string) int {

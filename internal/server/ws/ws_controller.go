@@ -657,6 +657,12 @@ func (w *Controller) buildCallbacks(
 				"reviewReason": event.ReviewReason,
 				"reviewedAt":   time.Now().Format(time.RFC3339Nano),
 			}
+			if event.ParentToolCallID != "" {
+				payload["parentToolCallId"] = event.ParentToolCallID
+			}
+			if event.SubagentRunID != "" {
+				payload["subagentRunId"] = event.SubagentRunID
+			}
 			if !enqueue(payload) {
 				return context.Canceled
 			}
@@ -675,6 +681,12 @@ func (w *Controller) buildCallbacks(
 				"reviewRisk":       req.ReviewRisk,
 				"reviewReason":     req.ReviewReason,
 				"requiredAt":       time.Now().Format(time.RFC3339Nano),
+			}
+			if req.ParentToolCallID != "" {
+				payload["parentToolCallId"] = req.ParentToolCallID
+			}
+			if req.SubagentRunID != "" {
+				payload["subagentRunId"] = req.SubagentRunID
 			}
 			if !enqueue(payload) {
 				return context.Canceled
