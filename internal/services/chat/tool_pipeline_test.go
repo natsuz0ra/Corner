@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -157,6 +158,121 @@ func TestRequiresToolApproval_FileWritesInStandardMode(t *testing.T) {
 	}
 	if requiresToolApproval("file_write", false, constants.ApprovalModeAuto) {
 		t.Fatal("file_write should not require approval in auto mode")
+	}
+}
+
+func TestDetermineToolApprovalPolicy_AutoReviewForSensitiveBuiltins(t *testing.T) {
+	cases := []struct {
+		name         string
+		toolName     string
+		isMCP        bool
+		approvalMode string
+		want         toolApprovalPolicy
+	}{
+		{name: "exec standard", toolName: constants.ExecToolName, approvalMode: constants.ApprovalModeStandard, want: toolApprovalPolicyManual},
+		{name: "file edit auto review", toolName: "file_edit", approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyAutoReview},
+		{name: "file write auto review", toolName: "file_write", approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyAutoReview},
+		{name: "file read auto review", toolName: "file_read", approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyNone},
+		{name: "mcp auto review unchanged", toolName: "github", isMCP: true, approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyNone},
+		{name: "exec auto execute", toolName: constants.ExecToolName, approvalMode: constants.ApprovalModeAuto, want: toolApprovalPolicyNone},
+		{name: "ask questions always manual", toolName: constants.AskQuestionsTool, approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyManual},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := determineToolApprovalPolicy(tc.toolName, tc.isMCP, tc.approvalMode)
+			if got != tc.want {
+				t.Fatalf("policy = %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestWaitApprovalIfNeeded_AutoReviewApproveSkipsUserApproval(t *testing.T) {
+	tc := llmsvc.ToolCallInfo{ID: "call-review", Name: "exec__run", Arguments: `{"command":"date"}`}
+	invocation := resolvedToolInvocation{
+		toolName:         constants.ExecToolName,
+		command:          "run",
+		requiresApproval: true,
+		approvalPolicy:   toolApprovalPolicyAutoReview,
+	}
+	var waited bool
+	var statuses []string
+	approved, rejectionMessage, _ := waitApprovalIfNeeded(context.Background(), AgentCallbacks{
+		WaitApproval: func(context.Context, string) (*ApprovalResponse, error) {
+			waited = true
+			return &ApprovalResponse{ToolCallID: tc.ID, Approved: true}, nil
+		},
+		OnToolApprovalReview: func(event ApprovalReviewEvent) error {
+			statuses = append(statuses, event.ReviewStatus)
+			return nil
+		},
+	}, tc, invocation, map[string]any{"command": "date"}, "", func(ctx context.Context, req ApprovalReviewRequest) (*ApprovalReviewResult, error) {
+		return &ApprovalReviewResult{Decision: ApprovalReviewDecisionApprove, Risk: "low", Reason: "routine read-only command"}, nil
+	})
+
+	if !approved || rejectionMessage != "" {
+		t.Fatalf("expected auto-review approval, approved=%v rejection=%q", approved, rejectionMessage)
+	}
+	if waited {
+		t.Fatal("auto-review approve should not wait for user approval")
+	}
+	if strings.Join(statuses, ",") != "reviewing,approved" {
+		t.Fatalf("unexpected review statuses: %v", statuses)
+	}
+}
+
+func TestWaitApprovalIfNeeded_AutoReviewAskUserFallsBackToManualApproval(t *testing.T) {
+	tc := llmsvc.ToolCallInfo{ID: "call-review", Name: "exec__run", Arguments: `{"command":"rm -rf /tmp/example"}`}
+	invocation := resolvedToolInvocation{
+		toolName:         constants.ExecToolName,
+		command:          "run",
+		requiresApproval: true,
+		approvalPolicy:   toolApprovalPolicyAutoReview,
+	}
+	var required bool
+	var waited bool
+	var statuses []string
+	approved, rejectionMessage, _ := waitApprovalIfNeeded(context.Background(), AgentCallbacks{
+		OnToolApprovalRequired: func(req ApprovalRequest) error {
+			required = req.RequiresApproval
+			return nil
+		},
+		WaitApproval: func(context.Context, string) (*ApprovalResponse, error) {
+			waited = true
+			return &ApprovalResponse{ToolCallID: tc.ID, Approved: true}, nil
+		},
+		OnToolApprovalReview: func(event ApprovalReviewEvent) error {
+			statuses = append(statuses, event.ReviewStatus)
+			return nil
+		},
+	}, tc, invocation, map[string]any{"command": "rm -rf /tmp/example"}, "", func(ctx context.Context, req ApprovalReviewRequest) (*ApprovalReviewResult, error) {
+		return &ApprovalReviewResult{Decision: ApprovalReviewDecisionAskUser, Risk: "high", Reason: "destructive command"}, nil
+	})
+
+	if !approved || rejectionMessage != "" {
+		t.Fatalf("expected manual approval after review fallback, approved=%v rejection=%q", approved, rejectionMessage)
+	}
+	if !required || !waited {
+		t.Fatalf("expected fallback approval prompt and wait, required=%v waited=%v", required, waited)
+	}
+	if strings.Join(statuses, ",") != "reviewing,needs_user" {
+		t.Fatalf("unexpected review statuses: %v", statuses)
+	}
+}
+
+func TestNormalizeApprovalReviewResult_ForcesUnclearOrHighRiskToAskUser(t *testing.T) {
+	for _, risk := range []string{"high", "critical", "unknown"} {
+		t.Run(risk, func(t *testing.T) {
+			result := normalizeApprovalReviewResult(&ApprovalReviewResult{
+				Decision: ApprovalReviewDecisionApprove,
+				Risk:     risk,
+				Reason:   "model tried to approve risky action",
+			})
+			if result.Decision != ApprovalReviewDecisionAskUser {
+				t.Fatalf("decision = %s, want %s", result.Decision, ApprovalReviewDecisionAskUser)
+			}
+		})
 	}
 }
 

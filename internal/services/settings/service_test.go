@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slimebot/internal/constants"
 	"slimebot/internal/runtime"
 	"testing"
 )
@@ -50,7 +51,11 @@ func TestSettingsService_UpdatePreservesOtherSettingsStoreWrites(t *testing.T) {
 	store := &memorySettingsStore{values: map[string]string{}}
 	svc := NewSettingsService(store)
 
-	if err := svc.Update(context.Background(), UpdateSettingsInput{Language: "en-US", DefaultModel: "gpt-4.1", MessagePlatformDefaultModel: "gpt-4.1-mini"}); err != nil {
+	if err := svc.Update(context.Background(), UpdateSettingsInput{
+		Language:                    stringPtr("en-US"),
+		DefaultModel:                stringPtr("gpt-4.1"),
+		MessagePlatformDefaultModel: stringPtr("gpt-4.1-mini"),
+	}); err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
 
@@ -71,4 +76,90 @@ func TestSettingsService_GetReturnsEnvErrors(t *testing.T) {
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected os.ErrNotExist, got %v", err)
 	}
+}
+
+func TestSettingsService_UpdateValidatesApprovalMode(t *testing.T) {
+	store := &memorySettingsStore{values: map[string]string{}}
+	svc := NewSettingsService(store)
+
+	if err := svc.Update(context.Background(), UpdateSettingsInput{ApprovalMode: stringPtr(constants.ApprovalModeAutoReview)}); err != nil {
+		t.Fatalf("Update auto_review failed: %v", err)
+	}
+	if got := store.values[constants.SettingApprovalMode]; got != constants.ApprovalModeAutoReview {
+		t.Fatalf("approvalMode = %q, want %q", got, constants.ApprovalModeAutoReview)
+	}
+
+	err := svc.Update(context.Background(), UpdateSettingsInput{ApprovalMode: stringPtr("danger")})
+	if err == nil {
+		t.Fatal("expected invalid approval mode error")
+	}
+	if got := store.values[constants.SettingApprovalMode]; got != constants.ApprovalModeAutoReview {
+		t.Fatalf("invalid mode should not overwrite existing value, got %q", got)
+	}
+}
+
+func TestSettingsService_GetIncludesMessagePlatformRuntimeDefaults(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	envPath := filepath.Join(runtime.SlimeBotHomeDir(), ".env")
+	if err := os.MkdirAll(filepath.Dir(envPath), 0o755); err != nil {
+		t.Fatalf("mkdir env dir failed: %v", err)
+	}
+	if err := os.WriteFile(envPath, nil, 0o644); err != nil {
+		t.Fatalf("write env failed: %v", err)
+	}
+
+	store := &memorySettingsStore{values: map[string]string{}}
+	svc := NewSettingsService(store)
+	got, err := svc.Get(context.Background())
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+
+	if got.MessagePlatformThinkingLevel != "off" {
+		t.Fatalf("message platform thinking level = %q, want off", got.MessagePlatformThinkingLevel)
+	}
+	if got.MessagePlatformApprovalMode != constants.ApprovalModeStandard {
+		t.Fatalf("message platform approval mode = %q, want %q", got.MessagePlatformApprovalMode, constants.ApprovalModeStandard)
+	}
+}
+
+func TestSettingsService_UpdateMessagePlatformRuntimeSettings(t *testing.T) {
+	store := &memorySettingsStore{values: map[string]string{}}
+	svc := NewSettingsService(store)
+
+	err := svc.Update(context.Background(), UpdateSettingsInput{
+		MessagePlatformDefaultModel:  stringPtr(""),
+		MessagePlatformThinkingLevel: stringPtr("high"),
+		MessagePlatformApprovalMode:  stringPtr(constants.ApprovalModeAutoReview),
+	})
+	if err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	if got := store.values[constants.SettingMessagePlatformDefaultModel]; got != "" {
+		t.Fatalf("message platform default model = %q, want empty", got)
+	}
+	if got := store.values[constants.SettingMessagePlatformThinkingLevel]; got != "high" {
+		t.Fatalf("message platform thinking level = %q, want high", got)
+	}
+	if got := store.values[constants.SettingMessagePlatformApprovalMode]; got != constants.ApprovalModeAutoReview {
+		t.Fatalf("message platform approval mode = %q, want %q", got, constants.ApprovalModeAutoReview)
+	}
+}
+
+func TestSettingsService_UpdateValidatesMessagePlatformApprovalMode(t *testing.T) {
+	store := &memorySettingsStore{values: map[string]string{}}
+	svc := NewSettingsService(store)
+
+	err := svc.Update(context.Background(), UpdateSettingsInput{MessagePlatformApprovalMode: stringPtr("danger")})
+	if err == nil {
+		t.Fatal("expected invalid message platform approval mode error")
+	}
+}
+
+func stringPtr(value string) *string {
+	return &value
 }

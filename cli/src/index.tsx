@@ -30,7 +30,7 @@ function parseArgs(): { apiUrl: string; cliToken: string } {
   });
   parser.add_argument("--api-url", {
     help: "Go headless server URL (default: from SLIMEBOT_API_URL env)",
-    default: process.env.SLIMEBOT_API_URL || "http://127.0.0.1:8080",
+    default: process.env.SLIMEBOT_API_URL || "http://127.0.0.1:6247",
   });
   parser.add_argument("--cli-token", {
     help: "CLI auth token (default: from SLIMEBOT_CLI_TOKEN env)",

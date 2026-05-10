@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { Key } from "ink";
 import { getChatFooterHint, handleChatShortcut } from "./app";
@@ -64,6 +65,7 @@ test("mapHistoryMessages inserts tool calls after assistant messages in timeline
       status: "completed",
       output: "result",
       error: undefined,
+      metadata: undefined,
     },
     { kind: "assistant", content: "running tool" },
   ]);
@@ -83,11 +85,24 @@ test("getChatFooterHint returns toggle hint in auto mode", () => {
   );
 });
 
+test("getChatFooterHint returns toggle hint in auto review mode", () => {
+  assert.equal(
+    getChatFooterHint(false, "auto_review"),
+    "/ for commands | Shift+Tab to toggle | Esc to cancel",
+  );
+});
+
 test("getChatFooterHint returns default hint in standard mode", () => {
   assert.equal(
     getChatFooterHint(false, "standard"),
     "/ for commands | Shift+Tab plan mode | Esc to cancel",
   );
+});
+
+test("app footer operation hints use the shared slate hint color", () => {
+  const source = readFileSync(new URL("./app.tsx", import.meta.url), "utf8");
+
+  assert.doesNotMatch(source, /color="gray" dimColor/);
 });
 
 test("mapHistoryMessages preserves parentToolCallId for nested tool calls", () => {

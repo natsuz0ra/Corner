@@ -3,16 +3,23 @@ import { useI18n } from 'vue-i18n'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import type { SelectOption } from '@/components/ui/AppSelect.vue'
+import type { ApprovalMode, ThinkingLevel } from '@/types/settings'
 
 defineProps<{
   messagePlatformDefaultModel: string
   messagePlatformModelOptions: SelectOption[]
+  messagePlatformThinkingLevel: ThinkingLevel
+  messagePlatformThinkingOptions: SelectOption[]
+  messagePlatformApprovalMode: ApprovalMode
+  messagePlatformApprovalOptions: SelectOption[]
   llmRowsEmpty: boolean
   telegramConfig?: { id: string; platform: string; displayName: string; authConfigJson: string; isEnabled: boolean }
 }>()
 
 const emit = defineEmits<{
   'update:messagePlatformDefaultModel': [value: string]
+  'update:messagePlatformThinkingLevel': [value: ThinkingLevel]
+  'update:messagePlatformApprovalMode': [value: ApprovalMode]
   toggleTelegram: []
   openBind: []
 }>()
@@ -30,6 +37,22 @@ const { t } = useI18n()
         :options="messagePlatformModelOptions"
         :disabled="llmRowsEmpty"
         @update:model-value="emit('update:messagePlatformDefaultModel', $event)"
+      />
+    </div>
+    <div class="settings-card flex items-center justify-between px-4 py-3.5 rounded-xl mb-2">
+      <span class="text-sm settings-field-label">{{ t('messagePlatformThinkingLevel') }}</span>
+      <AppSelect
+        :model-value="messagePlatformThinkingLevel"
+        :options="messagePlatformThinkingOptions"
+        @update:model-value="emit('update:messagePlatformThinkingLevel', $event as ThinkingLevel)"
+      />
+    </div>
+    <div class="settings-card flex items-center justify-between px-4 py-3.5 rounded-xl mb-2">
+      <span class="text-sm settings-field-label">{{ t('messagePlatformApprovalMode') }}</span>
+      <AppSelect
+        :model-value="messagePlatformApprovalMode"
+        :options="messagePlatformApprovalOptions"
+        @update:model-value="emit('update:messagePlatformApprovalMode', $event as ApprovalMode)"
       />
     </div>
     <div class="settings-card flex items-center gap-3 px-4 py-3.5 rounded-xl">

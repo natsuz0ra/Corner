@@ -2,7 +2,7 @@
 
 IMAGE ?= slimebot:latest
 SLIMEBOT_HOME ?= $(HOME)/.slimebot
-PORT ?= 8080
+PORT ?= 6247
 SHELL := /bin/sh
 
 deps:
@@ -31,7 +31,7 @@ docker-build:
 
 docker-run:
 	docker run --rm \
-		-p $(PORT):8080 \
+		-p $(PORT):6247 \
 		-v "$(SLIMEBOT_HOME):/home/slimebot/.slimebot" \
 		$(IMAGE)
 

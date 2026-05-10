@@ -13,7 +13,7 @@ import { Banner } from "./components/Banner.js";
 import { CommandHints } from "./components/CommandHints.js";
 import { MCPEditor } from "./components/MCPEditor.js";
 import { MCPTemplatePicker } from "./components/MCPTemplatePicker.js";
-import { MenuView } from "./components/MenuView.js";
+import { CLI_HINT_COLOR, MenuView } from "./components/MenuView.js";
 import { ModelEditor } from "./components/ModelEditor.js";
 import { TextInput } from "./components/TextInput.js";
 import { Timeline } from "./components/Timeline.js";
@@ -189,10 +189,10 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     try {
       const settings = await apiRef.current.getSettings();
       const current = settings.approvalMode || "standard";
-      const next = current === "auto" ? "standard" : "auto";
+      const next = current === "standard" ? "auto_review" : current === "auto_review" ? "auto" : "standard";
       await apiRef.current.updateSettings({ approvalMode: next });
       dispatch({ type: "SET_APPROVAL_MODE", mode: next } as AppAction);
-      const label = next === "auto" ? "Auto Execute" : "Standard";
+      const label = next === "auto" ? "Auto Execute" : next === "auto_review" ? "Auto Review" : "Standard";
       appendSystem(`Approval mode switched to: ${label}`);
     } catch (error) {
       appendSystem(`Failed to switch approval mode: ${(error as Error).message}`);
@@ -347,7 +347,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       { title: "/new", desc: "Create a new chat (lazy session creation)", data: null },
       { title: "/session", desc: "Browse, switch, or delete sessions", data: null },
       { title: "/model", desc: "Switch default model", data: null },
-      { title: "/approval", desc: "Toggle approval mode (standard/auto)", data: null },
+      { title: "/approval", desc: "Toggle approval mode (standard/auto review/auto)", data: null },
       { title: "/effort", desc: "Toggle thinking level (off/low/medium/high)", data: null },
       { title: "/skills", desc: "Browse and delete installed skills", data: null },
       { title: "/mcp", desc: "Manage MCP configs", data: null },
@@ -994,7 +994,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       <Text color="white">{border}</Text>
 
       {state.view === "chat" && state.streaming && (
-        <Text color="gray" dimColor>
+        <Text color={CLI_HINT_COLOR}>
           Generating response | Esc to cancel
         </Text>
       )}
@@ -1002,7 +1002,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       {hasCommandHints && (
         <Box flexDirection="column">
           <CommandHints input={state.inputValue} selectedIndex={selectedCommandHintIndex} />
-          <Text color="gray" dimColor>
+          <Text color={CLI_HINT_COLOR}>
             ↑↓ to select | Enter/Tab to fill | Esc to clear
           </Text>
         </Box>
@@ -1010,42 +1010,43 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
       {state.view === "chat" && !state.streaming && !hasCommandHints && (
         <Box justifyContent="space-between">
-          <Text color="#64748b">
+          <Text color={CLI_HINT_COLOR}>
             {getChatFooterHint(state.planMode, state.approvalMode)}
           </Text>
           <Box>
             {state.planMode && <Text color="#22d3ee" bold>◆ Plan </Text>}
+            {state.approvalMode === "auto_review" && <Text color="#eab308" bold>◆ Auto Review </Text>}
             {state.approvalMode === "auto" && <Text color="#eab308" bold>◆ Auto </Text>}
           </Box>
         </Box>
       )}
 
       {state.view === "approval" && (
-        <Text color="gray" dimColor>
+        <Text color={CLI_HINT_COLOR}>
           ↑/↓ switch | Y approve | N reject | A approve all | R reject all
         </Text>
       )}
 
       {state.view === "plan-confirm" && (
-        <Text color="gray" dimColor>
+        <Text color={CLI_HINT_COLOR}>
           Arrow keys to navigate | Enter to select | Esc to cancel
         </Text>
       )}
 
       {state.view === "mcp-editor" && (
-        <Text color="gray" dimColor>
+        <Text color={CLI_HINT_COLOR}>
           Tab to switch field | Ctrl+S to save | Ctrl+E to toggle | Esc to go back
         </Text>
       )}
 
       {state.view === "mcp-template" && (
-        <Text color="gray" dimColor>
+        <Text color={CLI_HINT_COLOR}>
           Arrow keys to navigate | Enter to select | Esc to cancel
         </Text>
       )}
 
       {state.view === "model-editor" && (
-        <Text color="gray" dimColor>
+        <Text color={CLI_HINT_COLOR}>
           Tab to switch field | Ctrl+S to save | Esc to go back{state.modelEditorFocusIndex === 1 ? " | Enter to change provider" : ""}
         </Text>
       )}
