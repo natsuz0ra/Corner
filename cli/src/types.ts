@@ -139,6 +139,8 @@ export interface ToolCallReviewData {
   reviewStatus: string;
   reviewRisk?: string;
   reviewReason?: string;
+  parentToolCallId?: string;
+  subagentRunId?: string;
 }
 
 export interface ToolApprovalRequiredData extends ToolCallReviewData {

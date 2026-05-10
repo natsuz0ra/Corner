@@ -82,7 +82,7 @@ func TestBuildToolDefs_ExecRunSchema(t *testing.T) {
 		t.Fatalf("unexpected exec__run properties type: %#v", execDef.Parameters["properties"])
 	}
 
-	expected := []string{"command", "timeout_ms", "shell", "working_directory", "description"}
+	expected := []string{"command", "timeout_ms", "shell", "working_directory", "description", "reason", "sandbox_permissions"}
 	for _, key := range expected {
 		if _, found := params[key]; !found {
 			t.Fatalf("expected exec__run param %q in tool schema", key)
@@ -93,8 +93,17 @@ func TestBuildToolDefs_ExecRunSchema(t *testing.T) {
 	if !ok {
 		t.Fatalf("unexpected required type: %#v", execDef.Parameters["required"])
 	}
-	if len(required) != 2 || required[0] != "command" || required[1] != "description" {
-		t.Fatalf("expected required=[command description], got %#v", required)
+	if len(required) != 1 || required[0] != "command" {
+		t.Fatalf("expected required=[command], got %#v", required)
+	}
+
+	sandboxParam, ok := params["sandbox_permissions"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected sandbox_permissions schema: %#v", params["sandbox_permissions"])
+	}
+	enumValues, ok := sandboxParam["enum"].([]string)
+	if !ok || !containsString(enumValues, "default") || !containsString(enumValues, "required_approval") {
+		t.Fatalf("sandbox_permissions should expose controlled enum, got %#v", sandboxParam["enum"])
 	}
 }
 
@@ -273,6 +282,36 @@ func TestNormalizeApprovalReviewResult_ForcesUnclearOrHighRiskToAskUser(t *testi
 				t.Fatalf("decision = %s, want %s", result.Decision, ApprovalReviewDecisionAskUser)
 			}
 		})
+	}
+}
+
+func TestBuildApprovalReviewPromptIncludesExecAuditContext(t *testing.T) {
+	prompt := buildApprovalReviewPrompt([]llmsvc.ChatMessage{
+		{Role: "user", Content: "Please inspect the Go version."},
+	}, ApprovalReviewRequest{
+		ToolCallID: "call-exec",
+		ToolName:   constants.ExecToolName,
+		Command:    "run",
+		Params: map[string]any{
+			"command":             "go version",
+			"description":         "Check Go version for a delegated task",
+			"reason":              "Subagent needs to verify toolchain availability",
+			"working_directory":   "/tmp/example",
+			"sandbox_permissions": "required_approval",
+		},
+	})
+
+	for _, want := range []string{
+		`"command": "run"`,
+		`"command": "go version"`,
+		`"description": "Check Go version for a delegated task"`,
+		`"reason": "Subagent needs to verify toolchain availability"`,
+		`"working_directory": "/tmp/example"`,
+		`"sandbox_permissions": "required_approval"`,
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("approval review prompt missing %q:\n%s", want, prompt)
+		}
 	}
 }
 

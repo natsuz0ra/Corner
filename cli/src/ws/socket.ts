@@ -278,6 +278,8 @@ export function dispatchWSMessage(raw: string, handlers: WSHandlers | null): voi
         reviewStatus: msg.reviewStatus || "",
         reviewRisk: msg.reviewRisk || "",
         reviewReason: msg.reviewReason || "",
+        parentToolCallId: msg.parentToolCallId,
+        subagentRunId: msg.subagentRunId,
       },
       msg.sessionId,
     );
@@ -294,6 +296,8 @@ export function dispatchWSMessage(raw: string, handlers: WSHandlers | null): voi
         reviewStatus: msg.reviewStatus || "",
         reviewRisk: msg.reviewRisk || "",
         reviewReason: msg.reviewReason || "",
+        parentToolCallId: msg.parentToolCallId,
+        subagentRunId: msg.subagentRunId,
       },
       msg.sessionId,
     );
