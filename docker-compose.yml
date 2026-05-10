@@ -2,6 +2,6 @@ services:
   slimebot:
     build: .
     ports:
-      - "8080:8080"
+      - "6247:6247"
     volumes:
       - ${SLIMEBOT_CONFIG_DIR:-./.slimebot}:/home/slimebot/.slimebot

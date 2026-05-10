@@ -26,7 +26,7 @@ func Load() Config {
 	home := runtime.SlimeBotHomeDir()
 
 	return Config{
-		ServerPort:           getEnv("SERVER_PORT", "8080"),
+		ServerPort:           getEnv("SERVER_PORT", "6247"),
 		DBPath:               getPathEnv("DB_PATH", filepath.Join(home, "storage", "data.db")),
 		Frontend:             getEnv("FRONTEND_ORIGIN", ""),
 		SkillsRoot:           getPathEnv("SKILLS_ROOT", filepath.Join(home, "skills")),

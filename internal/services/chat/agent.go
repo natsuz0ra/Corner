@@ -567,7 +567,7 @@ func (a *AgentService) RunAgentLoop(
 						return "", fmt.Errorf("failed to push tool approval request: %w", err)
 					}
 				}
-				approved, rejectionMessage, answers := waitApprovalIfNeeded(ctx, callbacks, tc, invocation, params, "")
+				approved, rejectionMessage, answers := waitApprovalIfNeeded(ctx, callbacks, tc, invocation, params, "", nil)
 				if !approved {
 					messages = appendToolMessage(messages, tc.ID, rejectionMessage)
 					continue
@@ -586,12 +586,17 @@ func (a *AgentService) RunAgentLoop(
 			}
 
 			if callbacks.OnToolCallStart != nil && invocation.toolName != constants.RunSubagentTool {
+				reviewStatus := ""
+				if invocation.approvalPolicy == toolApprovalPolicyAutoReview {
+					reviewStatus = string(ApprovalReviewStatusReviewing)
+				}
 				if err := callbacks.OnToolCallStart(ApprovalRequest{
 					ToolCallID:       tc.ID,
 					ToolName:         invocation.toolName,
 					Command:          invocation.command,
 					Params:           params,
 					RequiresApproval: invocation.requiresApproval,
+					ReviewStatus:     reviewStatus,
 				}); err != nil {
 					return "", fmt.Errorf("failed to push tool approval request: %w", err)
 				}
@@ -607,7 +612,12 @@ func (a *AgentService) RunAgentLoop(
 				command:          invocation.command,
 				requiresApproval: invocation.requiresApproval,
 				awaitApproval: func(approvalCtx context.Context) approvalDecision {
-					approved, rejectionMessage, _ := waitApprovalIfNeeded(approvalCtx, callbacks, tcCopy, invocationCopy, paramsCopy, "")
+					reviewMessages := make([]llmsvc.ChatMessage, len(messages))
+					copy(reviewMessages, messages)
+					review := func(reviewCtx context.Context, req ApprovalReviewRequest) (*ApprovalReviewResult, error) {
+						return a.reviewToolApproval(reviewCtx, modelConfig, reviewMessages, req)
+					}
+					approved, rejectionMessage, _ := waitApprovalIfNeeded(approvalCtx, callbacks, tcCopy, invocationCopy, paramsCopy, "", review)
 					if approved {
 						return approvalDecision{approved: true}
 					}
@@ -794,19 +804,29 @@ func executeToolCall(ctx context.Context, toolName, command string, params map[s
 	return result
 }
 
-// requiresToolApproval defines which tools need user approval.
+// requiresToolApproval defines which tools need approval or automatic review.
 // When approvalMode is "auto", all tools skip approval except ask_questions (which always needs user interaction).
 func requiresToolApproval(toolName string, isMCP bool, approvalMode string) bool {
+	return determineToolApprovalPolicy(toolName, isMCP, approvalMode) != toolApprovalPolicyNone
+}
+
+func determineToolApprovalPolicy(toolName string, isMCP bool, approvalMode string) toolApprovalPolicy {
 	if toolName == constants.AskQuestionsTool {
-		return true
+		return toolApprovalPolicyManual
 	}
 	if approvalMode == constants.ApprovalModeAuto {
-		return false
+		return toolApprovalPolicyNone
 	}
 	if isMCP {
-		return false
+		return toolApprovalPolicyNone
 	}
-	return toolName == constants.ExecToolName || toolName == "file_edit" || toolName == "file_write"
+	if toolName != constants.ExecToolName && toolName != "file_edit" && toolName != "file_write" {
+		return toolApprovalPolicyNone
+	}
+	if approvalMode == constants.ApprovalModeAutoReview {
+		return toolApprovalPolicyAutoReview
+	}
+	return toolApprovalPolicyManual
 }
 
 func appendToolMessage(messages []llmsvc.ChatMessage, toolCallID string, content string) []llmsvc.ChatMessage {

@@ -44,6 +44,9 @@ export interface SessionHistoryToolCallItem {
   params: Record<string, unknown>
   status: ToolCallStatus
   requiresApproval: boolean
+  reviewStatus?: string
+  reviewRisk?: string
+  reviewReason?: string
   parentToolCallId?: string
   subagentRunId?: string
   output?: string
@@ -115,6 +118,9 @@ export interface ToolCallItem {
   params: Record<string, unknown>
   preamble?: string
   requiresApproval: boolean
+  reviewStatus?: string
+  reviewRisk?: string
+  reviewReason?: string
   status: ToolCallStatus
   output?: string
   error?: string

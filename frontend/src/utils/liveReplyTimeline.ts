@@ -126,7 +126,7 @@ export function finishAllSubagentThinkings(batch: AssistantReplyBatch, finishedA
 }
 
 function isOpenToolStatus(status: ToolCallStatus | undefined) {
-  return status === 'pending' || status === 'executing'
+  return status === 'pending' || status === 'reviewing' || status === 'executing'
 }
 
 export function markOpenToolCallsError(batch: AssistantReplyBatch, error = 'Execution cancelled.', finishedAt = Date.now()) {

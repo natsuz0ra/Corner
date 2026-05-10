@@ -29,6 +29,7 @@ export const SHOW_CLI_THINKING = false;
 export function toolDotState(status: ToolCallStatus): { color: string; blink: boolean } {
   switch (status) {
     case "pending":
+    case "reviewing":
     case "executing":
       return { color: "#B8860B", blink: true };
     case "completed":
@@ -45,6 +46,8 @@ export function formatToolStatusPart(status: ToolCallStatus): { text: string; co
   switch (status) {
     case "pending":
       return { text: "? pending approval", color: "#B8860B" };
+    case "reviewing":
+      return { text: "… reviewing", color: "#B8860B" };
     case "executing":
       return { text: "… executing", color: "#B8860B" };
     case "completed":
@@ -267,13 +270,13 @@ function formatActiveSubagentToolSummary(child: TimelineEntry): string {
 }
 
 function formatRunSubagentThinkingToolsSummary(entry: TimelineEntry, nestedTools: TimelineEntry[]): string {
-  if (entry.status === "pending" || entry.status === "executing") {
+  if (entry.status === "pending" || entry.status === "reviewing" || entry.status === "executing") {
     if (entry.subagentThinking && !entry.subagentThinking.thinkingDone) {
       return "Thinking...";
     }
 
     const activeTool = [...nestedTools].reverse().find((child) =>
-      child.status === "executing" || child.status === "pending"
+      child.status === "executing" || child.status === "reviewing" || child.status === "pending"
     );
     if (activeTool) {
       return formatActiveSubagentToolSummary(activeTool);
@@ -414,7 +417,7 @@ export function formatRunSubagentDetailLines(
       const formatted = formatToolExecutionOutput(entry.toolName || "", entry.command || "", resultRaw);
       lines.push(`   Result: ${summarizeMultilineText(formatted, Math.max(20, maxWidth - 14))} (ctrl+o to expand)`);
     }
-  } else if (entry.status === "executing" || entry.status === "pending") {
+  } else if (entry.status === "executing" || entry.status === "reviewing" || entry.status === "pending") {
     lines.push("   Result: waiting for sub-agent output");
   }
 

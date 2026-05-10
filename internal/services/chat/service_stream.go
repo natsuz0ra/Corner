@@ -67,9 +67,10 @@ func (s *ChatService) HandleChatStream(
 	thinkingLevel string,
 	planMode bool,
 	subagentModelID string,
+	approvalModeOverride string,
 	callbacks AgentCallbacks,
 ) (*ChatStreamResult, error) {
-	return s.handleChatStreamWithReceivedAt(ctx, sessionID, requestID, time.Now(), content, displayContent, modelID, attachmentIDs, thinkingLevel, planMode, subagentModelID, callbacks)
+	return s.handleChatStreamWithReceivedAt(ctx, sessionID, requestID, time.Now(), content, displayContent, modelID, attachmentIDs, thinkingLevel, planMode, subagentModelID, approvalModeOverride, callbacks)
 }
 
 func (s *ChatService) HandleChatStreamWithReceivedAt(
@@ -84,9 +85,10 @@ func (s *ChatService) HandleChatStreamWithReceivedAt(
 	thinkingLevel string,
 	planMode bool,
 	subagentModelID string,
+	approvalModeOverride string,
 	callbacks AgentCallbacks,
 ) (*ChatStreamResult, error) {
-	return s.handleChatStreamWithReceivedAt(ctx, sessionID, requestID, receivedAt, content, displayContent, modelID, attachmentIDs, thinkingLevel, planMode, subagentModelID, callbacks)
+	return s.handleChatStreamWithReceivedAt(ctx, sessionID, requestID, receivedAt, content, displayContent, modelID, attachmentIDs, thinkingLevel, planMode, subagentModelID, approvalModeOverride, callbacks)
 }
 
 func (s *ChatService) handleChatStreamWithReceivedAt(
@@ -101,6 +103,7 @@ func (s *ChatService) handleChatStreamWithReceivedAt(
 	thinkingLevel string,
 	planMode bool,
 	subagentModelID string,
+	approvalModeOverride string,
 	callbacks AgentCallbacks,
 ) (*ChatStreamResult, error) {
 	if strings.TrimSpace(content) == "" && len(attachmentIDs) == 0 {
@@ -131,7 +134,7 @@ func (s *ChatService) handleChatStreamWithReceivedAt(
 		})
 	}
 
-	result, err := s.executeChatTurn(ctx, sessionID, requestID, state, callbacks, planMode, subagentModelID)
+	result, err := s.executeChatTurn(ctx, sessionID, requestID, state, callbacks, planMode, subagentModelID, approvalModeOverride)
 	if err != nil {
 		return nil, err
 	}
@@ -265,6 +268,7 @@ func (s *ChatService) executeChatTurn(
 	callbacks AgentCallbacks,
 	planMode bool,
 	subagentModelID string,
+	approvalModeOverride string,
 ) (*chatTurnResult, error) {
 	parser := newTitleStreamParser()
 	accumulator := &chatStreamAccumulator{}
@@ -353,6 +357,9 @@ func (s *ChatService) executeChatTurn(
 			if req.RequiresApproval {
 				startStatus = constants.ToolCallStatusPending
 			}
+			if req.ReviewStatus == string(ApprovalReviewStatusReviewing) {
+				startStatus = constants.ToolCallStatusReviewing
+			}
 			if err := s.recordToolCallStart(ctx, sessionID, requestID, req, startStatus); err != nil {
 				callbackMu.Unlock()
 				return err
@@ -371,6 +378,24 @@ func (s *ChatService) executeChatTurn(
 				return nil
 			}
 			return callbacks.OnToolCallStart(req)
+		},
+		OnToolApprovalReview: func(event ApprovalReviewEvent) error {
+			if callbacks.OnToolApprovalReview == nil {
+				return nil
+			}
+			return callbacks.OnToolApprovalReview(event)
+		},
+		OnToolApprovalRequired: func(req ApprovalRequest) error {
+			callbackMu.Lock()
+			if err := s.recordToolCallStart(ctx, sessionID, requestID, req, constants.ToolCallStatusPending); err != nil {
+				callbackMu.Unlock()
+				return err
+			}
+			callbackMu.Unlock()
+			if callbacks.OnToolApprovalRequired == nil {
+				return nil
+			}
+			return callbacks.OnToolApprovalRequired(req)
 		},
 		WaitApproval: callbacks.WaitApproval,
 		OnToolCallResult: func(result ToolCallResult) error {
@@ -483,7 +508,9 @@ func (s *ChatService) executeChatTurn(
 	activatedSkills := s.getSessionActivatedSkills(sessionID)
 
 	approvalMode := constants.ApprovalModeStandard
-	if s.settingsStore != nil {
+	if strings.TrimSpace(approvalModeOverride) != "" {
+		approvalMode = strings.TrimSpace(approvalModeOverride)
+	} else if s.settingsStore != nil {
 		if mode, err := s.settingsStore.GetSetting(ctx, constants.SettingApprovalMode); err == nil && mode != "" {
 			approvalMode = mode
 		}

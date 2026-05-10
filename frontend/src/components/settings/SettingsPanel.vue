@@ -21,7 +21,7 @@ import { mcpAPI } from '@/api/mcp'
 import { settingAPI } from '@/api/settings'
 import { skillsAPI } from '@/api/skills'
 import { messagePlatformAPI } from '@/api/messagePlatform'
-import type { AppSettings, LLMConfig, MCPConfig, MessagePlatformConfig, SettingsTabKey, SkillItem } from '@/types/settings'
+import type { AppSettings, ApprovalMode, LLMConfig, MCPConfig, MessagePlatformConfig, SettingsTabKey, SkillItem, ThinkingLevel } from '@/types/settings'
 import { useToast } from '@/composables/useToast'
 import { useSettingsLLM } from '@/composables/settings/useSettingsLLM'
 import { useSettingsMCP } from '@/composables/settings/useSettingsMCP'
@@ -29,7 +29,6 @@ import { useSettingsSkills } from '@/composables/settings/useSettingsSkills'
 import { useSettingsMessagePlatform } from '@/composables/settings/useSettingsMessagePlatform'
 import { useSettingsConfirmDialog } from '@/composables/settings/useSettingsConfirmDialog'
 import { useSettingsWebSearch } from '@/composables/settings/useSettingsWebSearch'
-import { useSettingsApprovalMode } from '@/composables/settings/useSettingsApprovalMode'
 import { useLanguagePreference, type LanguageCode } from '@/composables/useLanguagePreference'
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
@@ -73,6 +72,8 @@ const accountDialogVisible = ref(false)
 const messagePlatformDialogVisible = ref(false)
 const messagePlatformSubmitting = ref(false)
 const messagePlatformDefaultModel = ref('')
+const messagePlatformThinkingLevel = ref<ThinkingLevel>('off')
+const messagePlatformApprovalMode = ref<ApprovalMode>('standard')
 const { confirmDialogVisible, openConfirmDialog, runConfirmDialog } = useSettingsConfirmDialog()
 const {
   webSearchDialogVisible,
@@ -82,7 +83,6 @@ const {
   closeWebSearchDialog,
   saveWebSearch,
 } = useSettingsWebSearch({ toast, t: (key) => t(key) })
-const { approvalMode, onApprovalModeChange } = useSettingsApprovalMode({ toast, t: (key) => t(key) })
 
 const {
   llmForm,
@@ -154,15 +154,21 @@ const {
   messagePlatformForm,
   telegramConfig,
   messagePlatformModelOptions,
+  messagePlatformThinkingOptions,
+  messagePlatformApprovalOptions,
   openMessagePlatformDialog,
   saveMessagePlatformConfig,
   toggleTelegramEnabled,
   saveMessagePlatformDefaultModel,
+  saveMessagePlatformThinkingLevel,
+  saveMessagePlatformApprovalMode,
 } = useSettingsMessagePlatform({
   messagePlatformList,
   messagePlatformDialogVisible,
   messagePlatformSubmitting,
   messagePlatformDefaultModel,
+  messagePlatformThinkingLevel,
+  messagePlatformApprovalMode,
   llmRows,
   toast,
   t: (key) => t(key),
@@ -174,8 +180,9 @@ async function loadData() {
     await loadLanguage({ allowRemote: true })
     const appSettings: AppSettings = await settingAPI.get()
     messagePlatformDefaultModel.value = appSettings.messagePlatformDefaultModel || ''
+    messagePlatformThinkingLevel.value = appSettings.messagePlatformThinkingLevel || 'off'
+    messagePlatformApprovalMode.value = appSettings.messagePlatformApprovalMode || 'standard'
     webSearchKey.value = appSettings.webSearchKey || ''
-    approvalMode.value = appSettings.approvalMode || 'standard'
     llmList.value = await llmAPI.list()
     mcpList.value = await mcpAPI.list()
     skillsList.value = await skillsAPI.list()
@@ -274,12 +281,10 @@ onMounted(loadData)
           :language="language"
           :language-select-options="languageSelectOptions"
           :saving-language="savingLanguage"
-          :approval-mode="approvalMode"
           @open-account="openAccountDialog"
           @open-web-search="openWebSearchDialog"
           @logout="logout"
           @language-change="onLanguageChange"
-          @approval-mode-change="onApprovalModeChange"
         />
 
         <SettingsLLMTab v-if="tab === 'llm'" :llm-rows="llmRows" @add="openLLMDialog" @edit="openLLMEditDialog" @delete="deleteLLM" />
@@ -321,9 +326,15 @@ onMounted(loadData)
           v-if="tab === 'platform'"
           :message-platform-default-model="messagePlatformDefaultModel"
           :message-platform-model-options="messagePlatformModelOptions"
+          :message-platform-thinking-level="messagePlatformThinkingLevel"
+          :message-platform-thinking-options="messagePlatformThinkingOptions"
+          :message-platform-approval-mode="messagePlatformApprovalMode"
+          :message-platform-approval-options="messagePlatformApprovalOptions"
           :llm-rows-empty="llmRows.length === 0"
           :telegram-config="telegramConfig"
           @update:message-platform-default-model="saveMessagePlatformDefaultModel($event)"
+          @update:message-platform-thinking-level="saveMessagePlatformThinkingLevel($event)"
+          @update:message-platform-approval-mode="saveMessagePlatformApprovalMode($event)"
           @toggle-telegram="toggleTelegramEnabled"
           @open-bind="openMessagePlatformDialog"
         />

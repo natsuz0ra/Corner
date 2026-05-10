@@ -1,4 +1,4 @@
-export type ToolCallStatus = 'pending' | 'rejected' | 'executing' | 'completed' | 'error'
+export type ToolCallStatus = 'pending' | 'reviewing' | 'rejected' | 'executing' | 'completed' | 'error'
 
 export type ReplyTimelineEntry =
   | { id: string; kind: 'text'; content: string }

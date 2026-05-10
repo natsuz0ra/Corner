@@ -134,6 +134,49 @@ test("dispatchWSMessage routes todo_update with items, note, and session id", ()
   }]);
 });
 
+test("dispatchWSMessage routes auto approval review lifecycle events", () => {
+  const reviews: Array<{ status: string; reason?: string }> = [];
+  const required: Array<{ toolCallId: string; params: Record<string, unknown>; reason?: string }> = [];
+  const handlers: WSHandlers = {
+    onSession: () => {},
+    onStart: () => {},
+    onChunk: () => {},
+    onDone: () => {},
+    onError: () => {},
+    onToolCallReview: (data) => {
+      reviews.push({ status: data.reviewStatus, reason: data.reviewReason });
+    },
+    onToolApprovalRequired: (data) => {
+      required.push({ toolCallId: data.toolCallId, params: data.params, reason: data.reviewReason });
+    },
+  };
+
+  dispatchWSMessage(JSON.stringify({
+    type: "tool_call_review",
+    toolCallId: "call-1",
+    toolName: "exec",
+    command: "run",
+    reviewStatus: "reviewing",
+  }), handlers);
+  dispatchWSMessage(JSON.stringify({
+    type: "tool_call_approval_required",
+    toolCallId: "call-1",
+    toolName: "exec",
+    command: "run",
+    params: { command: "rm -rf /tmp/example" },
+    requiresApproval: true,
+    reviewStatus: "needs_user",
+    reviewReason: "destructive command",
+  }), handlers);
+
+  assert.deepEqual(reviews, [{ status: "reviewing", reason: "" }]);
+  assert.deepEqual(required, [{
+    toolCallId: "call-1",
+    params: { command: "rm -rf /tmp/example" },
+    reason: "destructive command",
+  }]);
+});
+
 test("dispatchWSMessage routes subagent_start with title and task", () => {
   const calls: Array<{
     sessionId?: string;

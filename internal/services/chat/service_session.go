@@ -129,6 +129,28 @@ func (s *ChatService) ResolvePlatformModel(ctx context.Context) (string, error) 
 	return fallbackID, nil
 }
 
+// ResolvePlatformRuntimeSettings loads Telegram/message-platform runtime options.
+func (s *ChatService) ResolvePlatformRuntimeSettings(ctx context.Context) (string, string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	thinkingLevel, err := s.store.GetSetting(ctx, constants.SettingMessagePlatformThinkingLevel)
+	if err != nil {
+		return "", "", err
+	}
+	if strings.TrimSpace(thinkingLevel) == "" {
+		thinkingLevel = "off"
+	}
+	approvalMode, err := s.store.GetSetting(ctx, constants.SettingMessagePlatformApprovalMode)
+	if err != nil {
+		return "", "", err
+	}
+	if strings.TrimSpace(approvalMode) == "" {
+		approvalMode = constants.ApprovalModeStandard
+	}
+	return strings.TrimSpace(thinkingLevel), strings.TrimSpace(approvalMode), nil
+}
+
 // ResolveLLMConfig loads and validates model config before requests.
 func (s *ChatService) ResolveLLMConfig(ctx context.Context, modelID string) (*domain.LLMConfig, error) {
 	configID := strings.TrimSpace(modelID)

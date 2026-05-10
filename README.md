@@ -18,8 +18,8 @@ A personal AI agent demo: an extensible foundation for conversational AI apps. I
   - Multimodal support
 - **Tools & agent**
   - Multi-turn agent tool-call flow
-  - Approval modes: **standard** (manual confirm for sensitive tools) and **auto** (execute directly)
-  - User approval for sensitive built-in tools (today: `exec`) in web UI, CLI, and Telegram flows
+  - Approval modes: **standard** (manual confirm for sensitive tools), **auto review** (model reviews uncertain sensitive tools first), and **auto** (execute directly)
+  - User approval for sensitive built-in tools (today: `exec`, `file_edit`, `file_write`) in web UI, CLI, and Telegram flows
   - Tool results stored in history with detail views
   - Built-in tools: `command line`, `web request`, `web search` (Tavily), `to-do`
   - Supports coding-agent-like file read/write capabilities for text editing workflows
@@ -56,13 +56,17 @@ A personal AI agent demo: an extensible foundation for conversational AI apps. I
 
 ![Chat](assets/chat.png)
 
+### Plan mode
+
+![Plan mode](assets/plan.png)
+
 ### Tool execution
 
 ![Tool execution](assets/tool_exec.png)
 
 ### Telegram
 
-<img src="assets/tg_chat.jpg" alt="Telegram preview" width="220" />
+<img src="assets/tg_chat.png" alt="Telegram preview" width="220" />
 
 ### CLI
 
@@ -71,7 +75,7 @@ A personal AI agent demo: an extensible foundation for conversational AI apps. I
 ## Architecture & stack
 
 - **Production**: one Go binary serves REST/WebSocket and embeds the web UI from `web/dist` (`go:embed`).
-- **Development**: `npm run dev` runs the Go server and Vite; Vite proxies `/api` and `/ws` to port `8080`.
+- **Development**: `npm run dev` runs the Go server and Vite; Vite proxies `/api` and `/ws` to the configured backend port (`6247` by default).
 - **Data**: SQLite by default at `~/.slimebot/storage/data.db`; compacted context summaries are stored there too.
 - **Memory**: currently session-scoped context compression. When needed, SlimeBot injects a hidden `<context_summary>` together with the latest conversation context.
 
@@ -79,7 +83,7 @@ A personal AI agent demo: an extensible foundation for conversational AI apps. I
 
 ## Getting started
 
-Default ports: backend **8080**, Vite **5173**.
+Default ports: backend **6247**, Vite **7391**.
 
 From the repo root:
 
@@ -151,7 +155,7 @@ make compose-down
 - `/model` — set default model
 - `/skills` — view / remove skills
 - `/mcp` — MCP CRUD with multiline editor
-- `/mode` — toggle approval mode (`standard` / `auto`)
+- `/approval` — toggle approval mode (`standard` / `auto_review` / `auto`)
 - `/effort` — set thinking level (`off` / `low` / `medium` / `high`)
 - `/plan` — toggle plan mode (`on` / `off`)
 - `/help` — help
@@ -184,19 +188,20 @@ make compose-down
 
 ## Configuration (`~/.slimebot/.env`)
 
-Variables read by the server (defaults shown where applicable):
+Variables read by SlimeBot components (defaults shown where applicable):
 
-- `SERVER_PORT` — HTTP port (default `8080`)
+- `SERVER_PORT` — HTTP port (default `6247`)
+- `FRONTEND_PORT` — Vite development server port (default `7391`)
 - `DB_PATH` — SQLite path (default `~/.slimebot/storage/data.db`)
 - `SKILLS_ROOT` — skills root (default `~/.slimebot/skills`)
 - `CHAT_UPLOAD_ROOT` — uploads (default `~/.slimebot/storage/chat_uploads`)
 - `CONTEXT_HISTORY_ROUNDS` — retained history-round setting (default `20`, clamped to `5`–`50`)
 - `DEFAULT_CONTEXT_SIZE` — default context size for new model configs (default `1000000`)
-- `FRONTEND_ORIGIN` — set to `http://localhost:5173` when using Vite; empty for same-origin production
+- `FRONTEND_ORIGIN` — set to `http://localhost:7391` when using Vite; empty for same-origin production
 - `WEB_SEARCH_API_KEY` — Tavily API key for `web_search`
 - `JWT_SECRET` — **required in server mode**; server fails to start if unset (CLI headless mode can auto-generate one)
 - `JWT_EXPIRE` — JWT lifetime in minutes (default `21600` ≈ 15 days)
-- `approvalMode` (app setting) — `standard` or `auto`
+- `approvalMode` (app setting) — `standard`, `auto_review`, or `auto`
 - `thinkingLevel` (app setting) — `off` / `low` / `medium` / `high`
 
 The file created on first boot follows the embedded template in [internal/runtime/env.template](internal/runtime/env.template). You can add the optional keys above manually if needed.
@@ -204,7 +209,8 @@ The file created on first boot follows the embedded template in [internal/runtim
 Example:
 
 ```env
-SERVER_PORT=8080
+SERVER_PORT=6247
+FRONTEND_PORT=7391
 DB_PATH=~/.slimebot/storage/data.db
 SKILLS_ROOT=~/.slimebot/skills
 CHAT_UPLOAD_ROOT=~/.slimebot/storage/chat_uploads
@@ -215,19 +221,20 @@ JWT_EXPIRE=21600
 # CONTEXT_HISTORY_ROUNDS=20
 # DEFAULT_CONTEXT_SIZE=1000000
 
-# FRONTEND_ORIGIN=http://localhost:5173
+# FRONTEND_ORIGIN=http://localhost:7391
 ```
 
 ### Frontend (`frontend/.env`)
 
-- `VITE_API_BASE_URL` — HTTP base (e.g. `http://localhost:8080`)
-- `VITE_WS_URL` — WebSocket base (e.g. `ws://localhost:8080`)
+- `VITE_API_BASE_URL` — HTTP base (e.g. `http://localhost:6247`)
+- `VITE_WS_URL` — WebSocket base (e.g. `ws://localhost:6247`)
+- `FRONTEND_PORT` — Vite development server port; read from the process environment or `~/.slimebot/.env`
 
 Example:
 
 ```env
-VITE_API_BASE_URL=http://localhost:8080
-VITE_WS_URL=ws://localhost:8080
+VITE_API_BASE_URL=http://localhost:6247
+VITE_WS_URL=ws://localhost:6247
 ```
 
 ## Status & roadmap
@@ -235,7 +242,7 @@ VITE_WS_URL=ws://localhost:8080
 **Done**
 
 - Sessions and WebSocket streaming (including errors, tool-call, subagent, and thinking events)
-- Agent tools and approvals (`exec` requires confirmation in standard mode; optional auto approval mode)
+- Agent tools and approvals (`exec`, `file_edit`, and `file_write` require confirmation in standard mode; optional auto-review and auto approval modes)
 - Plan mode with plan generation, approve/reject/modify flow, and execution after approval
 - Thinking level controls (`off` / `low` / `medium` / `high`) with streamed reasoning display
 - Subagent / nested agent (`run_subagent`), nested tool UI, and persisted parent linkage in tool-call history

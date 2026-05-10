@@ -30,6 +30,7 @@ export function getToolCallLabel(toolName: string, t: Translate) {
 export function getToolCallStatusLabel(status: ToolCallItem['status'], t: Translate) {
   switch (status) {
     case 'pending': return t('toolCallPending')
+    case 'reviewing': return t('toolCallReviewing')
     case 'executing': return t('toolCallExecuting')
     case 'completed': return t('toolCallCompleted')
     case 'rejected': return t('toolCallRejected')
@@ -41,6 +42,7 @@ export function getToolCallStatusLabel(status: ToolCallItem['status'], t: Transl
 export function getToolCallStatusTone(status: ToolCallItem['status']) {
   switch (status) {
     case 'pending': return 'pending'
+    case 'reviewing': return 'executing'
     case 'executing': return 'executing'
     case 'completed': return 'success'
     case 'rejected':

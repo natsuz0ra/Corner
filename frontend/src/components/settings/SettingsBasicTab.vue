@@ -7,7 +7,6 @@ const props = defineProps<{
   language: LanguageCode
   languageSelectOptions: { value: LanguageCode; label: string }[]
   savingLanguage: boolean
-  approvalMode: 'standard' | 'auto'
 }>()
 
 const emit = defineEmits<{
@@ -15,7 +14,6 @@ const emit = defineEmits<{
   openWebSearch: []
   logout: []
   languageChange: [value: LanguageCode]
-  approvalModeChange: [value: 'standard' | 'auto']
 }>()
 
 const { t } = useI18n()
@@ -40,30 +38,6 @@ const { t } = useI18n()
         :aria-label="t('selectLanguage')"
         @update:model-value="emit('languageChange', $event as LanguageCode)"
       />
-    </div>
-    <div class="settings-card flex items-center justify-between px-4 py-3.5 rounded-xl mt-2">
-      <div class="flex flex-col gap-0.5">
-        <span class="text-sm settings-field-label">{{ t('approvalMode') }}</span>
-        <span class="text-xs sb-text-muted">{{ approvalMode === 'auto' ? t('approvalModeAutoDesc') : t('approvalModeStandardDesc') }}</span>
-      </div>
-      <div class="flex items-center gap-1.5">
-        <button
-          type="button"
-          class="px-2.5 py-1 text-xs rounded-lg transition-all duration-150 cursor-pointer"
-          :class="approvalMode === 'standard' ? 'approval-mode-active' : 'approval-mode-inactive'"
-          @click="emit('approvalModeChange', 'standard')"
-        >
-          {{ t('approvalModeStandard') }}
-        </button>
-        <button
-          type="button"
-          class="px-2.5 py-1 text-xs rounded-lg transition-all duration-150 cursor-pointer"
-          :class="approvalMode === 'auto' ? 'approval-mode-active-auto' : 'approval-mode-inactive'"
-          @click="emit('approvalModeChange', 'auto')"
-        >
-          {{ t('approvalModeAuto') }}
-        </button>
-      </div>
     </div>
     <div class="settings-card px-4 py-3.5 rounded-xl mt-2">
       <div class="flex items-center justify-between gap-3">

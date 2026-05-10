@@ -551,24 +551,58 @@ export const useChatStore = defineStore('chat', () => {
             }
           } catch { /* ignore parse errors, tool will timeout */ }
         }
-        batch.toolCalls.push({
+        const existingToolCall = batch.toolCalls.find((tc) => tc.toolCallId === data.toolCallId)
+        const startedToolCall = {
           toolCallId: data.toolCallId,
           toolName: data.toolName,
           command: data.command,
           params: data.params,
           preamble: data.preamble,
           requiresApproval: data.requiresApproval,
-          status: data.requiresApproval ? 'pending' : 'executing',
+          reviewStatus: data.reviewStatus,
+          reviewRisk: data.reviewRisk,
+          reviewReason: data.reviewReason,
+          status: data.reviewStatus === 'reviewing' ? 'reviewing' as const : data.requiresApproval ? 'pending' as const : 'executing' as const,
           startedAt: parseSocketTimestamp(data.startedAt),
           parentToolCallId: data.parentToolCallId,
           subagentRunId: data.subagentRunId,
-        })
+        }
+        if (existingToolCall) {
+          Object.assign(existingToolCall, startedToolCall)
+        } else {
+          batch.toolCalls.push(startedToolCall)
+        }
         if (!data.parentToolCallId) {
           batch.timeline.push({
             id: crypto.randomUUID(),
             kind: 'tool_start',
             toolCallId: data.toolCallId,
           })
+        }
+      },
+      onToolCallReview: (data, sessionId) => {
+        if (!sessionId || sessionId !== currentSessionId.value) return
+        const batch = getCurrentBatch()
+        if (!batch) return
+        const item = batch.toolCalls.find((tc) => tc.toolCallId === data.toolCallId)
+        if (!item) return
+        item.reviewStatus = data.reviewStatus
+        item.reviewRisk = data.reviewRisk
+        item.reviewReason = data.reviewReason
+        if (data.reviewStatus === 'reviewing') item.status = 'reviewing'
+        if (data.reviewStatus === 'approved') item.status = 'executing'
+      },
+      onToolApprovalRequired: (data, sessionId) => {
+        if (!sessionId || sessionId !== currentSessionId.value) return
+        const batch = getCurrentBatch()
+        if (!batch) return
+        const item = batch.toolCalls.find((tc) => tc.toolCallId === data.toolCallId)
+        if (item) {
+          item.requiresApproval = data.requiresApproval
+          item.reviewStatus = data.reviewStatus
+          item.reviewRisk = data.reviewRisk
+          item.reviewReason = data.reviewReason
+          item.status = 'pending'
         }
       },
       onToolCallResult: (data, sessionId) => {
@@ -627,7 +661,7 @@ export const useChatStore = defineStore('chat', () => {
         finishSubagentThinking(batch, data.parentToolCallId)
         if (data.error) {
           const parent = batch.toolCalls.find((tc) => tc.toolCallId === data.parentToolCallId)
-          if (parent && (parent.status === 'pending' || parent.status === 'executing')) {
+          if (parent && (parent.status === 'pending' || parent.status === 'reviewing' || parent.status === 'executing')) {
             markToolCallError(batch, data.parentToolCallId, data.error)
           }
         }

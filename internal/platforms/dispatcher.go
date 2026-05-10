@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"slimebot/internal/domain"
 	"strings"
 	"time"
@@ -14,6 +15,13 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	telegramMessageChunkLimit       = 3500
+	telegramApprovalCommandMaxRunes = 160
+)
+
+var telegramFinalMarkerRegex = regexp.MustCompile(`\n?<!-- (?:TOOL_CALL:.+?|THINKING:.+?|PLAN_START|PLAN_END) -->\n?`)
+
 // Dispatcher is the inbound entry for message platforms: resolves session/model and calls HandleChatStream.
 type Dispatcher struct {
 	chat      platformChatService
@@ -23,6 +31,7 @@ type Dispatcher struct {
 type platformChatService interface {
 	EnsureMessagePlatformSession(ctx context.Context) (*domain.Session, error)
 	ResolvePlatformModel(ctx context.Context) (string, error)
+	ResolvePlatformRuntimeSettings(ctx context.Context) (string, string, error)
 	HandleChatStream(
 		ctx context.Context,
 		sessionID string,
@@ -34,6 +43,7 @@ type platformChatService interface {
 		thinkingLevel string,
 		planMode bool,
 		subagentModelID string,
+		approvalModeOverride string,
 		callbacks chatsvc.AgentCallbacks,
 	) (*chatsvc.ChatStreamResult, error)
 }
@@ -78,6 +88,10 @@ func (d *Dispatcher) HandleInbound(ctx context.Context, message InboundMessage, 
 	if err != nil {
 		return err
 	}
+	thinkingLevel, approvalMode, err := d.chat.ResolvePlatformRuntimeSettings(ctx)
+	if err != nil {
+		return err
+	}
 
 	// Track ask_questions toolCallIDs for auto-approval on platforms without Q&A UI.
 	askQuestionsIDs := make(map[string]string) // toolCallID -> questions JSON
@@ -92,6 +106,9 @@ func (d *Dispatcher) HandleInbound(ctx context.Context, message InboundMessage, 
 				askQuestionsIDs[req.ToolCallID] = fmt.Sprintf("%v", req.Params["questions"])
 				return nil
 			}
+			if req.ReviewStatus == string(chatsvc.ApprovalReviewStatusReviewing) {
+				return sender.SendText(chatID, "Automatic approval review is checking this tool call: "+formatToolStartSummary(req))
+			}
 			if req.RequiresApproval {
 				if d.approvals == nil {
 					return fmt.Errorf("dispatcher approvals is not initialized")
@@ -103,6 +120,26 @@ func (d *Dispatcher) HandleInbound(ctx context.Context, message InboundMessage, 
 				return sender.SendApprovalKeyboard(chatID, formatToolApprovalPrompt(req), approveData, rejectData)
 			}
 			return sender.SendText(chatID, formatToolStartSummary(req))
+		},
+		OnToolApprovalReview: func(event chatsvc.ApprovalReviewEvent) error {
+			if event.ReviewStatus == string(chatsvc.ApprovalReviewStatusReviewing) {
+				return nil
+			}
+			text := fmt.Sprintf("Automatic approval review %s for %s.%s", event.ReviewStatus, event.ToolName, event.Command)
+			if strings.TrimSpace(event.ReviewReason) != "" {
+				text += "\nReason: " + strings.TrimSpace(event.ReviewReason)
+			}
+			return sender.SendText(chatID, text)
+		},
+		OnToolApprovalRequired: func(req chatsvc.ApprovalRequest) error {
+			if d.approvals == nil {
+				return fmt.Errorf("dispatcher approvals is not initialized")
+			}
+			approveData, rejectData, err := d.approvals.Register(req.ToolCallID, chatID, constants.AgentApprovalTimeout+10*time.Second)
+			if err != nil {
+				return err
+			}
+			return sender.SendApprovalKeyboard(chatID, formatToolApprovalPrompt(req), approveData, rejectData)
 		},
 		WaitApproval: func(waitCtx context.Context, toolCallID string) (*chatsvc.ApprovalResponse, error) {
 			// ask_questions: auto-approve with a default response.
@@ -129,9 +166,10 @@ func (d *Dispatcher) HandleInbound(ctx context.Context, message InboundMessage, 
 		"",
 		modelID,
 		attachmentIDs,
-		"",
+		thinkingLevel,
 		false,
 		"",
+		approvalMode,
 		callbacks,
 	)
 	if err != nil {
@@ -144,7 +182,7 @@ func (d *Dispatcher) HandleInbound(ctx context.Context, message InboundMessage, 
 	if answer == "" {
 		answer = "The model returned no content."
 	}
-	return sender.SendText(chatID, answer)
+	return sendTelegramFinalAnswer(chatID, answer, sender)
 }
 
 // HandleTelegramApprovalCallback forwards Telegram callback_data to the approval broker.
@@ -194,10 +232,104 @@ func formatToolResultSummary(result chatsvc.ToolCallResult) string {
 
 func formatToolApprovalPrompt(req chatsvc.ApprovalRequest) string {
 	base := fmt.Sprintf("Tool execution requires approval: %s", req.ToolName)
-	if strings.TrimSpace(req.Command) != "" {
-		base = fmt.Sprintf("%s (%s)", base, strings.TrimSpace(req.Command))
+	if command := formatToolCommandForApproval(req); command != "" {
+		base += "\nCommand: " + command
 	}
 	return base + "\nPlease choose Approve or Reject."
+}
+
+func formatToolCommandForApproval(req chatsvc.ApprovalRequest) string {
+	if strings.EqualFold(strings.TrimSpace(req.ToolName), constants.ExecToolName) {
+		if value, ok := req.Params["command"]; ok {
+			if command := trimTelegramApprovalCommand(fmt.Sprintf("%v", value)); command != "" {
+				return command
+			}
+		}
+		if value, ok := req.Params["cmd"]; ok {
+			if command := trimTelegramApprovalCommand(fmt.Sprintf("%v", value)); command != "" {
+				return command
+			}
+		}
+		return ""
+	}
+	return trimTelegramApprovalCommand(req.Command)
+}
+
+func trimTelegramApprovalCommand(command string) string {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return ""
+	}
+	runes := []rune(trimmed)
+	if len(runes) <= telegramApprovalCommandMaxRunes {
+		return trimmed
+	}
+	return string(runes[:telegramApprovalCommandMaxRunes]) + "..."
+}
+
+func sendTelegramFinalAnswer(chatID string, answer string, sender OutboundSender) error {
+	for _, block := range splitFinalAnswerBlocks(answer) {
+		for _, chunk := range splitTelegramTextForSend(block) {
+			if err := sender.SendText(chatID, chunk); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func splitFinalAnswerBlocks(answer string) []string {
+	parts := telegramFinalMarkerRegex.Split(answer, -1)
+	blocks := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		blocks = append(blocks, trimmed)
+	}
+	return blocks
+}
+
+func splitTelegramTextForSend(text string) []string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	if len(text) <= telegramMessageChunkLimit {
+		return []string{text}
+	}
+
+	chunks := make([]string, 0, len(text)/telegramMessageChunkLimit+1)
+	for _, paragraph := range strings.Split(text, "\n\n") {
+		paragraph = strings.TrimSpace(paragraph)
+		if paragraph == "" {
+			continue
+		}
+		chunks = appendWrappedTelegramChunk(chunks, paragraph)
+	}
+	return chunks
+}
+
+func appendWrappedTelegramChunk(chunks []string, text string) []string {
+	if len(text) <= telegramMessageChunkLimit {
+		return append(chunks, text)
+	}
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		runes := []rune(line)
+		for len(runes) > telegramMessageChunkLimit {
+			chunks = append(chunks, string(runes[:telegramMessageChunkLimit]))
+			runes = runes[telegramMessageChunkLimit:]
+		}
+		if len(runes) > 0 {
+			chunks = append(chunks, string(runes))
+		}
+	}
+	return chunks
 }
 
 // buildDefaultAskQuestionsAnswers constructs a default answer response for ask_questions

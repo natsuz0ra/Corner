@@ -73,7 +73,7 @@ function restoreQuestionCursor(state: AppState, index: number): Pick<AppState, "
 }
 
 function isOpenToolStatus(status?: string): boolean {
-  return status === "pending" || status === "executing";
+  return status === "pending" || status === "reviewing" || status === "executing";
 }
 
 function finishThinkingEntry(entry: TimelineEntry, finishedAt: number): TimelineEntry {

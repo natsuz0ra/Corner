@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	CLI_HINT_COLOR,
 	MENU_ITEM_COLORS,
 	MENU_TITLE_GAP_LINES,
 	formatMenuDescriptionLines,
@@ -41,4 +42,8 @@ test("menu palette gives active and inactive items distinct colors", () => {
 		MENU_ITEM_COLORS.activeCursor,
 		MENU_ITEM_COLORS.inactiveCursor,
 	);
+});
+
+test("menu hint uses the shared CLI hint color", () => {
+	assert.equal(MENU_ITEM_COLORS.hint, CLI_HINT_COLOR);
 });

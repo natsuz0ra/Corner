@@ -1,32 +1,17 @@
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { settingAPI } from '@/api/settings'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
+import {
+  createLanguagePreferenceController,
+  FALLBACK_LANGUAGE,
+  LANGUAGE_STORAGE_KEY,
+  normalizeLanguage,
+  type LanguageCode,
+} from '@/utils/languagePreference'
 
-export type LanguageCode = 'zh-CN' | 'en-US'
-
-interface LoadLanguageOptions {
-  allowRemote?: boolean
-}
-
-interface ChangeLanguageOptions {
-  allowRemote?: boolean
-  showSuccessToast?: boolean
-}
-
-interface SyncLanguageOptions {
-  showSuccessToast?: boolean
-  silentOnError?: boolean
-}
-
-const LANGUAGE_STORAGE_KEY = 'slimebot.language'
-const FALLBACK_LANGUAGE: LanguageCode = 'zh-CN'
-const LANGUAGE_VALUES: LanguageCode[] = ['zh-CN', 'en-US']
-
-function normalizeLanguage(value: string | null | undefined): LanguageCode | null {
-  return LANGUAGE_VALUES.includes(value as LanguageCode) ? (value as LanguageCode) : null
-}
+const sharedLanguageState = createLanguagePreferenceController.createState(FALLBACK_LANGUAGE)
 
 function readLocalLanguage(): LanguageCode | null {
   return normalizeLanguage(window.localStorage.getItem(LANGUAGE_STORAGE_KEY))
@@ -41,15 +26,10 @@ export function useLanguagePreference() {
   const toast = useToast()
   const authStore = useAuthStore()
 
-  const language = ref<LanguageCode>(normalizeLanguage(locale.value as string) || FALLBACK_LANGUAGE)
-  const savingLanguage = ref(false)
-
   const languageOptions: Array<{ value: LanguageCode; labelKey: 'chinese' | 'english' }> = [
     { value: 'zh-CN', labelKey: 'chinese' },
     { value: 'en-US', labelKey: 'english' },
   ]
-
-  const currentLanguageLabel = computed(() => t(language.value === 'zh-CN' ? 'chinese' : 'english'))
 
   const languageSelectOptions = computed(() =>
     languageOptions.map((option) => ({
@@ -62,92 +42,43 @@ export function useLanguagePreference() {
     if (!authStore.initialized) authStore.hydrate()
   }
 
-  function applyLanguage(nextLanguage: LanguageCode) {
-    language.value = nextLanguage
-    locale.value = nextLanguage
-    writeLocalLanguage(nextLanguage)
-  }
-
-  function canUseRemote(allowRemote: boolean) {
-    if (!allowRemote) return false
+  function canUseRemote() {
     ensureAuthHydrated()
     return !!authStore.isAuthenticated
   }
 
-  async function loadLanguage(options?: LoadLanguageOptions) {
-    const allowRemote = options?.allowRemote ?? true
-    const localLanguage = readLocalLanguage()
-    if (localLanguage) {
-      applyLanguage(localLanguage)
-    } else {
-      applyLanguage(normalizeLanguage(locale.value as string) || FALLBACK_LANGUAGE)
-    }
-
-    if (!canUseRemote(allowRemote)) return language.value
-
-    try {
+  const controller = createLanguagePreferenceController({
+    state: sharedLanguageState,
+    getLocale: () => locale.value as string,
+    setLocale: (nextLanguage) => {
+      locale.value = nextLanguage
+    },
+    readLocalLanguage,
+    writeLocalLanguage,
+    canUseRemote,
+    fetchRemoteLanguage: async () => {
       const settings = await settingAPI.get()
-      const remoteLanguage = normalizeLanguage(settings.language) || FALLBACK_LANGUAGE
-      applyLanguage(remoteLanguage)
-      return remoteLanguage
-    } catch {
-      return language.value
-    }
-  }
-
-  async function changeLanguage(nextLanguage: LanguageCode, options?: ChangeLanguageOptions) {
-    if (savingLanguage.value) return false
-    if (nextLanguage === language.value) return true
-
-    const previousLanguage = language.value
-    const allowRemote = options?.allowRemote ?? true
-    const showSuccessToast = options?.showSuccessToast ?? false
-
-    applyLanguage(nextLanguage)
-
-    if (!canUseRemote(allowRemote)) return true
-
-    savingLanguage.value = true
-    try {
+      return settings.language
+    },
+    updateRemoteLanguage: async (nextLanguage) => {
       await settingAPI.update({ language: nextLanguage })
-      if (showSuccessToast) toast.success(t('saveSuccess'))
-      return true
-    } catch {
-      applyLanguage(previousLanguage)
-      toast.error(t('languageSaveFailed'))
-      return false
-    } finally {
-      savingLanguage.value = false
-    }
-  }
+    },
+    onSaveSuccess: () => toast.success(t('saveSuccess')),
+    onSaveError: () => toast.error(t('languageSaveFailed')),
+  })
 
-  async function syncLanguageToServer(options?: SyncLanguageOptions) {
-    if (savingLanguage.value) return false
-    const showSuccessToast = options?.showSuccessToast ?? false
-    const silentOnError = options?.silentOnError ?? true
-    if (!canUseRemote(true)) return false
-
-    savingLanguage.value = true
-    try {
-      await settingAPI.update({ language: language.value })
-      if (showSuccessToast) toast.success(t('saveSuccess'))
-      return true
-    } catch {
-      if (!silentOnError) toast.error(t('languageSaveFailed'))
-      return false
-    } finally {
-      savingLanguage.value = false
-    }
-  }
+  const currentLanguageLabel = computed(() => t(controller.language.value === 'zh-CN' ? 'chinese' : 'english'))
 
   return {
-    language,
+    language: controller.language,
     languageOptions,
     languageSelectOptions,
     currentLanguageLabel,
-    savingLanguage,
-    loadLanguage,
-    changeLanguage,
-    syncLanguageToServer,
+    savingLanguage: controller.savingLanguage,
+    loadLanguage: controller.loadLanguage,
+    changeLanguage: controller.changeLanguage,
+    syncLanguageToServer: controller.syncLanguageToServer,
   }
 }
+
+export type { LanguageCode }
