@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import LanguageSwitcher from '@/components/ui/LanguageSwitcher.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
+import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
+import type { SelectOption } from '@/components/ui/AppSelect.vue'
 import type { LanguageCode } from '@/composables/useLanguagePreference'
+import type { SandboxMode } from '@/types/settings'
 
 const props = defineProps<{
   language: LanguageCode
   languageSelectOptions: { value: LanguageCode; label: string }[]
   savingLanguage: boolean
+  sandboxMode: SandboxMode
+  sandboxModeOptions: SelectOption[]
+  sandboxNetworkEnabled: boolean
 }>()
 
 const emit = defineEmits<{
@@ -14,6 +21,8 @@ const emit = defineEmits<{
   openWebSearch: []
   logout: []
   languageChange: [value: LanguageCode]
+  sandboxModeChange: [value: SandboxMode]
+  sandboxNetworkChange: [value: boolean]
 }>()
 
 const { t } = useI18n()
@@ -38,6 +47,20 @@ const { t } = useI18n()
         :aria-label="t('selectLanguage')"
         @update:model-value="emit('languageChange', $event as LanguageCode)"
       />
+    </div>
+    <div class="settings-card px-4 py-3.5 rounded-xl mt-2">
+      <div class="flex items-center justify-between gap-3">
+        <span class="text-sm settings-field-label">{{ t('sandboxMode') }}</span>
+        <AppSelect
+          :model-value="sandboxMode"
+          :options="sandboxModeOptions"
+          @update:model-value="emit('sandboxModeChange', $event as SandboxMode)"
+        />
+      </div>
+      <div class="mt-3 flex items-center justify-between gap-3 text-sm settings-field-label">
+        <span>{{ t('sandboxNetwork') }}</span>
+        <ToggleSwitch :model-value="sandboxNetworkEnabled" @update:model-value="emit('sandboxNetworkChange', $event)" />
+      </div>
     </div>
     <div class="settings-card px-4 py-3.5 rounded-xl mt-2">
       <div class="flex items-center justify-between gap-3">

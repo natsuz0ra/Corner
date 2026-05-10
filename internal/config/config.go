@@ -4,15 +4,17 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"slimebot/internal/runtime"
 )
 
 type Config struct {
-	ServerPort string
-	DBPath     string
-	Frontend   string
-	SkillsRoot string
+	ServerPort        string
+	DBPath            string
+	Frontend          string
+	SkillsRoot        string
+	HermesSkillsRoots []string
 
 	ChatUploadRoot   string
 	JWTSecret        string
@@ -30,12 +32,29 @@ func Load() Config {
 		DBPath:               getPathEnv("DB_PATH", filepath.Join(home, "storage", "data.db")),
 		Frontend:             getEnv("FRONTEND_ORIGIN", ""),
 		SkillsRoot:           getPathEnv("SKILLS_ROOT", filepath.Join(home, "skills")),
+		HermesSkillsRoots:    getPathListEnv("HERMES_SKILLS_ROOTS"),
 		ChatUploadRoot:       getPathEnv("CHAT_UPLOAD_ROOT", filepath.Join(home, "storage", "chat_uploads")),
 		JWTSecret:            getEnv("JWT_SECRET", ""),
 		JWTExpireMinutes:     GetIntEnv("JWT_EXPIRE", 15*24*60),
 		ContextHistoryRounds: GetIntEnv("CONTEXT_HISTORY_ROUNDS", 20),
 		DefaultContextSize:   GetIntEnv("DEFAULT_CONTEXT_SIZE", 1_000_000),
 	}
+}
+
+func getPathListEnv(key string) []string {
+	raw := getEnv(key, "")
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, string(os.PathListSeparator))
+	paths := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			paths = append(paths, runtime.ExpandHome(part))
+		}
+	}
+	return paths
 }
 
 func getEnv(key, fallback string) string {

@@ -19,11 +19,12 @@
 - **工具与 Agent**
   - Agent 多轮 tool call 执行链路
   - 审批模式支持：**标准模式**（敏感工具需确认）、**自动审查**（先由模型审查不确定的敏感工具）与**自动执行**（直接执行）
-  - 敏感内置工具需用户确认（当前为 `exec`、`file_edit`、`file_write`），支持 Web、CLI、Telegram 等流程
+  - 命令执行、文件修改等敏感内置操作需用户确认，支持 Web、CLI、Telegram 等流程
+  - 沙盒策略支持，覆盖命令执行、文件访问与内置 HTTP 请求，支持 `read-only`、`workspace-write`、`danger-full-access`
   - 工具结果写入会话历史并支持详情查看
-  - 内置工具：`命令行`、`网络请求`、`网络搜索`（Tavily）、`待办事项`
+  - 内置能力：命令行、网络请求、基于 Tavily 的网络搜索、待办事项
   - 支持面向代码编辑场景的文件读写能力，用于文本文件编辑场景
-  - **子代理：**主 Agent 可将独立子任务交给内层 Agent，内层使用**隔离上下文**（不携带父会话聊天记录）。仅支持**一层嵌套**（子代理内不能再调用 `run_subagent`）。子代理内的工具调用在 Web 与 CLI 中**嵌套展示**在父工具之下；历史记录持久化 `parentToolCallId`，刷新会话后层级仍可还原。
+  - **子代理：**主 Agent 可将独立子任务交给内层 Agent，内层使用**隔离上下文**（不携带父会话聊天记录）。仅支持**一层嵌套**。子代理内的工具调用在 Web 与 CLI 中**嵌套展示**在父工具之下；历史记录会持久化父子关系，刷新会话后层级仍可还原。
 - **规划与思考控制**
   - 规划模式（Plan Mode）：先产出计划，再审批后执行
   - 计划生命周期：生成、同意/拒绝、修改并重生成、审批后执行
@@ -100,7 +101,7 @@ npm install --prefix frontend
 npm run dev
 ```
 
-首次启动会在缺失时创建 `~/.slimebot/.env`；后续若嵌入式模板新增键名，会按需追加到现有文件。
+首次启动会在缺失时创建 `~/.slimebot/config.cfg`；后续若嵌入式模板新增键名，会按需追加到现有文件。若存在旧的 `~/.slimebot/.env` 且不存在 `config.cfg`，SlimeBot 会复制旧配置到 `config.cfg`，并保留旧文件不动。
 
 **首次登录（Web 服务模式）：** 若数据库中尚无用户，会种子一个默认账号（用户名 **`admin`**，密码 **`admin`**），并引导修改密码。除本机尝鲜外请尽快修改。
 
@@ -160,20 +161,32 @@ make compose-down
 - `/plan` 切换规划模式（`on` / `off`）
 - `/help` 帮助
 
+## 工具沙盒
+
+SlimeBot 会对命令执行、文件工具和内置 HTTP 请求使用同一套沙盒策略。
+
+- `read-only`：允许读取文件，禁止写入文件。
+- `workspace-write`：默认模式。允许读取文件，并允许写入服务工作目录和额外配置的可写根目录。
+- `danger-full-access`：保留旧版不受限的宿主机执行能力，应仅在明确需要时启用。
+- 如果配置了 deny path，拒绝规则始终优先于可写根目录。
+- 命令执行在 macOS 上通过 `/usr/bin/sandbox-exec` 执行，在 Linux 上通过 `bubblewrap`（`bwrap`）执行。平台沙盒不可用时会失败关闭，不会静默退回宿主机裸执行。Windows 暂未实现 OS 级沙盒。
+- 网络访问由沙盒网络开关控制。内置 HTTP 请求额外支持域名 allowlist；沙盒子进程首版支持网络开启/关闭。
+- 工具调用主动请求提升沙盒权限时会被视为权限提升请求，审批结果只作用于当前这一次工具调用。
+
 ## 数据与资源目录（默认）
 
 所有运行时数据默认集中在 `~/.slimebot`：
 
 ```text
 ~/.slimebot/
-  .env
+  config.cfg
   skills/
   storage/
     data.db
     chat_uploads/
 ```
 
-- `.env`：配置文件
+- `config.cfg`：运行时配置文件
 - `storage/data.db`：SQLite 主数据库
 - `storage/chat_uploads`：聊天附件
 - `skills`：Skills 存储目录
@@ -189,7 +202,7 @@ make compose-down
 - 最新一条用户输入会被保护：若它单独就超过上下文窗口，会直接报错，提示缩短输入或调大上下文大小。
 - Web 与 CLI 会通过 `context_usage` / `context_compacted` 事件展示已用 token、可用比例和是否已压缩。
 
-## 配置文件（`~/.slimebot/.env`）
+## 配置文件（`~/.slimebot/config.cfg`）
 
 SlimeBot 各组件会读取下列变量（括号内为默认值或说明）：
 
@@ -201,13 +214,11 @@ SlimeBot 各组件会读取下列变量（括号内为默认值或说明）：
 - `CONTEXT_HISTORY_ROUNDS`：历史轮数配置保留项，默认 `20`，内部限制为 `5` 到 `50`
 - `DEFAULT_CONTEXT_SIZE`：新建模型配置的默认上下文大小，默认 `1000000`
 - `FRONTEND_ORIGIN`：与 Vite 联调时设为 `http://localhost:7391`；生产同源可留空
-- `WEB_SEARCH_API_KEY`：Tavily API Key，供 `web_search` 使用
+- `WEB_SEARCH_API_KEY`：Tavily API Key，供网络搜索使用
 - `JWT_SECRET`：**服务端模式必填**，未配置将启动失败（CLI 无头模式可自动生成）
 - `JWT_EXPIRE`：JWT 过期时间（单位：分钟，默认 `21600` 即约 15 天）
-- `approvalMode`（应用设置）：`standard`、`auto_review` 或 `auto`
-- `thinkingLevel`（应用设置）：`off` / `low` / `medium` / `high`
 
-首次启动生成的 `.env` 与嵌入式模板一致，见 [internal/runtime/env.template](internal/runtime/env.template)。其他键可按需自行追加。
+首次启动生成的 `config.cfg` 与嵌入式模板一致，见 [internal/runtime/env.template](internal/runtime/env.template)。其他键可按需自行追加。旧的 `~/.slimebot/.env` 会在首次启动时复制迁移到 `config.cfg`。
 
 示例：
 
@@ -231,7 +242,7 @@ JWT_EXPIRE=21600
 
 - `VITE_API_BASE_URL`：后端 HTTP 地址（例如 `http://localhost:6247`）
 - `VITE_WS_URL`：后端 WebSocket 地址（例如 `ws://localhost:6247`）
-- `FRONTEND_PORT`：Vite 开发服务端口；从进程环境变量或 `~/.slimebot/.env` 读取
+- `FRONTEND_PORT`：Vite 开发服务端口；从进程环境变量或 `~/.slimebot/config.cfg` 读取
 
 示例：
 
@@ -245,10 +256,10 @@ VITE_WS_URL=ws://localhost:6247
 ### 已完成
 
 - 会话管理与 WebSocket 流式回复（含错误、工具调用、子代理与思考事件）
-- Agent 工具与审批（标准模式下 `exec`、`file_edit`、`file_write` 需确认；支持可选自动审查与自动审批模式）
+- Agent 工具、审批与沙盒约束，覆盖命令执行、文件访问和内置 HTTP 请求
 - 规划模式：计划生成、同意/拒绝/修改流程，以及审批后执行
 - 思考等级控制（`off` / `low` / `medium` / `high`）与流式思考展示
-- 子代理 / 嵌套 Agent（`run_subagent`）、嵌套工具 UI，以及工具历史中的父子关联持久化
+- 子代理 / 嵌套 Agent、嵌套工具 UI，以及工具历史中的父子关联持久化
 - MCP 与 Skills
 - 基于 SQLite 的会话压缩摘要、上下文用量统计与隐藏上下文注入
 - Telegram 集成

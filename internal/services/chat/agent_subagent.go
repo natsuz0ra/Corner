@@ -21,6 +21,22 @@ func wrapSubagentCallbacks(base AgentCallbacks, parentToolCallID, subagentRunID 
 			req.SubagentRunID = subagentRunID
 			return base.OnToolCallStart(req)
 		},
+		OnToolApprovalReview: func(event ApprovalReviewEvent) error {
+			if base.OnToolApprovalReview == nil {
+				return nil
+			}
+			event.ParentToolCallID = parentToolCallID
+			event.SubagentRunID = subagentRunID
+			return base.OnToolApprovalReview(event)
+		},
+		OnToolApprovalRequired: func(req ApprovalRequest) error {
+			if base.OnToolApprovalRequired == nil {
+				return nil
+			}
+			req.ParentToolCallID = parentToolCallID
+			req.SubagentRunID = subagentRunID
+			return base.OnToolApprovalRequired(req)
+		},
 		WaitApproval: base.WaitApproval,
 		OnToolCallResult: func(result ToolCallResult) error {
 			if base.OnToolCallResult == nil {

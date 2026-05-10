@@ -113,6 +113,9 @@ func (f *fileWriteTool) writeOne(ctx context.Context, req fileWriteRequest) (Fil
 	if err != nil {
 		return FileToolMetadata{}, "", err
 	}
+	if err := checkSandboxWrite(ctx, path); err != nil {
+		return FileToolMetadata{}, "", err
+	}
 	content, err := validateTextBytes([]byte(req.Content))
 	if err != nil {
 		return FileToolMetadata{}, "", err

@@ -87,6 +87,7 @@ func New(cfg config.Config, tokenManager *auth.TokenManager, httpController *con
 
 			api.Get("/skills", adapt(httpController.ListSkills))
 			api.Post("/skills/upload", adapt(httpController.UploadSkills))
+			api.Patch("/skills/{id}/enabled", adapt(httpController.SetSkillEnabled))
 			api.Delete("/skills/{id}", adapt(httpController.DeleteSkill))
 
 			api.Get("/plans", adapt(httpController.ListPlans))

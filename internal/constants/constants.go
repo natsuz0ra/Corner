@@ -64,9 +64,17 @@ const (
 	ApprovalModeAutoReview = "auto_review"
 	ApprovalModeAuto       = "auto"
 
-	SettingThinkingLevel                = "thinkingLevel"
-	SettingMessagePlatformThinkingLevel = "messagePlatformThinkingLevel"
-	SettingMessagePlatformApprovalMode  = "messagePlatformApprovalMode"
+	SettingThinkingLevel                   = "thinkingLevel"
+	SettingMessagePlatformThinkingLevel    = "messagePlatformThinkingLevel"
+	SettingMessagePlatformApprovalMode     = "messagePlatformApprovalMode"
+	SettingSandboxMode                     = "sandboxMode"
+	SettingSandboxWritableRoots            = "sandboxWritableRoots"
+	SettingSandboxNetworkEnabled           = "sandboxNetworkEnabled"
+	SettingSandboxNetworkAllowedDomains    = "sandboxNetworkAllowedDomains"
+	SettingCLISandboxMode                  = "cliSandboxMode"
+	SettingCLISandboxWritableRoots         = "cliSandboxWritableRoots"
+	SettingCLISandboxNetworkEnabled        = "cliSandboxNetworkEnabled"
+	SettingCLISandboxNetworkAllowedDomains = "cliSandboxNetworkAllowedDomains"
 
 	// Plan mode
 	PlanStartTool      = "plan_start"

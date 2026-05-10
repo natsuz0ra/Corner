@@ -6,6 +6,8 @@ frontend/dist/
 storage/
 *.db
 .env
+config.cfg
+.slimebot/
 .cursor/
 frontend/.gitignore
 .vscode/

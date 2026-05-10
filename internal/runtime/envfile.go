@@ -13,9 +13,15 @@ import (
 )
 
 const jwtSecretEnvKey = "JWT_SECRET"
+const configFileName = "config.cfg"
+const legacyEnvFileName = ".env"
 
 func getEnvPath() string {
-	return filepath.Join(SlimeBotHomeDir(), ".env")
+	return filepath.Join(SlimeBotHomeDir(), configFileName)
+}
+
+func getLegacyEnvPath() string {
+	return filepath.Join(SlimeBotHomeDir(), legacyEnvFileName)
 }
 
 func EnsureAndLoadEnv() error {
@@ -32,8 +38,8 @@ func ensureAndLoadEnv(envPath string, template string) error {
 	}
 
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
-		if err := os.WriteFile(envPath, []byte(template), 0o644); err != nil {
-			return fmt.Errorf("create env file failed: %w", err)
+		if err := createEnvFile(envPath, template); err != nil {
+			return err
 		}
 	} else if err != nil {
 		return fmt.Errorf("stat env file failed: %w", err)
@@ -47,6 +53,33 @@ func ensureAndLoadEnv(envPath string, template string) error {
 		return fmt.Errorf("load env failed: %w", err)
 	}
 	return nil
+}
+
+func createEnvFile(envPath string, template string) error {
+	if legacyPath := legacyEnvPathFor(envPath); legacyPath != "" {
+		if legacyRaw, err := os.ReadFile(legacyPath); err == nil {
+			if err := os.WriteFile(envPath, legacyRaw, 0o644); err != nil {
+				return fmt.Errorf("migrate legacy env file failed: %w", err)
+			}
+			if err := appendMissingEnvKeys(envPath, template); err != nil {
+				return err
+			}
+			return nil
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("read legacy env file failed: %w", err)
+		}
+	}
+	if err := os.WriteFile(envPath, []byte(template), 0o644); err != nil {
+		return fmt.Errorf("create env file failed: %w", err)
+	}
+	return nil
+}
+
+func legacyEnvPathFor(envPath string) string {
+	if filepath.Base(envPath) == legacyEnvFileName {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(envPath), legacyEnvFileName)
 }
 
 func appendMissingEnvKeys(envPath string, template string) error {

@@ -83,7 +83,10 @@ func NewCore(cfg config.Config) (*Core, error) {
 
 	skillStore := skillsvc.NewFileSystemSkillStore(cfg.SkillsRoot)
 	skillPackage := skillsvc.NewSkillPackageService(skillStore, cfg.SkillsRoot)
-	skillRuntime := skillsvc.NewSkillRuntimeService(skillStore, cfg.SkillsRoot)
+	skillRuntime := skillsvc.NewSkillRuntimeServiceWithOptions(skillStore, cfg.SkillsRoot, skillsvc.SkillRuntimeOptions{
+		StateDir: cfg.SkillsRoot,
+		Sources:  skillsvc.DefaultGlobalSkillSources(cfg.HermesSkillsRoots),
+	})
 
 	chatUpload := chatsvc.NewChatUploadService(cfg.ChatUploadRoot)
 	chatService := chatsvc.NewChatService(repo, repo, providerFactory, mcpManager, skillRuntime)
@@ -175,4 +178,15 @@ func buildRunContext(isCLI bool) chatsvc.RunContext {
 		WorkingDir:           cwd,
 		IsCLI:                isCLI,
 	}
+}
+
+func configureSkillSources(core *Core, isCLI bool, workingDir string) {
+	if core == nil || core.SkillRuntime == nil {
+		return
+	}
+	sources := skillsvc.DefaultGlobalSkillSources(core.Config.HermesSkillsRoots)
+	if isCLI {
+		sources = append(sources, skillsvc.ProjectSkillSources(workingDir)...)
+	}
+	core.SkillRuntime.SetSources(sources)
 }

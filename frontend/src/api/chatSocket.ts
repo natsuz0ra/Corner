@@ -54,6 +54,8 @@ export interface ToolCallReviewData {
   reviewStatus: string
   reviewRisk?: string
   reviewReason?: string
+  parentToolCallId?: string
+  subagentRunId?: string
 }
 
 export interface ToolApprovalRequiredData extends ToolCallReviewData {
@@ -244,6 +246,8 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
       reviewStatus: data.reviewStatus || '',
       reviewRisk: data.reviewRisk || '',
       reviewReason: data.reviewReason || '',
+      parentToolCallId: data.parentToolCallId,
+      subagentRunId: data.subagentRunId,
     }, data.sessionId)
   }
 
@@ -257,6 +261,8 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
       reviewStatus: data.reviewStatus || '',
       reviewRisk: data.reviewRisk || '',
       reviewReason: data.reviewReason || '',
+      parentToolCallId: data.parentToolCallId,
+      subagentRunId: data.subagentRunId,
     }, data.sessionId)
   }
 

@@ -35,6 +35,7 @@ export interface CliCommandHandlers {
   toggleApprovalMode: () => Promise<void>;
   toggleThinkingLevel: () => void;
   setThinkingLevel: (level: string) => void;
+  loadSandboxSettings: () => Promise<void>;
   loadSkills: () => Promise<void>;
   loadMCPConfigs: () => Promise<void>;
   showHelp: () => void;
@@ -70,6 +71,10 @@ export async function runCliCommand(raw: string, handlers: CliCommandHandlers): 
   }
   if (cmd.startsWith("/effort ")) {
     handlers.setThinkingLevel(cmd.slice(8).trim());
+    return;
+  }
+  if (cmd === "/sandbox") {
+    await handlers.loadSandboxSettings();
     return;
   }
   if (cmd === "/skills") {

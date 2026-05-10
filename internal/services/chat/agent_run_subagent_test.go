@@ -176,6 +176,130 @@ func TestHandleRunSubagentTool_FallsBackTitleToTask(t *testing.T) {
 	}
 }
 
+func TestHandleRunSubagentTool_ChildExecApprovalUsesParentCallbacksWithSubagentScope(t *testing.T) {
+	provider := &subagentExecProvider{}
+	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil)
+	agent.SetSubagentHost(&stubSubagentHost{})
+
+	var approvals []ApprovalRequest
+	var results []ToolCallResult
+	messages := []llmsvc.ChatMessage{{Role: "user", Content: "delegate"}}
+	err := agent.handleRunSubagentTool(
+		context.Background(),
+		llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI},
+		"session-1",
+		nil,
+		map[string]struct{}{},
+		AgentCallbacks{
+			OnToolCallStart: func(req ApprovalRequest) error {
+				approvals = append(approvals, req)
+				return nil
+			},
+			WaitApproval: func(_ context.Context, toolCallID string) (*ApprovalResponse, error) {
+				return &ApprovalResponse{ToolCallID: toolCallID, Approved: true}, nil
+			},
+			OnToolCallResult: func(result ToolCallResult) error {
+				results = append(results, result)
+				return nil
+			},
+		},
+		AgentLoopOptions{ApprovalMode: constants.ApprovalModeStandard},
+		llmsvc.ToolCallInfo{ID: "call-subagent", Name: constants.RunSubagentTool},
+		resolvedToolInvocation{toolName: constants.RunSubagentTool, command: "run"},
+		map[string]any{"title": "Run child exec", "task": "Run an approved command"},
+		"",
+		"",
+		&messages,
+	)
+	if err != nil {
+		t.Fatalf("handleRunSubagentTool failed: %v", err)
+	}
+	var execApprovals []ApprovalRequest
+	for _, req := range approvals {
+		if req.RequiresApproval {
+			execApprovals = append(execApprovals, req)
+		}
+	}
+	if len(execApprovals) != 1 {
+		t.Fatalf("expected one child exec approval request, got %+v", approvals)
+	}
+	got := execApprovals[0]
+	if got.ToolCallID != "child-exec-call" || got.ToolName != constants.ExecToolName || got.Command != "run" {
+		t.Fatalf("unexpected child exec approval: %+v", got)
+	}
+	if got.ParentToolCallID != "call-subagent" || got.SubagentRunID == "" {
+		t.Fatalf("child exec approval missing subagent scope: %+v", got)
+	}
+	if got.Params["sandbox_permissions"] != "required_approval" || got.Params["description"] != "Check Go version from subagent" {
+		t.Fatalf("child exec approval lost audit params: %+v", got.Params)
+	}
+	if len(results) == 0 {
+		t.Fatal("expected child exec result to be forwarded")
+	}
+	if results[0].ParentToolCallID != "call-subagent" || results[0].SubagentRunID != got.SubagentRunID {
+		t.Fatalf("child exec result scope did not match approval: approval=%+v result=%+v", got, results[0])
+	}
+}
+
+func TestHandleRunSubagentTool_ChildExecRequiredApprovalUsesManualApproval(t *testing.T) {
+	provider := &subagentExecProvider{autoReviewApproves: true}
+	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil)
+	agent.SetSubagentHost(&stubSubagentHost{})
+
+	var waited bool
+	var reviewStatuses []string
+	var reviewEvents []ApprovalReviewEvent
+	var approvalReq *ApprovalRequest
+	messages := []llmsvc.ChatMessage{{Role: "user", Content: "delegate"}}
+	err := agent.handleRunSubagentTool(
+		context.Background(),
+		llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI},
+		"session-1",
+		nil,
+		map[string]struct{}{},
+		AgentCallbacks{
+			WaitApproval: func(_ context.Context, toolCallID string) (*ApprovalResponse, error) {
+				waited = true
+				return &ApprovalResponse{ToolCallID: toolCallID, Approved: true}, nil
+			},
+			OnToolCallStart: func(req ApprovalRequest) error {
+				copied := req
+				approvalReq = &copied
+				return nil
+			},
+			OnToolApprovalReview: func(event ApprovalReviewEvent) error {
+				reviewStatuses = append(reviewStatuses, event.ReviewStatus)
+				reviewEvents = append(reviewEvents, event)
+				return nil
+			},
+		},
+		AgentLoopOptions{ApprovalMode: constants.ApprovalModeAutoReview},
+		llmsvc.ToolCallInfo{ID: "call-subagent", Name: constants.RunSubagentTool},
+		resolvedToolInvocation{toolName: constants.RunSubagentTool, command: "run"},
+		map[string]any{"title": "Run child exec", "task": "Run an auto-reviewed command"},
+		"",
+		"",
+		&messages,
+	)
+	if err != nil {
+		t.Fatalf("handleRunSubagentTool failed: %v", err)
+	}
+	if !waited {
+		t.Fatal("required_approval child exec should wait for manual approval even in auto_review mode")
+	}
+	if len(reviewStatuses) != 0 {
+		t.Fatalf("required_approval should bypass auto-review and require manual approval, got statuses %v", reviewStatuses)
+	}
+	for _, event := range reviewEvents {
+		if event.ParentToolCallID != "call-subagent" || event.SubagentRunID == "" {
+			t.Fatalf("child exec review event missing subagent scope: %+v", event)
+		}
+	}
+	if approvalReq == nil || approvalReq.Params["sandbox_permissions"] != "required_approval" {
+		t.Fatalf("manual approval request missing child exec audit params: %+v", approvalReq)
+	}
+}
+
 func TestRunAgentLoop_HandlesTodoUpdateWithoutRegularToolCallback(t *testing.T) {
 	provider := &todoUpdateProvider{}
 	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil)
@@ -739,6 +863,12 @@ type loopUntilTextProvider struct {
 	textAtCall int
 }
 
+type subagentExecProvider struct {
+	call               int
+	autoReviewApproves bool
+	reviewPrompt       string
+}
+
 type parallelSubagentProvider struct {
 	started      chan string
 	release      chan struct{}
@@ -811,6 +941,58 @@ func (p *parallelSubagentProvider) StreamChatWithTools(
 		{ID: "call-a", Name: constants.RunSubagentTool, Arguments: `{"title":"A","task":"task-a"}`},
 		{ID: "call-b", Name: constants.RunSubagentTool, Arguments: `{"title":"B","task":"task-b"}`},
 	}
+	return &llmsvc.StreamResult{
+		Type:      llmsvc.StreamResultToolCalls,
+		ToolCalls: toolCalls,
+		AssistantMessage: llmsvc.ChatMessage{
+			Role:      "assistant",
+			ToolCalls: toolCalls,
+		},
+	}, nil
+}
+
+func (p *subagentExecProvider) StreamChatWithTools(
+	_ context.Context,
+	_ llmsvc.ModelRuntimeConfig,
+	messages []llmsvc.ChatMessage,
+	toolDefs []llmsvc.ToolDef,
+	callbacks llmsvc.StreamCallbacks,
+) (*llmsvc.StreamResult, error) {
+	if len(toolDefs) == 0 {
+		if len(messages) > 1 {
+			p.reviewPrompt = messages[1].Content
+		}
+		if callbacks.OnChunk != nil {
+			decision := `{"decision":"ask_user","risk":"high","reason":"manual review required"}`
+			if p.autoReviewApproves {
+				decision = `{"decision":"approve","risk":"low","reason":"bounded diagnostic command"}`
+			}
+			if err := callbacks.OnChunk(decision); err != nil {
+				return nil, err
+			}
+		}
+		return &llmsvc.StreamResult{Type: llmsvc.StreamResultText}, nil
+	}
+
+	p.call++
+	if hasToolMessages(messages) {
+		if callbacks.OnChunk != nil {
+			if err := callbacks.OnChunk("child exec done"); err != nil {
+				return nil, err
+			}
+		}
+		return &llmsvc.StreamResult{Type: llmsvc.StreamResultText}, nil
+	}
+	toolCalls := []llmsvc.ToolCallInfo{{
+		ID:   "child-exec-call",
+		Name: "exec__run",
+		Arguments: `{
+			"command":"go version",
+			"description":"Check Go version from subagent",
+			"reason":"Subagent needs command-line verification",
+			"sandbox_permissions":"required_approval"
+		}`,
+	}}
 	return &llmsvc.StreamResult{
 		Type:      llmsvc.StreamResultToolCalls,
 		ToolCalls: toolCalls,

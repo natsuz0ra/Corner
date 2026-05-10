@@ -82,7 +82,7 @@ func TestBuildToolDefs_ExecRunSchema(t *testing.T) {
 		t.Fatalf("unexpected exec__run properties type: %#v", execDef.Parameters["properties"])
 	}
 
-	expected := []string{"command", "timeout_ms", "shell", "working_directory", "description"}
+	expected := []string{"command", "timeout_ms", "shell", "working_directory", "description", "reason", "sandbox_permissions"}
 	for _, key := range expected {
 		if _, found := params[key]; !found {
 			t.Fatalf("expected exec__run param %q in tool schema", key)
@@ -93,8 +93,17 @@ func TestBuildToolDefs_ExecRunSchema(t *testing.T) {
 	if !ok {
 		t.Fatalf("unexpected required type: %#v", execDef.Parameters["required"])
 	}
-	if len(required) != 2 || required[0] != "command" || required[1] != "description" {
-		t.Fatalf("expected required=[command description], got %#v", required)
+	if len(required) != 1 || required[0] != "command" {
+		t.Fatalf("expected required=[command], got %#v", required)
+	}
+
+	sandboxParam, ok := params["sandbox_permissions"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected sandbox_permissions schema: %#v", params["sandbox_permissions"])
+	}
+	enumValues, ok := sandboxParam["enum"].([]string)
+	if !ok || !containsString(enumValues, "default") || !containsString(enumValues, "required_approval") {
+		t.Fatalf("sandbox_permissions should expose controlled enum, got %#v", sandboxParam["enum"])
 	}
 }
 
@@ -173,7 +182,8 @@ func TestDetermineToolApprovalPolicy_AutoReviewForSensitiveBuiltins(t *testing.T
 		{name: "file edit auto review", toolName: "file_edit", approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyAutoReview},
 		{name: "file write auto review", toolName: "file_write", approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyAutoReview},
 		{name: "file read auto review", toolName: "file_read", approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyNone},
-		{name: "mcp auto review unchanged", toolName: "github", isMCP: true, approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyNone},
+		{name: "mcp auto review requires review", toolName: "github", isMCP: true, approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyAutoReview},
+		{name: "mcp auto still requires manual", toolName: "github", isMCP: true, approvalMode: constants.ApprovalModeAuto, want: toolApprovalPolicyManual},
 		{name: "exec auto execute", toolName: constants.ExecToolName, approvalMode: constants.ApprovalModeAuto, want: toolApprovalPolicyNone},
 		{name: "ask questions always manual", toolName: constants.AskQuestionsTool, approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyManual},
 	}
@@ -185,6 +195,22 @@ func TestDetermineToolApprovalPolicy_AutoReviewForSensitiveBuiltins(t *testing.T
 				t.Fatalf("policy = %s, want %s", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestApplyParamApprovalPolicy_RequiredApprovalForcesManual(t *testing.T) {
+	invocation := resolvedToolInvocation{
+		toolName:         constants.ExecToolName,
+		command:          "run",
+		requiresApproval: false,
+		approvalPolicy:   toolApprovalPolicyNone,
+	}
+	got := applyParamApprovalPolicy(invocation, map[string]any{"sandbox_permissions": "required_approval"})
+	if !got.requiresApproval {
+		t.Fatal("required_approval should force approval")
+	}
+	if got.approvalPolicy != toolApprovalPolicyManual {
+		t.Fatalf("approval policy = %s, want manual", got.approvalPolicy)
 	}
 }
 
@@ -273,6 +299,36 @@ func TestNormalizeApprovalReviewResult_ForcesUnclearOrHighRiskToAskUser(t *testi
 				t.Fatalf("decision = %s, want %s", result.Decision, ApprovalReviewDecisionAskUser)
 			}
 		})
+	}
+}
+
+func TestBuildApprovalReviewPromptIncludesExecAuditContext(t *testing.T) {
+	prompt := buildApprovalReviewPrompt([]llmsvc.ChatMessage{
+		{Role: "user", Content: "Please inspect the Go version."},
+	}, ApprovalReviewRequest{
+		ToolCallID: "call-exec",
+		ToolName:   constants.ExecToolName,
+		Command:    "run",
+		Params: map[string]any{
+			"command":             "go version",
+			"description":         "Check Go version for a delegated task",
+			"reason":              "Subagent needs to verify toolchain availability",
+			"working_directory":   "/tmp/example",
+			"sandbox_permissions": "required_approval",
+		},
+	})
+
+	for _, want := range []string{
+		`"command": "run"`,
+		`"command": "go version"`,
+		`"description": "Check Go version for a delegated task"`,
+		`"reason": "Subagent needs to verify toolchain availability"`,
+		`"working_directory": "/tmp/example"`,
+		`"sandbox_permissions": "required_approval"`,
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("approval review prompt missing %q:\n%s", want, prompt)
+		}
 	}
 }
 
