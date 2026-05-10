@@ -300,6 +300,42 @@ func TestFormatToolStartSummary_WithoutCommand(t *testing.T) {
 	}
 }
 
+func TestFormatToolApprovalPrompt_ShowsExecCommandParam(t *testing.T) {
+	got := formatToolApprovalPrompt(chatsvc.ApprovalRequest{
+		ToolName: "exec",
+		Command:  "run",
+		Params:   map[string]any{"command": "go test ./..."},
+	})
+	want := "Tool execution requires approval: exec\nCommand: go test ./...\nPlease choose Approve or Reject."
+	if got != want {
+		t.Fatalf("unexpected approval prompt:\nwant=%q\n got=%q", want, got)
+	}
+}
+
+func TestFormatToolApprovalPrompt_TruncatesLongExecCommandByRunes(t *testing.T) {
+	longCommand := strings.Repeat("测", telegramApprovalCommandMaxRunes+1)
+	got := formatToolApprovalPrompt(chatsvc.ApprovalRequest{
+		ToolName: "exec",
+		Command:  "run",
+		Params:   map[string]any{"command": longCommand},
+	})
+	commandLine := "Command: " + strings.Repeat("测", telegramApprovalCommandMaxRunes) + "..."
+	if !strings.Contains(got, commandLine) {
+		t.Fatalf("expected truncated rune-safe command line, got=%q", got)
+	}
+}
+
+func TestFormatToolApprovalPrompt_OmitsEmptyCommandLine(t *testing.T) {
+	got := formatToolApprovalPrompt(chatsvc.ApprovalRequest{
+		ToolName: "exec",
+		Command:  "",
+		Params:   map[string]any{"command": "   "},
+	})
+	if strings.Contains(got, "Command:") {
+		t.Fatalf("expected empty command line to be omitted, got=%q", got)
+	}
+}
+
 func TestDispatcherHandleInbound_ApprovalByCallback(t *testing.T) {
 	dispatcher := NewDispatcher(&mockApprovalChatService{}, newMockApprovalBroker())
 	sender := &mockSender{}
