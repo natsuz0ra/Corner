@@ -297,6 +297,8 @@ function toggleSubagentTimeline() {
                     exit_code: {{ resultDisplay.exec.exit_code }}
                   </div>
                   <div class="inline-kv-pill">duration_ms: {{ resultDisplay.exec.duration_ms }}</div>
+                  <div v-if="resultDisplay.exec.sandbox_mode" class="inline-kv-pill">sandbox: {{ resultDisplay.exec.sandbox_mode }}</div>
+                  <div v-if="resultDisplay.exec.sandbox_permissions" class="inline-kv-pill">permissions: {{ resultDisplay.exec.sandbox_permissions }}</div>
                 </div>
                 <pre v-if="resultDisplay.exec.stdout.trim()" class="inline-exec-pre">{{ formatDisplayText(resultDisplay.exec.stdout) }}</pre>
                 <pre v-if="resultDisplay.exec.stderr.trim()" class="inline-exec-pre inline-exec-pre--stderr">{{ formatDisplayText(resultDisplay.exec.stderr) }}</pre>

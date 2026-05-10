@@ -1,5 +1,6 @@
 export type ApprovalMode = 'standard' | 'auto_review' | 'auto'
 export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high' | 'max'
+export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 export type SettingsTabKey = 'basic' | 'llm' | 'mcp' | 'skills' | 'platform' | 'about'
 
 export interface AppSettings {
@@ -11,6 +12,10 @@ export interface AppSettings {
   webSearchKey?: string
   approvalMode?: ApprovalMode
   thinkingLevel?: ThinkingLevel
+  sandboxMode?: SandboxMode
+  sandboxWritableRoots?: string[]
+  sandboxNetworkEnabled?: boolean
+  sandboxNetworkAllowedDomains?: string[]
 }
 
 export interface LLMConfig {

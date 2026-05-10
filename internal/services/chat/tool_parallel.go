@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"slimebot/internal/constants"
+	sandboxpolicy "slimebot/internal/sandbox"
 	"slimebot/internal/tools"
 )
 
@@ -15,6 +16,7 @@ type approvalDecision struct {
 	status           string
 	error            string
 	notified         bool
+	escalationGrant  bool
 }
 
 type parallelToolJob struct {
@@ -84,6 +86,9 @@ func runParallelToolJobs(
 						error:          errText,
 					}
 					return
+				}
+				if decision.escalationGrant {
+					ctx = sandboxpolicy.WithEscalationGrant(ctx)
 				}
 				_ = decision.answers
 			}

@@ -21,7 +21,7 @@ import { mcpAPI } from '@/api/mcp'
 import { settingAPI } from '@/api/settings'
 import { skillsAPI } from '@/api/skills'
 import { messagePlatformAPI } from '@/api/messagePlatform'
-import type { AppSettings, ApprovalMode, LLMConfig, MCPConfig, MessagePlatformConfig, SettingsTabKey, SkillItem, ThinkingLevel } from '@/types/settings'
+import type { AppSettings, ApprovalMode, LLMConfig, MCPConfig, MessagePlatformConfig, SandboxMode, SettingsTabKey, SkillItem, ThinkingLevel } from '@/types/settings'
 import { useToast } from '@/composables/useToast'
 import { useSettingsLLM } from '@/composables/settings/useSettingsLLM'
 import { useSettingsMCP } from '@/composables/settings/useSettingsMCP'
@@ -68,6 +68,8 @@ const llmSubmitting = ref(false)
 const mcpSubmitting = ref(false)
 const skillsUploading = ref(false)
 const skillsDropActive = ref(false)
+const sandboxMode = ref<SandboxMode>('workspace-write')
+const sandboxNetworkEnabled = ref(true)
 const skillsFileInputRef = ref<HTMLInputElement | null>(null)
 const accountDialogVisible = ref(false)
 const messagePlatformDialogVisible = ref(false)
@@ -179,6 +181,8 @@ async function loadData() {
     messagePlatformThinkingLevel.value = appSettings.messagePlatformThinkingLevel || 'off'
     messagePlatformApprovalMode.value = appSettings.messagePlatformApprovalMode || 'standard'
     webSearchKey.value = appSettings.webSearchKey || ''
+    sandboxMode.value = appSettings.sandboxMode || 'workspace-write'
+    sandboxNetworkEnabled.value = appSettings.sandboxNetworkEnabled !== undefined ? appSettings.sandboxNetworkEnabled : true
     llmList.value = await llmAPI.list()
     mcpList.value = await mcpAPI.list()
     skillsList.value = await skillsAPI.list()
@@ -190,6 +194,16 @@ async function loadData() {
 
 async function onLanguageChange(nextLanguage: LanguageCode) {
   await changeLanguage(nextLanguage, { allowRemote: true, showSuccessToast: true })
+}
+
+async function onSandboxModeChange(nextMode: SandboxMode) {
+  sandboxMode.value = nextMode
+  await settingAPI.update({ sandboxMode: nextMode })
+}
+
+async function onSandboxNetworkChange(enabled: boolean) {
+  sandboxNetworkEnabled.value = enabled
+  await settingAPI.update({ sandboxNetworkEnabled: enabled })
 }
 
 function openAccountDialog() {
@@ -281,10 +295,14 @@ onMounted(loadData)
           :language="language"
           :language-select-options="languageSelectOptions"
           :saving-language="savingLanguage"
+          :sandbox-mode="sandboxMode"
+          :sandbox-network-enabled="sandboxNetworkEnabled"
           @open-account="openAccountDialog"
           @open-web-search="openWebSearchDialog"
           @logout="logout"
           @language-change="onLanguageChange"
+          @sandbox-mode-change="onSandboxModeChange"
+          @sandbox-network-change="onSandboxNetworkChange"
         />
 
         <SettingsLLMTab v-if="tab === 'llm'" :llm-rows="llmRows" @add="openLLMDialog" @edit="openLLMEditDialog" @delete="deleteLLM" />

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"slimebot/internal/constants"
+	sandboxpolicy "slimebot/internal/sandbox"
 )
 
 type httpRequestTool struct {
@@ -60,6 +61,11 @@ func (h *httpRequestTool) request(ctx context.Context, params map[string]any) (*
 	rawURL := paramStringTrim(params, "url")
 	if rawURL == "" {
 		return nil, fmt.Errorf("url is required.")
+	}
+	if policy, ok := sandboxpolicy.FromContext(ctx); ok {
+		if err := policy.CheckNetworkURL(rawURL); err != nil {
+			return nil, err
+		}
 	}
 
 	var bodyReader io.Reader

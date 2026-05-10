@@ -9,6 +9,8 @@ export interface ExecOutputPayload {
   shell: string
   working_directory: string
   duration_ms: number
+  sandbox_permissions?: string
+  sandbox_mode?: string
 }
 
 export interface WebSearchResult {
@@ -155,6 +157,8 @@ export function parseExecOutputPayload(raw: string): ExecOutputPayload | null {
   const shell = parsed.shell
   const workingDirectory = parsed.working_directory
   const durationMs = parsed.duration_ms
+  const sandboxPermissions = parsed.sandbox_permissions
+  const sandboxMode = parsed.sandbox_mode
 
   if (
     typeof stdout !== 'string' ||
@@ -164,7 +168,9 @@ export function parseExecOutputPayload(raw: string): ExecOutputPayload | null {
     typeof truncated !== 'boolean' ||
     typeof shell !== 'string' ||
     typeof workingDirectory !== 'string' ||
-    typeof durationMs !== 'number'
+    typeof durationMs !== 'number' ||
+    (sandboxPermissions !== undefined && typeof sandboxPermissions !== 'string') ||
+    (sandboxMode !== undefined && typeof sandboxMode !== 'string')
   ) {
     return null
   }
@@ -178,6 +184,8 @@ export function parseExecOutputPayload(raw: string): ExecOutputPayload | null {
     shell,
     working_directory: workingDirectory,
     duration_ms: durationMs,
+    sandbox_permissions: sandboxPermissions,
+    sandbox_mode: sandboxMode,
   }
 }
 

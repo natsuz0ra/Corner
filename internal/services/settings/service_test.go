@@ -126,6 +126,42 @@ func TestSettingsService_GetIncludesMessagePlatformRuntimeDefaults(t *testing.T)
 	}
 }
 
+func TestSettingsService_GetIncludesSandboxDefaults(t *testing.T) {
+	store := &memorySettingsStore{values: map[string]string{}}
+	svc := NewSettingsService(store)
+
+	settings, err := svc.Get(context.Background())
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if settings.SandboxMode != "workspace-write" {
+		t.Fatalf("sandbox mode = %q, want workspace-write", settings.SandboxMode)
+	}
+	if settings.SandboxNetworkEnabled != true {
+		t.Fatal("sandbox network should default to enabled")
+	}
+}
+
+func TestSettingsService_UpdateValidatesSandboxMode(t *testing.T) {
+	store := &memorySettingsStore{values: map[string]string{}}
+	svc := NewSettingsService(store)
+
+	if err := svc.Update(context.Background(), UpdateSettingsInput{SandboxMode: stringPtr("read-only")}); err != nil {
+		t.Fatalf("Update read-only failed: %v", err)
+	}
+	if got := store.values[constants.SettingSandboxMode]; got != "read-only" {
+		t.Fatalf("sandbox mode = %q, want read-only", got)
+	}
+
+	err := svc.Update(context.Background(), UpdateSettingsInput{SandboxMode: stringPtr("root")})
+	if err == nil {
+		t.Fatal("expected invalid sandbox mode error")
+	}
+	if got := store.values[constants.SettingSandboxMode]; got != "read-only" {
+		t.Fatalf("invalid update should preserve sandbox mode, got %q", got)
+	}
+}
+
 func TestSettingsService_UpdateMessagePlatformRuntimeSettings(t *testing.T) {
 	store := &memorySettingsStore{values: map[string]string{}}
 	svc := NewSettingsService(store)

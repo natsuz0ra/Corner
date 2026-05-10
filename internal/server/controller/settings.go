@@ -22,20 +22,28 @@ func (h *HTTPController) GetSettings(c WebContext) {
 		"webSearchApiKey":              settings.WebSearchAPIKey,
 		"approvalMode":                 settings.ApprovalMode,
 		"thinkingLevel":                settings.ThinkingLevel,
+		"sandboxMode":                  settings.SandboxMode,
+		"sandboxWritableRoots":         settings.SandboxWritableRoots,
+		"sandboxNetworkEnabled":        settings.SandboxNetworkEnabled,
+		"sandboxNetworkAllowedDomains": settings.SandboxNetworkAllowedDomains,
 	})
 }
 
 // UpdateSettings patches global settings by field.
 func (h *HTTPController) UpdateSettings(c WebContext) {
 	var req struct {
-		Language                     *string `json:"language"`
-		DefaultModel                 *string `json:"defaultModel"`
-		MessagePlatformDefaultModel  *string `json:"messagePlatformDefaultModel"`
-		MessagePlatformThinkingLevel *string `json:"messagePlatformThinkingLevel"`
-		MessagePlatformApprovalMode  *string `json:"messagePlatformApprovalMode"`
-		WebSearchAPIKey              *string `json:"webSearchApiKey"`
-		ApprovalMode                 *string `json:"approvalMode"`
-		ThinkingLevel                *string `json:"thinkingLevel"`
+		Language                     *string   `json:"language"`
+		DefaultModel                 *string   `json:"defaultModel"`
+		MessagePlatformDefaultModel  *string   `json:"messagePlatformDefaultModel"`
+		MessagePlatformThinkingLevel *string   `json:"messagePlatformThinkingLevel"`
+		MessagePlatformApprovalMode  *string   `json:"messagePlatformApprovalMode"`
+		WebSearchAPIKey              *string   `json:"webSearchApiKey"`
+		ApprovalMode                 *string   `json:"approvalMode"`
+		ThinkingLevel                *string   `json:"thinkingLevel"`
+		SandboxMode                  *string   `json:"sandboxMode"`
+		SandboxWritableRoots         *[]string `json:"sandboxWritableRoots"`
+		SandboxNetworkEnabled        *bool     `json:"sandboxNetworkEnabled"`
+		SandboxNetworkAllowedDomains *[]string `json:"sandboxNetworkAllowedDomains"`
 	}
 	if !bindJSONOrBadRequest(c, &req, "Invalid request payload format.") {
 		return
@@ -49,6 +57,10 @@ func (h *HTTPController) UpdateSettings(c WebContext) {
 		WebSearchAPIKey:              req.WebSearchAPIKey,
 		ApprovalMode:                 req.ApprovalMode,
 		ThinkingLevel:                req.ThinkingLevel,
+		SandboxMode:                  req.SandboxMode,
+		SandboxWritableRoots:         req.SandboxWritableRoots,
+		SandboxNetworkEnabled:        req.SandboxNetworkEnabled,
+		SandboxNetworkAllowedDomains: req.SandboxNetworkAllowedDomains,
 	})
 	if err != nil {
 		jsonInternalError(c, err)

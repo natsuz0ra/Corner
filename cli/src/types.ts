@@ -58,6 +58,10 @@ export interface Skill {
 export interface Settings {
   defaultModel: string;
   approvalMode?: string;
+  sandboxMode?: string;
+  sandboxWritableRoots?: string[];
+  sandboxNetworkEnabled?: boolean;
+  sandboxNetworkAllowedDomains?: string[];
   [key: string]: unknown;
 }
 

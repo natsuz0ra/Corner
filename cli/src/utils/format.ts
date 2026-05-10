@@ -134,6 +134,8 @@ export interface ExecOutputPayload {
   shell: string;
   working_directory: string;
   duration_ms: number;
+  sandbox_permissions?: string;
+  sandbox_mode?: string;
 }
 
 export interface ExecCompactSummary {
@@ -218,6 +220,8 @@ export function parseExecOutputPayload(raw: string): ExecOutputPayload | null {
   const shell = parsed.shell;
   const workingDirectory = parsed.working_directory;
   const durationMs = parsed.duration_ms;
+  const sandboxPermissions = parsed.sandbox_permissions;
+  const sandboxMode = parsed.sandbox_mode;
 
   if (
     typeof stdout !== "string" ||
@@ -227,7 +231,9 @@ export function parseExecOutputPayload(raw: string): ExecOutputPayload | null {
     typeof truncated !== "boolean" ||
     typeof shell !== "string" ||
     typeof workingDirectory !== "string" ||
-    typeof durationMs !== "number"
+    typeof durationMs !== "number" ||
+    (sandboxPermissions !== undefined && typeof sandboxPermissions !== "string") ||
+    (sandboxMode !== undefined && typeof sandboxMode !== "string")
   ) {
     return null;
   }
@@ -241,6 +247,8 @@ export function parseExecOutputPayload(raw: string): ExecOutputPayload | null {
     shell,
     working_directory: workingDirectory,
     duration_ms: durationMs,
+    sandbox_permissions: sandboxPermissions,
+    sandbox_mode: sandboxMode,
   };
 }
 
@@ -269,9 +277,10 @@ export function summarizeExecOutput(raw: string): ExecCompactSummary | null {
   const stderrLines = countNonEmptyLines(payload.stderr);
   const isFailure = payload.exit_code !== 0 || stderrLines > 0;
   const statusToken = isFailure ? "✕ fail" : "✓ ok";
+  const sandboxPart = payload.sandbox_mode ? ` | sandbox: ${payload.sandbox_mode}` : "";
   const summary =
     `${statusToken} | exit_code: ${payload.exit_code} | duration_ms: ${payload.duration_ms} | ` +
-    `truncated: ${payload.truncated} | stdout_lines: ${stdoutLines} | stderr_lines: ${stderrLines}`;
+    `truncated: ${payload.truncated}${sandboxPart} | stdout_lines: ${stdoutLines} | stderr_lines: ${stderrLines}`;
 
   const source = stderrLines > 0 ? payload.stderr : payload.stdout;
   const rawPreview = firstNonEmptyLines(source, 2);
@@ -346,6 +355,9 @@ export function formatToolExecutionOutput(toolName: string, command: string, raw
       const lines: string[] = [
         `exit_code: ${payload.exit_code} | timed_out: ${payload.timed_out} | truncated: ${payload.truncated} | duration_ms: ${payload.duration_ms} | shell: ${payload.shell}`,
       ];
+      if (payload.sandbox_mode || payload.sandbox_permissions) {
+        lines.push(`sandbox: ${payload.sandbox_mode || "unknown"} | permissions: ${payload.sandbox_permissions || "default"}`);
+      }
 
       if (payload.stdout.trim()) {
         lines.push("stdout:");

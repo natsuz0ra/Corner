@@ -2,11 +2,14 @@
 import { useI18n } from 'vue-i18n'
 import LanguageSwitcher from '@/components/ui/LanguageSwitcher.vue'
 import type { LanguageCode } from '@/composables/useLanguagePreference'
+import type { SandboxMode } from '@/types/settings'
 
 const props = defineProps<{
   language: LanguageCode
   languageSelectOptions: { value: LanguageCode; label: string }[]
   savingLanguage: boolean
+  sandboxMode: SandboxMode
+  sandboxNetworkEnabled: boolean
 }>()
 
 const emit = defineEmits<{
@@ -14,6 +17,8 @@ const emit = defineEmits<{
   openWebSearch: []
   logout: []
   languageChange: [value: LanguageCode]
+  sandboxModeChange: [value: SandboxMode]
+  sandboxNetworkChange: [value: boolean]
 }>()
 
 const { t } = useI18n()
@@ -38,6 +43,20 @@ const { t } = useI18n()
         :aria-label="t('selectLanguage')"
         @update:model-value="emit('languageChange', $event as LanguageCode)"
       />
+    </div>
+    <div class="settings-card px-4 py-3.5 rounded-xl mt-2">
+      <div class="flex items-center justify-between gap-3">
+        <span class="text-sm settings-field-label">{{ t('sandboxMode') }}</span>
+        <select class="settings-select" :value="sandboxMode" @change="emit('sandboxModeChange', ($event.target as HTMLSelectElement).value as SandboxMode)">
+          <option value="read-only">{{ t('sandboxReadOnly') }}</option>
+          <option value="workspace-write">{{ t('sandboxWorkspaceWrite') }}</option>
+          <option value="danger-full-access">{{ t('sandboxDangerFullAccess') }}</option>
+        </select>
+      </div>
+      <label class="mt-3 flex items-center justify-between gap-3 text-sm settings-field-label">
+        <span>{{ t('sandboxNetwork') }}</span>
+        <input type="checkbox" :checked="sandboxNetworkEnabled" @change="emit('sandboxNetworkChange', ($event.target as HTMLInputElement).checked)" />
+      </label>
     </div>
     <div class="settings-card px-4 py-3.5 rounded-xl mt-2">
       <div class="flex items-center justify-between gap-3">

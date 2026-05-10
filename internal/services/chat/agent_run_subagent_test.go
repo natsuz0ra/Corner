@@ -241,7 +241,7 @@ func TestHandleRunSubagentTool_ChildExecApprovalUsesParentCallbacksWithSubagentS
 	}
 }
 
-func TestHandleRunSubagentTool_ChildExecInheritsAutoReviewApprovalMode(t *testing.T) {
+func TestHandleRunSubagentTool_ChildExecRequiredApprovalUsesManualApproval(t *testing.T) {
 	provider := &subagentExecProvider{autoReviewApproves: true}
 	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil)
 	agent.SetSubagentHost(&stubSubagentHost{})
@@ -249,6 +249,7 @@ func TestHandleRunSubagentTool_ChildExecInheritsAutoReviewApprovalMode(t *testin
 	var waited bool
 	var reviewStatuses []string
 	var reviewEvents []ApprovalReviewEvent
+	var approvalReq *ApprovalRequest
 	messages := []llmsvc.ChatMessage{{Role: "user", Content: "delegate"}}
 	err := agent.handleRunSubagentTool(
 		context.Background(),
@@ -260,6 +261,11 @@ func TestHandleRunSubagentTool_ChildExecInheritsAutoReviewApprovalMode(t *testin
 			WaitApproval: func(_ context.Context, toolCallID string) (*ApprovalResponse, error) {
 				waited = true
 				return &ApprovalResponse{ToolCallID: toolCallID, Approved: true}, nil
+			},
+			OnToolCallStart: func(req ApprovalRequest) error {
+				copied := req
+				approvalReq = &copied
+				return nil
 			},
 			OnToolApprovalReview: func(event ApprovalReviewEvent) error {
 				reviewStatuses = append(reviewStatuses, event.ReviewStatus)
@@ -278,19 +284,19 @@ func TestHandleRunSubagentTool_ChildExecInheritsAutoReviewApprovalMode(t *testin
 	if err != nil {
 		t.Fatalf("handleRunSubagentTool failed: %v", err)
 	}
-	if waited {
-		t.Fatal("auto-reviewed child exec should not wait for manual approval")
+	if !waited {
+		t.Fatal("required_approval child exec should wait for manual approval even in auto_review mode")
 	}
-	if strings.Join(reviewStatuses, ",") != "reviewing,approved" {
-		t.Fatalf("child exec should inherit auto_review mode, got statuses %v", reviewStatuses)
+	if len(reviewStatuses) != 0 {
+		t.Fatalf("required_approval should bypass auto-review and require manual approval, got statuses %v", reviewStatuses)
 	}
 	for _, event := range reviewEvents {
 		if event.ParentToolCallID != "call-subagent" || event.SubagentRunID == "" {
 			t.Fatalf("child exec review event missing subagent scope: %+v", event)
 		}
 	}
-	if !strings.Contains(provider.reviewPrompt, `"sandbox_permissions": "required_approval"`) {
-		t.Fatalf("review prompt missing child exec audit params:\n%s", provider.reviewPrompt)
+	if approvalReq == nil || approvalReq.Params["sandbox_permissions"] != "required_approval" {
+		t.Fatalf("manual approval request missing child exec audit params: %+v", approvalReq)
 	}
 }
 

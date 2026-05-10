@@ -1,4 +1,4 @@
-import type { AppSettings, ApprovalMode, ThinkingLevel } from '../types/settings'
+import type { AppSettings, ApprovalMode, SandboxMode, ThinkingLevel } from '../types/settings'
 
 export type SettingsPayload = {
   language: 'zh-CN' | 'en-US'
@@ -9,6 +9,10 @@ export type SettingsPayload = {
   webSearchApiKey?: string
   approvalMode?: ApprovalMode
   thinkingLevel?: ThinkingLevel
+  sandboxMode?: SandboxMode
+  sandboxWritableRoots?: string[]
+  sandboxNetworkEnabled?: boolean
+  sandboxNetworkAllowedDomains?: string[]
 }
 
 export function normalizeSettingsPayload(data: Partial<SettingsPayload>): AppSettings {
@@ -20,6 +24,10 @@ export function normalizeSettingsPayload(data: Partial<SettingsPayload>): AppSet
     thinkingLevel: data.thinkingLevel || 'off',
     messagePlatformThinkingLevel: data.messagePlatformThinkingLevel || 'off',
     messagePlatformApprovalMode: data.messagePlatformApprovalMode || 'standard',
+    sandboxMode: data.sandboxMode || 'workspace-write',
+    sandboxWritableRoots: Array.isArray(data.sandboxWritableRoots) ? data.sandboxWritableRoots : [],
+    sandboxNetworkEnabled: data.sandboxNetworkEnabled !== undefined ? data.sandboxNetworkEnabled : true,
+    sandboxNetworkAllowedDomains: Array.isArray(data.sandboxNetworkAllowedDomains) ? data.sandboxNetworkAllowedDomains : [],
   }
 }
 
@@ -33,5 +41,9 @@ export function buildSettingsPayload(payload: Partial<AppSettings>): Partial<Set
   if (payload.webSearchKey !== undefined) wirePayload.webSearchApiKey = payload.webSearchKey
   if (payload.approvalMode !== undefined) wirePayload.approvalMode = payload.approvalMode
   if (payload.thinkingLevel !== undefined) wirePayload.thinkingLevel = payload.thinkingLevel
+  if (payload.sandboxMode !== undefined) wirePayload.sandboxMode = payload.sandboxMode
+  if (payload.sandboxWritableRoots !== undefined) wirePayload.sandboxWritableRoots = payload.sandboxWritableRoots
+  if (payload.sandboxNetworkEnabled !== undefined) wirePayload.sandboxNetworkEnabled = payload.sandboxNetworkEnabled
+  if (payload.sandboxNetworkAllowedDomains !== undefined) wirePayload.sandboxNetworkAllowedDomains = payload.sandboxNetworkAllowedDomains
   return wirePayload
 }

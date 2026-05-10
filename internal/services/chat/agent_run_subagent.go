@@ -155,7 +155,7 @@ func (a *AgentService) executeRunSubagentTool(
 	}
 
 	subCb := wrapSubagentCallbacks(callbacks, tc.ID, runID)
-	childOpts := AgentLoopOptions{Depth: opts.Depth + 1, ApprovalMode: opts.ApprovalMode, PlanMode: opts.PlanMode}
+	childOpts := AgentLoopOptions{Depth: opts.Depth + 1, ApprovalMode: opts.ApprovalMode, PlanMode: opts.PlanMode, SandboxPolicy: opts.SandboxPolicy}
 
 	answer, runErr := a.RunAgentLoop(ctx, subModel, sessionID, subMsgs, mcpConfigs, activatedSkills, subCb, childOpts)
 

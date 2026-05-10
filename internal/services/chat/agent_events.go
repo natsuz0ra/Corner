@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	sandboxpolicy "slimebot/internal/sandbox"
 	llmsvc "slimebot/internal/services/llm"
 )
 
@@ -139,4 +140,5 @@ type AgentLoopOptions struct {
 	SubagentModelID string
 	LatestUsage     *llmsvc.TokenUsage
 	OnProviderUsage func(usage llmsvc.TokenUsage) error
+	SandboxPolicy   *sandboxpolicy.Policy
 }
