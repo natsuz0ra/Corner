@@ -19,7 +19,7 @@ func TestDescribeConfigHome_ListsEntries(t *testing.T) {
 	// Create some files and directories.
 	_ = os.MkdirAll(filepath.Join(dir, "skills"), os.ModePerm)
 	_ = os.MkdirAll(filepath.Join(dir, "storage"), os.ModePerm)
-	if f, err := os.Create(filepath.Join(dir, ".env")); err == nil {
+	if f, err := os.Create(filepath.Join(dir, "config.cfg")); err == nil {
 		f.Close()
 	}
 
