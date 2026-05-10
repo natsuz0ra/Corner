@@ -5,6 +5,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"slimebot/internal/logging"
 
 	"github.com/go-chi/chi/v5"
@@ -42,7 +43,12 @@ func (c chiContext) Writer() http.ResponseWriter { return c.w }
 func (c chiContext) Request() *http.Request      { return c.r }
 
 func (c chiContext) Param(key string) string {
-	return chi.URLParam(c.r, key)
+	value := chi.URLParam(c.r, key)
+	decoded, err := url.PathUnescape(value)
+	if err != nil {
+		return value
+	}
+	return decoded
 }
 
 func (c chiContext) Query(key string) string {
