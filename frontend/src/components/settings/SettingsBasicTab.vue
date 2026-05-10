@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import LanguageSwitcher from '@/components/ui/LanguageSwitcher.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
+import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
+import type { SelectOption } from '@/components/ui/AppSelect.vue'
 import type { LanguageCode } from '@/composables/useLanguagePreference'
 import type { SandboxMode } from '@/types/settings'
 
@@ -9,6 +12,7 @@ const props = defineProps<{
   languageSelectOptions: { value: LanguageCode; label: string }[]
   savingLanguage: boolean
   sandboxMode: SandboxMode
+  sandboxModeOptions: SelectOption[]
   sandboxNetworkEnabled: boolean
 }>()
 
@@ -47,16 +51,16 @@ const { t } = useI18n()
     <div class="settings-card px-4 py-3.5 rounded-xl mt-2">
       <div class="flex items-center justify-between gap-3">
         <span class="text-sm settings-field-label">{{ t('sandboxMode') }}</span>
-        <select class="settings-select" :value="sandboxMode" @change="emit('sandboxModeChange', ($event.target as HTMLSelectElement).value as SandboxMode)">
-          <option value="read-only">{{ t('sandboxReadOnly') }}</option>
-          <option value="workspace-write">{{ t('sandboxWorkspaceWrite') }}</option>
-          <option value="danger-full-access">{{ t('sandboxDangerFullAccess') }}</option>
-        </select>
+        <AppSelect
+          :model-value="sandboxMode"
+          :options="sandboxModeOptions"
+          @update:model-value="emit('sandboxModeChange', $event as SandboxMode)"
+        />
       </div>
-      <label class="mt-3 flex items-center justify-between gap-3 text-sm settings-field-label">
+      <div class="mt-3 flex items-center justify-between gap-3 text-sm settings-field-label">
         <span>{{ t('sandboxNetwork') }}</span>
-        <input type="checkbox" :checked="sandboxNetworkEnabled" @change="emit('sandboxNetworkChange', ($event.target as HTMLInputElement).checked)" />
-      </label>
+        <ToggleSwitch :model-value="sandboxNetworkEnabled" @update:model-value="emit('sandboxNetworkChange', $event)" />
+      </div>
     </div>
     <div class="settings-card px-4 py-3.5 rounded-xl mt-2">
       <div class="flex items-center justify-between gap-3">

@@ -31,6 +31,7 @@ import { useSettingsMessagePlatform } from '@/composables/settings/useSettingsMe
 import { useSettingsConfirmDialog } from '@/composables/settings/useSettingsConfirmDialog'
 import { useSettingsWebSearch } from '@/composables/settings/useSettingsWebSearch'
 import { useLanguagePreference, type LanguageCode } from '@/composables/useLanguagePreference'
+import { createWebSandboxModeOptions, toWebSandboxMode } from '@/utils/sandboxSettings'
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
 import { useRouter } from 'vue-router'
@@ -77,6 +78,7 @@ const messagePlatformSubmitting = ref(false)
 const messagePlatformDefaultModel = ref('')
 const messagePlatformThinkingLevel = ref<ThinkingLevel>('off')
 const messagePlatformApprovalMode = ref<ApprovalMode>('standard')
+const sandboxModeOptions = computed(() => createWebSandboxModeOptions((key) => t(key)))
 const { confirmDialogVisible, openConfirmDialog, runConfirmDialog } = useSettingsConfirmDialog()
 const {
   webSearchDialogVisible,
@@ -181,7 +183,7 @@ async function loadData() {
     messagePlatformThinkingLevel.value = appSettings.messagePlatformThinkingLevel || 'off'
     messagePlatformApprovalMode.value = appSettings.messagePlatformApprovalMode || 'standard'
     webSearchKey.value = appSettings.webSearchKey || ''
-    sandboxMode.value = appSettings.sandboxMode || 'workspace-write'
+    sandboxMode.value = toWebSandboxMode(appSettings.sandboxMode || 'workspace-write')
     sandboxNetworkEnabled.value = appSettings.sandboxNetworkEnabled !== undefined ? appSettings.sandboxNetworkEnabled : true
     llmList.value = await llmAPI.list()
     mcpList.value = await mcpAPI.list()
@@ -197,13 +199,27 @@ async function onLanguageChange(nextLanguage: LanguageCode) {
 }
 
 async function onSandboxModeChange(nextMode: SandboxMode) {
+  const previousMode = sandboxMode.value
   sandboxMode.value = nextMode
-  await settingAPI.update({ sandboxMode: nextMode })
+  try {
+    await settingAPI.update({ sandboxMode: nextMode })
+  } catch (err: unknown) {
+    sandboxMode.value = previousMode
+    const response = err as { response?: { data?: { error?: string } } }
+    toast.error(response.response?.data?.error || t('sandboxSaveFailed'))
+  }
 }
 
 async function onSandboxNetworkChange(enabled: boolean) {
+  const previousEnabled = sandboxNetworkEnabled.value
   sandboxNetworkEnabled.value = enabled
-  await settingAPI.update({ sandboxNetworkEnabled: enabled })
+  try {
+    await settingAPI.update({ sandboxNetworkEnabled: enabled })
+  } catch (err: unknown) {
+    sandboxNetworkEnabled.value = previousEnabled
+    const response = err as { response?: { data?: { error?: string } } }
+    toast.error(response.response?.data?.error || t('sandboxSaveFailed'))
+  }
 }
 
 function openAccountDialog() {
@@ -296,6 +312,7 @@ onMounted(loadData)
           :language-select-options="languageSelectOptions"
           :saving-language="savingLanguage"
           :sandbox-mode="sandboxMode"
+          :sandbox-mode-options="sandboxModeOptions"
           :sandbox-network-enabled="sandboxNetworkEnabled"
           @open-account="openAccountDialog"
           @open-web-search="openWebSearchDialog"
