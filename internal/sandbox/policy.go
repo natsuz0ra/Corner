@@ -190,7 +190,7 @@ func (p *Policy) CheckWrite(path string) error {
 }
 
 func (p *Policy) CheckNetworkURL(raw string) error {
-	if p == nil || p.mode == ModeDangerFullAccess {
+	if p == nil {
 		return nil
 	}
 	networkPolicy := p.network

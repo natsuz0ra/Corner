@@ -65,6 +65,26 @@ func TestHTTPRequestRejectsNetworkDisabledBySandbox(t *testing.T) {
 	}
 }
 
+func TestHTTPRequestRejectsNetworkDisabledInDangerFullAccess(t *testing.T) {
+	policy, err := sandboxpolicy.NewPolicy(sandboxpolicy.Config{
+		Mode:    sandboxpolicy.ModeDangerFullAccess,
+		CWD:     t.TempDir(),
+		Network: sandboxpolicy.NetworkPolicy{Enabled: false},
+	})
+	if err != nil {
+		t.Fatalf("new policy: %v", err)
+	}
+	ctx := sandboxpolicy.WithPolicy(context.Background(), policy)
+
+	_, err = (&httpRequestTool{client: http.DefaultClient}).request(ctx, map[string]any{
+		"method": "GET",
+		"url":    "https://example.com",
+	})
+	if err == nil || !strings.Contains(err.Error(), "sandbox") {
+		t.Fatalf("expected sandbox network rejection, got %v", err)
+	}
+}
+
 func TestExecRequiredApprovalRejectedWithoutSandboxEscalationGrant(t *testing.T) {
 	workspace := t.TempDir()
 	policy, err := sandboxpolicy.NewPolicy(sandboxpolicy.Config{Mode: sandboxpolicy.ModeWorkspaceWrite, CWD: workspace})

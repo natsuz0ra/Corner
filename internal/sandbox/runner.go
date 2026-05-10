@@ -34,8 +34,18 @@ func RunCommand(ctx context.Context, policy *Policy, req CommandRequest) (Comman
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if policy == nil || policy.Mode() == ModeDangerFullAccess {
+	if policy == nil || (policy.Mode() == ModeDangerFullAccess && policy.Network().Enabled) {
 		return runHostCommand(ctx, req.CommandName, req.CommandArgs, req.Dir, req.Env, req.Timeout)
+	}
+	if policy.Mode() == ModeDangerFullAccess {
+		if runtime.GOOS == "windows" {
+			return CommandResult{}, fmt.Errorf("network-only sandbox execution is unsupported on windows")
+		}
+		commandName, commandArgs, err := buildNetworkOnlySandboxedCommand(req)
+		if err != nil {
+			return CommandResult{}, err
+		}
+		return runHostCommand(ctx, commandName, commandArgs, req.Dir, req.Env, req.Timeout)
 	}
 	if err := policy.CheckRead(req.Dir); err != nil {
 		return CommandResult{}, err
@@ -114,6 +124,26 @@ func buildSandboxedCommand(policy *Policy, req CommandRequest) (string, []string
 	}
 }
 
+func buildNetworkOnlySandboxedCommand(req CommandRequest) (string, []string, error) {
+	switch runtime.GOOS {
+	case "darwin":
+		if _, err := lookPath("/usr/bin/sandbox-exec"); err != nil {
+			return "", nil, fmt.Errorf("network-only sandbox execution unavailable: /usr/bin/sandbox-exec not found")
+		}
+		args := []string{"-p", buildSeatbeltNetworkOnlyProfile(), req.CommandName}
+		args = append(args, req.CommandArgs...)
+		return "/usr/bin/sandbox-exec", args, nil
+	case "linux":
+		bwrap, err := lookPath("bwrap")
+		if err != nil {
+			return "", nil, fmt.Errorf("network-only sandbox execution unavailable: bubblewrap (bwrap) not found")
+		}
+		return bwrap, buildBubblewrapNetworkOnlyArgs(req), nil
+	default:
+		return "", nil, fmt.Errorf("network-only sandbox execution unsupported on %s", runtime.GOOS)
+	}
+}
+
 func buildSeatbeltProfile(policy *Policy) string {
 	var b strings.Builder
 	b.WriteString("(version 1)\n")
@@ -128,6 +158,14 @@ func buildSeatbeltProfile(policy *Policy) string {
 	if policy.Network().Enabled {
 		b.WriteString("(allow network*)\n")
 	}
+	return b.String()
+}
+
+func buildSeatbeltNetworkOnlyProfile() string {
+	var b strings.Builder
+	b.WriteString("(version 1)\n")
+	b.WriteString("(allow default)\n")
+	b.WriteString("(deny network*)\n")
 	return b.String()
 }
 
@@ -146,6 +184,19 @@ func buildBubblewrapArgs(policy *Policy, req CommandRequest) []string {
 		args = append(args, "--bind", root, root)
 	}
 	args = append(args, "--chdir", req.Dir, "--", req.CommandName)
+	args = append(args, req.CommandArgs...)
+	return args
+}
+
+func buildBubblewrapNetworkOnlyArgs(req CommandRequest) []string {
+	args := []string{
+		"--die-with-parent",
+		"--bind", "/", "/",
+		"--unshare-net",
+		"--chdir", req.Dir,
+		"--",
+		req.CommandName,
+	}
 	args = append(args, req.CommandArgs...)
 	return args
 }
