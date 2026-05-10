@@ -62,6 +62,10 @@ export interface Settings {
   sandboxWritableRoots?: string[];
   sandboxNetworkEnabled?: boolean;
   sandboxNetworkAllowedDomains?: string[];
+  cliSandboxMode?: string;
+  cliSandboxWritableRoots?: string[];
+  cliSandboxNetworkEnabled?: boolean;
+  cliSandboxNetworkAllowedDomains?: string[];
   [key: string]: unknown;
 }
 

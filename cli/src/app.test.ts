@@ -105,6 +105,15 @@ test("app footer operation hints use the shared slate hint color", () => {
   assert.doesNotMatch(source, /color="gray" dimColor/);
 });
 
+test("sandbox menu persists CLI-specific sandbox settings", () => {
+  const source = readFileSync(new URL("./app.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /updateSettings\(\{ cliSandboxMode: action\.mode \}\)/);
+  assert.match(source, /updateSettings\(\{ cliSandboxNetworkEnabled: action\.enabled \}\)/);
+  assert.doesNotMatch(source, /updateSettings\(\{ sandboxMode: action\.mode \}\)/);
+  assert.doesNotMatch(source, /updateSettings\(\{ sandboxNetworkEnabled: action\.enabled \}\)/);
+});
+
 test("mapHistoryMessages preserves parentToolCallId for nested tool calls", () => {
   const messages: Message[] = [
     {

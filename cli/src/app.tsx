@@ -450,10 +450,10 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       if (state.menuKind === "sandbox") {
         const action = item.data as SandboxMenuAction;
         if (action.type === "mode") {
-          await apiRef.current.updateSettings({ sandboxMode: action.mode });
+          await apiRef.current.updateSettings({ cliSandboxMode: action.mode });
           appendSystem(`Sandbox mode set to: ${action.mode}`);
         } else {
-          await apiRef.current.updateSettings({ sandboxNetworkEnabled: action.enabled });
+          await apiRef.current.updateSettings({ cliSandboxNetworkEnabled: action.enabled });
           appendSystem(`Sandbox network access ${action.enabled ? "enabled" : "disabled"}.`);
         }
         await loadSandboxSettings();

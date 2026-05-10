@@ -14,34 +14,42 @@ import (
 
 // AppSettings is the settings DTO exposed to the frontend.
 type AppSettings struct {
-	Language                     string
-	DefaultModel                 string
-	MessagePlatformDefaultModel  string
-	MessagePlatformThinkingLevel string
-	MessagePlatformApprovalMode  string
-	WebSearchAPIKey              string
-	ApprovalMode                 string
-	ThinkingLevel                string
-	SandboxMode                  string
-	SandboxWritableRoots         []string
-	SandboxNetworkEnabled        bool
-	SandboxNetworkAllowedDomains []string
+	Language                        string
+	DefaultModel                    string
+	MessagePlatformDefaultModel     string
+	MessagePlatformThinkingLevel    string
+	MessagePlatformApprovalMode     string
+	WebSearchAPIKey                 string
+	ApprovalMode                    string
+	ThinkingLevel                   string
+	SandboxMode                     string
+	SandboxWritableRoots            []string
+	SandboxNetworkEnabled           bool
+	SandboxNetworkAllowedDomains    []string
+	CLISandboxMode                  string
+	CLISandboxWritableRoots         []string
+	CLISandboxNetworkEnabled        bool
+	CLISandboxNetworkAllowedDomains []string
 }
 
 // UpdateSettingsInput is the domain input for partial settings updates.
 type UpdateSettingsInput struct {
-	Language                     *string
-	DefaultModel                 *string
-	MessagePlatformDefaultModel  *string
-	MessagePlatformThinkingLevel *string
-	MessagePlatformApprovalMode  *string
-	WebSearchAPIKey              *string
-	ApprovalMode                 *string
-	ThinkingLevel                *string
-	SandboxMode                  *string
-	SandboxWritableRoots         *[]string
-	SandboxNetworkEnabled        *bool
-	SandboxNetworkAllowedDomains *[]string
+	Language                        *string
+	DefaultModel                    *string
+	MessagePlatformDefaultModel     *string
+	MessagePlatformThinkingLevel    *string
+	MessagePlatformApprovalMode     *string
+	WebSearchAPIKey                 *string
+	ApprovalMode                    *string
+	ThinkingLevel                   *string
+	SandboxMode                     *string
+	SandboxWritableRoots            *[]string
+	SandboxNetworkEnabled           *bool
+	SandboxNetworkAllowedDomains    *[]string
+	CLISandboxMode                  *string
+	CLISandboxWritableRoots         *[]string
+	CLISandboxNetworkEnabled        *bool
+	CLISandboxNetworkAllowedDomains *[]string
 }
 
 type SettingsService struct {
@@ -117,19 +125,42 @@ func (s *SettingsService) Get(ctx context.Context) (*AppSettings, error) {
 	if err != nil {
 		return nil, err
 	}
+	cliSandboxMode, err := s.store.GetSetting(ctx, constants.SettingCLISandboxMode)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(cliSandboxMode) == "" {
+		cliSandboxMode = string(sandboxpolicy.ModeWorkspaceWrite)
+	}
+	cliSandboxWritableRoots, err := s.getStringSliceSetting(ctx, constants.SettingCLISandboxWritableRoots)
+	if err != nil {
+		return nil, err
+	}
+	cliSandboxNetworkEnabled, err := s.getBoolStringSetting(ctx, constants.SettingCLISandboxNetworkEnabled, true)
+	if err != nil {
+		return nil, err
+	}
+	cliSandboxNetworkAllowedDomains, err := s.getStringSliceSetting(ctx, constants.SettingCLISandboxNetworkAllowedDomains)
+	if err != nil {
+		return nil, err
+	}
 	return &AppSettings{
-		Language:                     language,
-		DefaultModel:                 defaultModel,
-		MessagePlatformDefaultModel:  messagePlatformDefaultModel,
-		MessagePlatformThinkingLevel: messagePlatformThinkingLevel,
-		MessagePlatformApprovalMode:  messagePlatformApprovalMode,
-		WebSearchAPIKey:              webSearchAPIKey,
-		ApprovalMode:                 approvalMode,
-		ThinkingLevel:                thinkingLevel,
-		SandboxMode:                  sandboxMode,
-		SandboxWritableRoots:         sandboxWritableRoots,
-		SandboxNetworkEnabled:        sandboxNetworkEnabled,
-		SandboxNetworkAllowedDomains: sandboxNetworkAllowedDomains,
+		Language:                        language,
+		DefaultModel:                    defaultModel,
+		MessagePlatformDefaultModel:     messagePlatformDefaultModel,
+		MessagePlatformThinkingLevel:    messagePlatformThinkingLevel,
+		MessagePlatformApprovalMode:     messagePlatformApprovalMode,
+		WebSearchAPIKey:                 webSearchAPIKey,
+		ApprovalMode:                    approvalMode,
+		ThinkingLevel:                   thinkingLevel,
+		SandboxMode:                     sandboxMode,
+		SandboxWritableRoots:            sandboxWritableRoots,
+		SandboxNetworkEnabled:           sandboxNetworkEnabled,
+		SandboxNetworkAllowedDomains:    sandboxNetworkAllowedDomains,
+		CLISandboxMode:                  cliSandboxMode,
+		CLISandboxWritableRoots:         cliSandboxWritableRoots,
+		CLISandboxNetworkEnabled:        cliSandboxNetworkEnabled,
+		CLISandboxNetworkAllowedDomains: cliSandboxNetworkAllowedDomains,
 	}, nil
 }
 
@@ -211,6 +242,30 @@ func (s *SettingsService) Update(ctx context.Context, input UpdateSettingsInput)
 	}
 	if input.SandboxNetworkAllowedDomains != nil {
 		if err := s.setStringSliceSetting(ctx, constants.SettingSandboxNetworkAllowedDomains, *input.SandboxNetworkAllowedDomains); err != nil {
+			return err
+		}
+	}
+	if input.CLISandboxMode != nil && strings.TrimSpace(*input.CLISandboxMode) != "" {
+		mode := strings.TrimSpace(*input.CLISandboxMode)
+		if !isValidSandboxMode(mode) {
+			return fmt.Errorf("invalid CLI sandbox mode: %s", mode)
+		}
+		if err := s.store.SetSetting(ctx, constants.SettingCLISandboxMode, mode); err != nil {
+			return err
+		}
+	}
+	if input.CLISandboxWritableRoots != nil {
+		if err := s.setStringSliceSetting(ctx, constants.SettingCLISandboxWritableRoots, *input.CLISandboxWritableRoots); err != nil {
+			return err
+		}
+	}
+	if input.CLISandboxNetworkEnabled != nil {
+		if err := s.store.SetSetting(ctx, constants.SettingCLISandboxNetworkEnabled, fmt.Sprintf("%t", *input.CLISandboxNetworkEnabled)); err != nil {
+			return err
+		}
+	}
+	if input.CLISandboxNetworkAllowedDomains != nil {
+		if err := s.setStringSliceSetting(ctx, constants.SettingCLISandboxNetworkAllowedDomains, *input.CLISandboxNetworkAllowedDomains); err != nil {
 			return err
 		}
 	}

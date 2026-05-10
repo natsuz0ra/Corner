@@ -32,8 +32,9 @@ const { t } = useI18n()
           <div class="text-sm font-medium settings-item-name truncate">
             {{ item.name }}
             <span class="font-normal settings-item-meta"> · {{ item.model }}</span>
-            <span v-if="item.provider === 'anthropic'" class="inline-block ml-1 px-1.5 py-0.5 text-[10px] font-medium rounded-md" style="background: rgba(217,119,6,0.15); color: #d97706;">Anthropic</span>
-            <span v-else-if="item.provider === 'deepseek'" class="inline-block ml-1 px-1.5 py-0.5 text-[10px] font-medium rounded-md" style="background: rgba(20,184,166,0.15); color: #0f766e;">DeepSeek</span>
+            <span v-if="item.provider === 'openai'" class="inline-block ml-1 px-1.5 py-0.5 text-[10px] font-medium rounded-md" style="background: rgba(59,130,246,0.15); color: #2563eb;">{{ t('providerOpenAI') }}</span>
+            <span v-else-if="item.provider === 'anthropic'" class="inline-block ml-1 px-1.5 py-0.5 text-[10px] font-medium rounded-md" style="background: rgba(217,119,6,0.15); color: #d97706;">{{ t('providerAnthropic') }}</span>
+            <span v-else-if="item.provider === 'deepseek'" class="inline-block ml-1 px-1.5 py-0.5 text-[10px] font-medium rounded-md" style="background: rgba(20,184,166,0.15); color: #0f766e;">{{ t('providerDeepSeek') }}</span>
           </div>
           <div class="text-xs settings-item-sub truncate mt-0.5">{{ item.baseUrl }} · {{ t('contextSize') }} {{ formatContextSize(item.contextSize || 1_000_000) }}</div>
         </div>

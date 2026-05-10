@@ -13,6 +13,10 @@ export type SettingsPayload = {
   sandboxWritableRoots?: string[]
   sandboxNetworkEnabled?: boolean
   sandboxNetworkAllowedDomains?: string[]
+  cliSandboxMode?: SandboxMode
+  cliSandboxWritableRoots?: string[]
+  cliSandboxNetworkEnabled?: boolean
+  cliSandboxNetworkAllowedDomains?: string[]
 }
 
 export function normalizeSettingsPayload(data: Partial<SettingsPayload>): AppSettings {
@@ -28,6 +32,10 @@ export function normalizeSettingsPayload(data: Partial<SettingsPayload>): AppSet
     sandboxWritableRoots: Array.isArray(data.sandboxWritableRoots) ? data.sandboxWritableRoots : [],
     sandboxNetworkEnabled: data.sandboxNetworkEnabled !== undefined ? data.sandboxNetworkEnabled : true,
     sandboxNetworkAllowedDomains: Array.isArray(data.sandboxNetworkAllowedDomains) ? data.sandboxNetworkAllowedDomains : [],
+    cliSandboxMode: data.cliSandboxMode || 'workspace-write',
+    cliSandboxWritableRoots: Array.isArray(data.cliSandboxWritableRoots) ? data.cliSandboxWritableRoots : [],
+    cliSandboxNetworkEnabled: data.cliSandboxNetworkEnabled !== undefined ? data.cliSandboxNetworkEnabled : true,
+    cliSandboxNetworkAllowedDomains: Array.isArray(data.cliSandboxNetworkAllowedDomains) ? data.cliSandboxNetworkAllowedDomains : [],
   }
 }
 
@@ -45,5 +53,9 @@ export function buildSettingsPayload(payload: Partial<AppSettings>): Partial<Set
   if (payload.sandboxWritableRoots !== undefined) wirePayload.sandboxWritableRoots = payload.sandboxWritableRoots
   if (payload.sandboxNetworkEnabled !== undefined) wirePayload.sandboxNetworkEnabled = payload.sandboxNetworkEnabled
   if (payload.sandboxNetworkAllowedDomains !== undefined) wirePayload.sandboxNetworkAllowedDomains = payload.sandboxNetworkAllowedDomains
+  if (payload.cliSandboxMode !== undefined) wirePayload.cliSandboxMode = payload.cliSandboxMode
+  if (payload.cliSandboxWritableRoots !== undefined) wirePayload.cliSandboxWritableRoots = payload.cliSandboxWritableRoots
+  if (payload.cliSandboxNetworkEnabled !== undefined) wirePayload.cliSandboxNetworkEnabled = payload.cliSandboxNetworkEnabled
+  if (payload.cliSandboxNetworkAllowedDomains !== undefined) wirePayload.cliSandboxNetworkAllowedDomains = payload.cliSandboxNetworkAllowedDomains
   return wirePayload
 }
