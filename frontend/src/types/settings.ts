@@ -16,6 +16,10 @@ export interface AppSettings {
   sandboxWritableRoots?: string[]
   sandboxNetworkEnabled?: boolean
   sandboxNetworkAllowedDomains?: string[]
+  cliSandboxMode?: SandboxMode
+  cliSandboxWritableRoots?: string[]
+  cliSandboxNetworkEnabled?: boolean
+  cliSandboxNetworkAllowedDomains?: string[]
 }
 
 export interface LLMConfig {

@@ -31,8 +31,8 @@ export function normalizeCliSandboxMode(mode?: string): CliSandboxMode {
 }
 
 export function buildSandboxMenuItems(settings: Settings): MenuItem[] {
-  const currentMode = normalizeCliSandboxMode(settings.sandboxMode);
-  const networkEnabled = settings.sandboxNetworkEnabled !== false;
+  const currentMode = normalizeCliSandboxMode(settings.cliSandboxMode);
+  const networkEnabled = settings.cliSandboxNetworkEnabled !== false;
   return [
     ...CLI_SANDBOX_MODES.map((mode) => ({
       title: mode.title,

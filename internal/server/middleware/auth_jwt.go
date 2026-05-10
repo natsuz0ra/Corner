@@ -31,6 +31,7 @@ func RequireJWT(tokenManager *auth.TokenManager, cliToken ...string) func(http.H
 				)
 				if receivedToken == ct {
 					ctx := context.WithValue(r.Context(), constants.ContextAuthUsername, "admin")
+					ctx = constants.WithClientSurface(ctx, constants.ClientSurfaceCLI)
 					next.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}
@@ -61,6 +62,7 @@ func RequireJWT(tokenManager *auth.TokenManager, cliToken ...string) func(http.H
 			}
 
 			ctx := context.WithValue(r.Context(), constants.ContextAuthUsername, claims.Username)
+			ctx = constants.WithClientSurface(ctx, constants.ClientSurfaceWeb)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

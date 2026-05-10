@@ -16,8 +16,10 @@ test("normalizeCliSandboxMode falls back to workspace-write", () => {
 test("buildSandboxMenuItems includes workspace-write and network toggle", () => {
   const items = buildSandboxMenuItems({
     defaultModel: "",
-    sandboxMode: "workspace-write",
-    sandboxNetworkEnabled: true,
+    sandboxMode: "danger-full-access",
+    sandboxNetworkEnabled: false,
+    cliSandboxMode: "workspace-write",
+    cliSandboxNetworkEnabled: true,
   });
 
   assert.deepEqual(items.map((item) => item.title), [
@@ -28,5 +30,16 @@ test("buildSandboxMenuItems includes workspace-write and network toggle", () => 
   ]);
   assert.match(items[1]!.desc, /^current · /);
   assert.deepEqual(items[1]!.data, { type: "mode", mode: "workspace-write" });
+  assert.deepEqual(items[3]!.data, { type: "network", enabled: false });
+});
+
+test("buildSandboxMenuItems falls back to CLI sandbox defaults", () => {
+  const items = buildSandboxMenuItems({
+    defaultModel: "",
+    sandboxMode: "danger-full-access",
+    sandboxNetworkEnabled: false,
+  });
+
+  assert.match(items[1]!.desc, /^current · /);
   assert.deepEqual(items[3]!.data, { type: "network", enabled: false });
 });
