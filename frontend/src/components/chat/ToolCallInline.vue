@@ -8,7 +8,7 @@ import ThinkingBlock from '@/components/chat/ThinkingBlock.vue'
 import type { ToolCallItem } from '@/api/chat'
 import { buildSubagentTimeline } from '@/utils/subagentTimeline'
 import { buildToolCallSummary, buildToolResultDisplay, filterToolParamsForDetail, formatDisplayText, formatToolParams, parseAskQuestionsReadableAnswers } from '@/utils/toolDisplay'
-import { shouldAutoExpandToolCall } from '@/utils/toolApprovalExpansion'
+import { hasPendingNestedApproval, shouldAutoExpandToolCall } from '@/utils/toolApprovalExpansion'
 import { isFileTool } from '@/utils/fileToolDisplay'
 
 const props = withDefaults(defineProps<{
@@ -113,6 +113,7 @@ const subagentTaskSummary = computed(() => {
 const showSubagentContext = computed(() => subagentContextSummary.value !== '')
 const showSubagentTask = computed(() => subagentTaskSummary.value !== '')
 const shouldAutoExpand = computed(() => shouldAutoExpandToolCall(props.item, props.nestedTools))
+const shouldAutoExpandSubagentTimeline = computed(() => hasPendingNestedApproval(props.item, props.nestedTools))
 const isAskQuestions = computed(() => props.item.toolName === 'ask_questions')
 
 const askQuestionsData = computed(() => {
@@ -133,6 +134,14 @@ watch(
     }
     expanded.value = false
     subagentTimelineExpanded.value = false
+  },
+  { immediate: true },
+)
+
+watch(
+  shouldAutoExpandSubagentTimeline,
+  (value) => {
+    if (value) subagentTimelineExpanded.value = true
   },
   { immediate: true },
 )

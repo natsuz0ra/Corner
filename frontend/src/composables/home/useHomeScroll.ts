@@ -8,6 +8,7 @@ const SIDEBAR_BOTTOM_LOAD_THRESHOLD_PX = 80
 const SCROLL_TO_BOTTOM_PENDING_MAX_MS = 2000
 const ACTION_TARGET_STABILIZE_MAX_FRAMES = 18
 const ACTION_TARGET_STABILIZE_CONSECUTIVE_FRAMES = 2
+const ACTION_EXPANSION_SETTLE_MS = 280
 const SIDEBAR_SESSION_ITEM_HEIGHT_PX = 38
 const SIDEBAR_SCROLL_AREA_PADDING_PX = 8
 
@@ -158,6 +159,26 @@ export function useHomeScroll(options: {
     void nextTick(() => {
       scrollMessagesToBottom(force)
     })
+  }
+
+  function waitForAnimationFrame() {
+    return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  }
+
+  function waitForTimeout(ms: number) {
+    return new Promise<void>((resolve) => window.setTimeout(resolve, ms))
+  }
+
+  async function waitForActionExpansionToSettle() {
+    await nextTick()
+    await waitForAnimationFrame()
+    await waitForTimeout(ACTION_EXPANSION_SETTLE_MS)
+    await waitForAnimationFrame()
+  }
+
+  async function scrollToBottomAfterActionExpansion() {
+    await waitForActionExpansionToSettle()
+    scrollMessagesToBottom(true)
   }
 
   function resolvePendingToolCallTarget(el: HTMLElement) {
@@ -422,6 +443,11 @@ export function useHomeScroll(options: {
     ],
     (next, previous) => {
       if (hasNewActionRequest(next, previous)) {
+        const hasApprovalRequest = next[0] !== '' || next[1] !== ''
+        if (hasApprovalRequest) {
+          void scrollToBottomAfterActionExpansion()
+          return
+        }
         void scrollToActionTarget().then((handled) => {
           if (!handled) queueScrollMessagesToBottom(true)
         })
