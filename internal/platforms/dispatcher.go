@@ -15,7 +15,10 @@ import (
 	"github.com/google/uuid"
 )
 
-const telegramMessageChunkLimit = 3500
+const (
+	telegramMessageChunkLimit       = 3500
+	telegramApprovalCommandMaxRunes = 160
+)
 
 var telegramFinalMarkerRegex = regexp.MustCompile(`\n?<!-- (?:TOOL_CALL:.+?|THINKING:.+?|PLAN_START|PLAN_END) -->\n?`)
 
@@ -229,10 +232,39 @@ func formatToolResultSummary(result chatsvc.ToolCallResult) string {
 
 func formatToolApprovalPrompt(req chatsvc.ApprovalRequest) string {
 	base := fmt.Sprintf("Tool execution requires approval: %s", req.ToolName)
-	if strings.TrimSpace(req.Command) != "" {
-		base = fmt.Sprintf("%s (%s)", base, strings.TrimSpace(req.Command))
+	if command := formatToolCommandForApproval(req); command != "" {
+		base += "\nCommand: " + command
 	}
 	return base + "\nPlease choose Approve or Reject."
+}
+
+func formatToolCommandForApproval(req chatsvc.ApprovalRequest) string {
+	if strings.EqualFold(strings.TrimSpace(req.ToolName), constants.ExecToolName) {
+		if value, ok := req.Params["command"]; ok {
+			if command := trimTelegramApprovalCommand(fmt.Sprintf("%v", value)); command != "" {
+				return command
+			}
+		}
+		if value, ok := req.Params["cmd"]; ok {
+			if command := trimTelegramApprovalCommand(fmt.Sprintf("%v", value)); command != "" {
+				return command
+			}
+		}
+		return ""
+	}
+	return trimTelegramApprovalCommand(req.Command)
+}
+
+func trimTelegramApprovalCommand(command string) string {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return ""
+	}
+	runes := []rune(trimmed)
+	if len(runes) <= telegramApprovalCommandMaxRunes {
+		return trimmed
+	}
+	return string(runes[:telegramApprovalCommandMaxRunes]) + "..."
 }
 
 func sendTelegramFinalAnswer(chatID string, answer string, sender OutboundSender) error {
