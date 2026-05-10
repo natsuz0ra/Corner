@@ -54,7 +54,7 @@ func TestHandleChatStream_PersistsThinkingHistory(t *testing.T) {
 	provider := &fakeThinkingProvider{}
 	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
 
-	result, err := svc.HandleChatStream(ctx, session.ID, "request-1", "hello", "", model.ID, nil, "high", false, "", AgentCallbacks{
+	result, err := svc.HandleChatStream(ctx, session.ID, "request-1", "hello", "", model.ID, nil, "high", false, "", "", AgentCallbacks{
 		OnChunk: func(string) error { return nil },
 	})
 	if err != nil {
@@ -113,7 +113,7 @@ func TestHandleChatStream_FinishesThinkingBeforeAnswerChunk(t *testing.T) {
 	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
 
 	var events []string
-	_, err = svc.HandleChatStream(ctx, session.ID, "request-1", "hello", "", model.ID, nil, "high", false, "", AgentCallbacks{
+	_, err = svc.HandleChatStream(ctx, session.ID, "request-1", "hello", "", model.ID, nil, "high", false, "", "", AgentCallbacks{
 		OnThinkingStart: func(ThinkingEventMeta) error {
 			events = append(events, "thinking_start")
 			return nil
@@ -163,7 +163,7 @@ func TestHandleChatStream_UsesDisplayContentForStoredUserMessage(t *testing.T) {
 
 	internalPrompt := "Execute the following approved plan:\n\n# Plan"
 	displayContent := "Execute this plan"
-	_, err = svc.HandleChatStream(ctx, session.ID, "request-1", internalPrompt, displayContent, model.ID, nil, "off", false, "", AgentCallbacks{
+	_, err = svc.HandleChatStream(ctx, session.ID, "request-1", internalPrompt, displayContent, model.ID, nil, "off", false, "", "", AgentCallbacks{
 		OnChunk: func(string) error { return nil },
 	})
 	if err != nil {
@@ -222,7 +222,7 @@ func TestHandleChatStream_PlanModeSavesOnlyPlanBody(t *testing.T) {
 	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
 	svc.SetPlanService(planService)
 
-	result, err := svc.HandleChatStream(ctx, session.ID, "request-1", "make a plan", "", model.ID, nil, "high", true, "", AgentCallbacks{
+	result, err := svc.HandleChatStream(ctx, session.ID, "request-1", "make a plan", "", model.ID, nil, "high", true, "", "", AgentCallbacks{
 		OnChunk:         func(string) error { return nil },
 		OnThinkingStart: func(ThinkingEventMeta) error { return nil },
 		OnThinkingChunk: func(string, ThinkingEventMeta) error { return nil },
@@ -287,7 +287,7 @@ func TestHandleChatStream_PlanModeDoesNotSavePlanBodyWithoutSubmitTool(t *testin
 	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
 	svc.SetPlanService(planService)
 
-	result, err := svc.HandleChatStream(ctx, session.ID, "request-1", "make a plan", "", model.ID, nil, "high", true, "", AgentCallbacks{
+	result, err := svc.HandleChatStream(ctx, session.ID, "request-1", "make a plan", "", model.ID, nil, "high", true, "", "", AgentCallbacks{
 		OnChunk:     func(string) error { return nil },
 		OnPlanStart: func() error { return nil },
 		OnPlanChunk: func(string) error { return nil },
@@ -333,7 +333,7 @@ func TestHandleChatStream_StartsTitleGenerationBeforeAssistantChunk(t *testing.T
 	provider := &earlyTitleProvider{titleStarted: make(chan struct{})}
 	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
 
-	_, err = svc.HandleChatStream(ctx, session.ID, "request-1", "用户消息", "", model.ID, nil, "off", false, "", AgentCallbacks{
+	_, err = svc.HandleChatStream(ctx, session.ID, "request-1", "用户消息", "", model.ID, nil, "off", false, "", "", AgentCallbacks{
 		OnChunk: func(string) error { return nil },
 	})
 	if err != nil {
@@ -370,7 +370,7 @@ func TestHandleChatStreamPushesAuthoritativeContextUsageOnly(t *testing.T) {
 	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
 
 	var usages []ContextUsage
-	_, err = svc.HandleChatStream(ctx, session.ID, "request-usage-stream", "hello", "", model.ID, nil, "off", false, "", AgentCallbacks{
+	_, err = svc.HandleChatStream(ctx, session.ID, "request-usage-stream", "hello", "", model.ID, nil, "off", false, "", "", AgentCallbacks{
 		OnChunk: func(string) error { return nil },
 		OnContextUsage: func(usage ContextUsage) error {
 			usages = append(usages, usage)
@@ -420,7 +420,7 @@ func TestHandleChatStreamContextUsageDoesNotSpikeFromToolCallOutputTokens(t *tes
 	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
 
 	var usages []ContextUsage
-	_, err = svc.HandleChatStream(ctx, session.ID, "request-usage-spike", "hello", "", model.ID, nil, "off", false, "", AgentCallbacks{
+	_, err = svc.HandleChatStream(ctx, session.ID, "request-usage-spike", "hello", "", model.ID, nil, "off", false, "", "", AgentCallbacks{
 		OnChunk: func(string) error { return nil },
 		OnContextUsage: func(usage ContextUsage) error {
 			usages = append(usages, usage)

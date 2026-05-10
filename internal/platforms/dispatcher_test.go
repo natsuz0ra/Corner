@@ -23,6 +23,10 @@ func (m *mockPlatformChatService) ResolvePlatformModel(_ context.Context) (strin
 	return "mock-model-id", nil
 }
 
+func (m *mockPlatformChatService) ResolvePlatformRuntimeSettings(_ context.Context) (string, string, error) {
+	return "off", constants.ApprovalModeStandard, nil
+}
+
 func (m *mockPlatformChatService) HandleChatStream(
 	_ context.Context,
 	_ string,
@@ -33,6 +37,7 @@ func (m *mockPlatformChatService) HandleChatStream(
 	_ []string,
 	_ string,
 	_ bool,
+	_ string,
 	_ string,
 	callbacks chatsvc.AgentCallbacks,
 ) (*chatsvc.ChatStreamResult, error) {
@@ -56,6 +61,8 @@ func (m *mockPlatformChatService) HandleChatStream(
 type captureAttachmentChatService struct {
 	lastContent       string
 	lastAttachmentIDs []string
+	lastThinkingLevel string
+	lastApprovalMode  string
 }
 
 func (m *captureAttachmentChatService) EnsureMessagePlatformSession(_ context.Context) (*domain.Session, error) {
@@ -66,6 +73,10 @@ func (m *captureAttachmentChatService) ResolvePlatformModel(_ context.Context) (
 	return "mock-model-id", nil
 }
 
+func (m *captureAttachmentChatService) ResolvePlatformRuntimeSettings(_ context.Context) (string, string, error) {
+	return "high", constants.ApprovalModeAutoReview, nil
+}
+
 func (m *captureAttachmentChatService) HandleChatStream(
 	_ context.Context,
 	_ string,
@@ -74,13 +85,16 @@ func (m *captureAttachmentChatService) HandleChatStream(
 	_ string,
 	_ string,
 	attachmentIDs []string,
-	_ string,
+	thinkingLevel string,
 	_ bool,
 	_ string,
+	approvalMode string,
 	_ chatsvc.AgentCallbacks,
 ) (*chatsvc.ChatStreamResult, error) {
 	m.lastContent = content
 	m.lastAttachmentIDs = append([]string{}, attachmentIDs...)
+	m.lastThinkingLevel = thinkingLevel
+	m.lastApprovalMode = approvalMode
 	return &chatsvc.ChatStreamResult{Answer: "ok"}, nil
 }
 
@@ -94,6 +108,10 @@ func (m *mockApprovalChatService) ResolvePlatformModel(_ context.Context) (strin
 	return "mock-model-id", nil
 }
 
+func (m *mockApprovalChatService) ResolvePlatformRuntimeSettings(_ context.Context) (string, string, error) {
+	return "off", constants.ApprovalModeStandard, nil
+}
+
 func (m *mockApprovalChatService) HandleChatStream(
 	ctx context.Context,
 	_ string,
@@ -104,6 +122,7 @@ func (m *mockApprovalChatService) HandleChatStream(
 	_ []string,
 	_ string,
 	_ bool,
+	_ string,
 	_ string,
 	callbacks chatsvc.AgentCallbacks,
 ) (*chatsvc.ChatStreamResult, error) {
@@ -342,5 +361,116 @@ func TestDispatcherHandleInbound_PassesAttachmentIDs(t *testing.T) {
 	}
 	if chatSvc.lastContent != "" {
 		t.Fatalf("expected empty content for attachment-only input, got=%q", chatSvc.lastContent)
+	}
+}
+
+func TestDispatcherHandleInbound_PassesPlatformRuntimeSettings(t *testing.T) {
+	chatSvc := &captureAttachmentChatService{}
+	dispatcher := NewDispatcher(chatSvc, newMockApprovalBroker())
+	sender := &mockSender{}
+
+	err := dispatcher.HandleInbound(context.Background(), InboundMessage{
+		Platform: constants.TelegramPlatformName,
+		ChatID:   "30002",
+		Text:     "hello",
+	}, sender)
+	if err != nil {
+		t.Fatalf("handle inbound failed: %v", err)
+	}
+
+	if chatSvc.lastThinkingLevel != "high" {
+		t.Fatalf("thinking level = %q, want high", chatSvc.lastThinkingLevel)
+	}
+	if chatSvc.lastApprovalMode != constants.ApprovalModeAutoReview {
+		t.Fatalf("approval mode = %q, want %q", chatSvc.lastApprovalMode, constants.ApprovalModeAutoReview)
+	}
+}
+
+type markerAnswerChatService struct {
+	answer string
+}
+
+func (m *markerAnswerChatService) EnsureMessagePlatformSession(_ context.Context) (*domain.Session, error) {
+	return &domain.Session{ID: constants.MessagePlatformSessionID, Name: constants.MessagePlatformSessionName}, nil
+}
+
+func (m *markerAnswerChatService) ResolvePlatformModel(_ context.Context) (string, error) {
+	return "mock-model-id", nil
+}
+
+func (m *markerAnswerChatService) ResolvePlatformRuntimeSettings(_ context.Context) (string, string, error) {
+	return "off", constants.ApprovalModeStandard, nil
+}
+
+func (m *markerAnswerChatService) HandleChatStream(
+	_ context.Context,
+	_ string,
+	_ string,
+	_ string,
+	_ string,
+	_ string,
+	_ []string,
+	_ string,
+	_ bool,
+	_ string,
+	_ string,
+	_ chatsvc.AgentCallbacks,
+) (*chatsvc.ChatStreamResult, error) {
+	return &chatsvc.ChatStreamResult{Answer: m.answer}, nil
+}
+
+func TestDispatcherHandleInbound_SplitsFinalAnswerAroundMarkers(t *testing.T) {
+	dispatcher := NewDispatcher(&markerAnswerChatService{answer: "First paragraph.\n<!-- TOOL_CALL:tc_1 -->\nSecond paragraph."}, newMockApprovalBroker())
+	sender := &mockSender{}
+
+	err := dispatcher.HandleInbound(context.Background(), InboundMessage{
+		Platform: constants.TelegramPlatformName,
+		ChatID:   "40001",
+		Text:     "hello",
+	}, sender)
+	if err != nil {
+		t.Fatalf("handle inbound failed: %v", err)
+	}
+
+	if len(sender.items) != 2 {
+		t.Fatalf("expected 2 final answer chunks, got %d: %#v", len(sender.items), sender.items)
+	}
+	if sender.items[0] != "First paragraph." || sender.items[1] != "Second paragraph." {
+		t.Fatalf("unexpected final answer chunks: %#v", sender.items)
+	}
+}
+
+func TestDispatcherHandleInbound_DoesNotSendMarkerOnlyFinalAnswer(t *testing.T) {
+	dispatcher := NewDispatcher(&markerAnswerChatService{answer: "\n<!-- TOOL_CALL:tc_1 -->\n<!-- THINKING:th_1 -->\n"}, newMockApprovalBroker())
+	sender := &mockSender{}
+
+	err := dispatcher.HandleInbound(context.Background(), InboundMessage{
+		Platform: constants.TelegramPlatformName,
+		ChatID:   "40002",
+		Text:     "hello",
+	}, sender)
+	if err != nil {
+		t.Fatalf("handle inbound failed: %v", err)
+	}
+
+	if len(sender.items) != 0 {
+		t.Fatalf("expected no messages for marker-only final answer, got %#v", sender.items)
+	}
+}
+
+func TestSplitTelegramTextForSend_LimitsLongMessages(t *testing.T) {
+	longLine := strings.Repeat("x", telegramMessageChunkLimit+25)
+	chunks := splitTelegramTextForSend("intro\n\n" + longLine)
+
+	if len(chunks) < 2 {
+		t.Fatalf("expected multiple chunks, got %#v", chunks)
+	}
+	for _, chunk := range chunks {
+		if len(chunk) > telegramMessageChunkLimit {
+			t.Fatalf("chunk length = %d, limit = %d", len(chunk), telegramMessageChunkLimit)
+		}
+		if strings.TrimSpace(chunk) == "" {
+			t.Fatalf("unexpected blank chunk in %#v", chunks)
+		}
 	}
 }

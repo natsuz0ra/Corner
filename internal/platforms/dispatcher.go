@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"slimebot/internal/domain"
 	"strings"
 	"time"
@@ -14,6 +15,10 @@ import (
 	"github.com/google/uuid"
 )
 
+const telegramMessageChunkLimit = 3500
+
+var telegramFinalMarkerRegex = regexp.MustCompile(`\n?<!-- (?:TOOL_CALL:.+?|THINKING:.+?|PLAN_START|PLAN_END) -->\n?`)
+
 // Dispatcher is the inbound entry for message platforms: resolves session/model and calls HandleChatStream.
 type Dispatcher struct {
 	chat      platformChatService
@@ -23,6 +28,7 @@ type Dispatcher struct {
 type platformChatService interface {
 	EnsureMessagePlatformSession(ctx context.Context) (*domain.Session, error)
 	ResolvePlatformModel(ctx context.Context) (string, error)
+	ResolvePlatformRuntimeSettings(ctx context.Context) (string, string, error)
 	HandleChatStream(
 		ctx context.Context,
 		sessionID string,
@@ -34,6 +40,7 @@ type platformChatService interface {
 		thinkingLevel string,
 		planMode bool,
 		subagentModelID string,
+		approvalModeOverride string,
 		callbacks chatsvc.AgentCallbacks,
 	) (*chatsvc.ChatStreamResult, error)
 }
@@ -75,6 +82,10 @@ func (d *Dispatcher) HandleInbound(ctx context.Context, message InboundMessage, 
 		return err
 	}
 	modelID, err := d.chat.ResolvePlatformModel(ctx)
+	if err != nil {
+		return err
+	}
+	thinkingLevel, approvalMode, err := d.chat.ResolvePlatformRuntimeSettings(ctx)
 	if err != nil {
 		return err
 	}
@@ -152,9 +163,10 @@ func (d *Dispatcher) HandleInbound(ctx context.Context, message InboundMessage, 
 		"",
 		modelID,
 		attachmentIDs,
-		"",
+		thinkingLevel,
 		false,
 		"",
+		approvalMode,
 		callbacks,
 	)
 	if err != nil {
@@ -167,7 +179,7 @@ func (d *Dispatcher) HandleInbound(ctx context.Context, message InboundMessage, 
 	if answer == "" {
 		answer = "The model returned no content."
 	}
-	return sender.SendText(chatID, answer)
+	return sendTelegramFinalAnswer(chatID, answer, sender)
 }
 
 // HandleTelegramApprovalCallback forwards Telegram callback_data to the approval broker.
@@ -221,6 +233,71 @@ func formatToolApprovalPrompt(req chatsvc.ApprovalRequest) string {
 		base = fmt.Sprintf("%s (%s)", base, strings.TrimSpace(req.Command))
 	}
 	return base + "\nPlease choose Approve or Reject."
+}
+
+func sendTelegramFinalAnswer(chatID string, answer string, sender OutboundSender) error {
+	for _, block := range splitFinalAnswerBlocks(answer) {
+		for _, chunk := range splitTelegramTextForSend(block) {
+			if err := sender.SendText(chatID, chunk); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func splitFinalAnswerBlocks(answer string) []string {
+	parts := telegramFinalMarkerRegex.Split(answer, -1)
+	blocks := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		blocks = append(blocks, trimmed)
+	}
+	return blocks
+}
+
+func splitTelegramTextForSend(text string) []string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	if len(text) <= telegramMessageChunkLimit {
+		return []string{text}
+	}
+
+	chunks := make([]string, 0, len(text)/telegramMessageChunkLimit+1)
+	for _, paragraph := range strings.Split(text, "\n\n") {
+		paragraph = strings.TrimSpace(paragraph)
+		if paragraph == "" {
+			continue
+		}
+		chunks = appendWrappedTelegramChunk(chunks, paragraph)
+	}
+	return chunks
+}
+
+func appendWrappedTelegramChunk(chunks []string, text string) []string {
+	if len(text) <= telegramMessageChunkLimit {
+		return append(chunks, text)
+	}
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		runes := []rune(line)
+		for len(runes) > telegramMessageChunkLimit {
+			chunks = append(chunks, string(runes[:telegramMessageChunkLimit]))
+			runes = runes[telegramMessageChunkLimit:]
+		}
+		if len(runes) > 0 {
+			chunks = append(chunks, string(runes))
+		}
+	}
+	return chunks
 }
 
 // buildDefaultAskQuestionsAnswers constructs a default answer response for ask_questions

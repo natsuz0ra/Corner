@@ -387,6 +387,7 @@ func (w *Controller) handleChatIncoming(
 		incoming.ThinkingLevel,
 		incoming.PlanMode,
 		incoming.SubagentModelID,
+		"",
 		callbacks,
 	)
 	cancel()

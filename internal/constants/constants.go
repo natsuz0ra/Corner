@@ -64,7 +64,9 @@ const (
 	ApprovalModeAutoReview = "auto_review"
 	ApprovalModeAuto       = "auto"
 
-	SettingThinkingLevel = "thinkingLevel"
+	SettingThinkingLevel                = "thinkingLevel"
+	SettingMessagePlatformThinkingLevel = "messagePlatformThinkingLevel"
+	SettingMessagePlatformApprovalMode  = "messagePlatformApprovalMode"
 
 	// Plan mode
 	PlanStartTool      = "plan_start"
