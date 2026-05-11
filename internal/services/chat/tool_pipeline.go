@@ -49,6 +49,16 @@ func resolveToolInvocation(tc llmsvc.ToolCallInfo, mcpToolMeta map[string]mcp.To
 			approvalPolicy:   toolApprovalPolicyNone,
 		}, nil
 	}
+	if tc.Name == todoUpdateFuncName {
+		policy := determineToolApprovalPolicy("todo", false, approvalMode)
+		return resolvedToolInvocation{
+			toolName:         "todo",
+			command:          "update",
+			isMCP:            false,
+			requiresApproval: policy != toolApprovalPolicyNone,
+			approvalPolicy:   policy,
+		}, nil
+	}
 	toolName, command, err := parseToolCallName(tc.Name)
 	if mcpMeta, ok := mcpToolMeta[tc.Name]; ok {
 		policy := determineToolApprovalPolicy(mcpMeta.ServerAlias, true, approvalMode)

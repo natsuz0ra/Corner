@@ -55,6 +55,24 @@ func TestResolveToolInvocation_RunSubagent(t *testing.T) {
 	}
 }
 
+func TestResolveToolInvocation_TodoUpdateAlias(t *testing.T) {
+	tc := llmsvc.ToolCallInfo{
+		ID:        "call_todo",
+		Name:      todoUpdateFuncName,
+		Arguments: `{"items":[{"id":"1","content":"Inspect","status":"in_progress"}]}`,
+	}
+	invocation, err := resolveToolInvocation(tc, map[string]mcp.ToolMeta{}, constants.ApprovalModeStandard)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if invocation.toolName != "todo" {
+		t.Fatalf("unexpected toolName: %s", invocation.toolName)
+	}
+	if invocation.command != "update" {
+		t.Fatalf("unexpected command: %s", invocation.command)
+	}
+}
+
 func TestBuildToolDefs_SortedByName(t *testing.T) {
 	defs := BuildToolDefs()
 	for i := 1; i < len(defs); i++ {
@@ -109,6 +127,9 @@ func TestBuildToolDefs_ExecRunSchema(t *testing.T) {
 
 func TestBuildToolDefs_FileToolSchemas(t *testing.T) {
 	defs := BuildToolDefs()
+	if containsToolName(defs, "todo__update") {
+		t.Fatalf("todo__update should not be exposed by BuildToolDefs: %#v", toolNames(defs))
+	}
 	expected := map[string][]string{
 		"file_read__read":      {},
 		"file_edit__edit":      {},
@@ -120,7 +141,7 @@ func TestBuildToolDefs_FileToolSchemas(t *testing.T) {
 		"skills__list":         {},
 		"skills__view":         {},
 		"todo__list":           {},
-		"todo__update":         {},
+		"todo_update":          {},
 		"web_extract__extract": {},
 	}
 	for name, requiredParams := range expected {

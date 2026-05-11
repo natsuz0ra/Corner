@@ -115,6 +115,22 @@ func TestBuildRuntimeToolDefs_DoesNotExposeSearchMemory(t *testing.T) {
 	}
 }
 
+func TestBuildRuntimeToolDefs_ExposesTodoUpdateAliasOnly(t *testing.T) {
+	ctx := context.Background()
+	agent := NewAgentService(nil, nil, nil)
+
+	defs, _, err := agent.buildRuntimeToolDefs(ctx, nil, 0)
+	if err != nil {
+		t.Fatalf("buildRuntimeToolDefs failed: %v", err)
+	}
+	if containsToolName(defs, "todo__update") {
+		t.Fatalf("todo__update should not be exposed: %#v", toolNames(defs))
+	}
+	if !containsToolName(defs, todoUpdateFuncName) {
+		t.Fatalf("builtin todo update tool should be exposed: %#v", toolNames(defs))
+	}
+}
+
 func TestFilterPlanModeToolDefs_KeepsRunSubagentAndReadOnlyTools(t *testing.T) {
 	defs := []llmsvc.ToolDef{
 		{Name: constants.RunSubagentTool},
@@ -124,6 +140,8 @@ func TestFilterPlanModeToolDefs_KeepsRunSubagentAndReadOnlyTools(t *testing.T) {
 		{Name: "web_search__search"},
 		{Name: constants.PlanStartTool},
 		{Name: constants.PlanCompleteTool},
+		{Name: todoUpdateFuncName},
+		{Name: "todo__update"},
 		{Name: "exec__run"},
 		{Name: "http_request__request"},
 	}
@@ -136,12 +154,13 @@ func TestFilterPlanModeToolDefs_KeepsRunSubagentAndReadOnlyTools(t *testing.T) {
 		"web_search__search",
 		constants.PlanStartTool,
 		constants.PlanCompleteTool,
+		todoUpdateFuncName,
 	} {
 		if !containsToolName(filtered, name) {
 			t.Fatalf("expected plan mode to keep %s; got %#v", name, toolNames(filtered))
 		}
 	}
-	for _, name := range []string{"exec__run", "file_edit__edit", "file_write__write", "http_request__request"} {
+	for _, name := range []string{"todo__update", "exec__run", "file_edit__edit", "file_write__write", "http_request__request"} {
 		if containsToolName(filtered, name) {
 			t.Fatalf("expected plan mode to filter %s; got %#v", name, toolNames(filtered))
 		}

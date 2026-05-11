@@ -19,6 +19,8 @@ import (
 	"slimebot/internal/tools"
 )
 
+const todoUpdateFuncName = "todo_update"
+
 // AgentService runs the LLM loop with tools, approvals, and MCP/skill loading.
 type AgentService struct {
 	providerFactory *llmsvc.Factory
@@ -188,7 +190,7 @@ func (a *AgentService) evictOldProcessSessionsLocked(maxEvict int) {
 }
 
 // BuildToolDefs builds function-calling tool definitions from the global registry.
-// Each command becomes one function named {tool}__{command}.
+// Each command becomes one function named {tool}__{command}, except stable aliases.
 func BuildToolDefs() []llmsvc.ToolDef {
 	var defs []llmsvc.ToolDef
 	for _, t := range tools.All() {
@@ -214,7 +216,7 @@ func BuildToolDefs() []llmsvc.ToolDef {
 				}
 			}
 
-			funcName := t.Name() + "__" + cmd.Name
+			funcName := buildBuiltinToolFuncName(t.Name(), cmd.Name)
 			desc := fmt.Sprintf("[%s] %s", t.Name(), cmd.Description)
 
 			params := map[string]any{
@@ -239,6 +241,13 @@ func BuildToolDefs() []llmsvc.ToolDef {
 		return defs[i].Name < defs[j].Name
 	})
 	return defs
+}
+
+func buildBuiltinToolFuncName(toolName, command string) string {
+	if toolName == "todo" && command == "update" {
+		return todoUpdateFuncName
+	}
+	return toolName + "__" + command
 }
 
 func buildRunSubagentToolDef() llmsvc.ToolDef {
@@ -289,44 +298,6 @@ func buildPlanStartToolDef() llmsvc.ToolDef {
 		Parameters: map[string]any{
 			"type":       "object",
 			"properties": map[string]any{},
-		},
-	}
-}
-
-func buildTodoUpdateToolDef() llmsvc.ToolDef {
-	return llmsvc.ToolDef{
-		Name:        constants.TodoUpdateTool,
-		Description: "[progress] Update the temporary todo list for the current response when the task has multiple steps. Keep items short. Use exactly one in_progress item while work remains; mark all completed when finished.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"items": map[string]any{
-					"type": "array",
-					"items": map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"id": map[string]any{
-								"type":        "string",
-								"description": "Stable short id for this todo item within the current response.",
-							},
-							"content": map[string]any{
-								"type":        "string",
-								"description": "Short action-oriented todo text.",
-							},
-							"status": map[string]any{
-								"type": "string",
-								"enum": []string{"pending", "in_progress", "completed"},
-							},
-						},
-						"required": []string{"id", "content", "status"},
-					},
-				},
-				"note": map[string]any{
-					"type":        "string",
-					"description": "Optional short note about current progress.",
-				},
-			},
-			"required": []string{"items"},
 		},
 	}
 }
@@ -468,7 +439,6 @@ func (a *AgentService) RunAgentLoop(
 		toolDefs = append(toolDefs, buildPlanStartToolDef())
 		toolDefs = append(toolDefs, buildPlanCompleteToolDef())
 	}
-	toolDefs = append(toolDefs, buildTodoUpdateToolDef())
 	messages := make([]llmsvc.ChatMessage, len(contextMessages))
 	copy(messages, contextMessages)
 
@@ -574,22 +544,6 @@ func (a *AgentService) RunAgentLoop(
 		}
 
 		for toolIndex, tc := range result.ToolCalls {
-			if tc.Name == constants.TodoUpdateTool {
-				flushParallelJobs()
-				update, parseErr := parseTodoUpdate(tc.Arguments)
-				if parseErr != nil {
-					messages = appendToolMessage(messages, tc.ID, fmt.Sprintf("failed to update todo list: %s", parseErr.Error()))
-					continue
-				}
-				if callbacks.OnTodoUpdate != nil {
-					if err := callbacks.OnTodoUpdate(update); err != nil {
-						return "", fmt.Errorf("OnTodoUpdate callback failed: %w", err)
-					}
-				}
-				messages = appendToolMessage(messages, tc.ID, fmt.Sprintf("Todo list updated: %d item(s).", len(update.Items)))
-				continue
-			}
-
 			// Handle plan_start: signal transition from research to plan writing.
 			if tc.Name == constants.PlanStartTool {
 				flushParallelJobs()
@@ -757,7 +711,17 @@ func (a *AgentService) RunAgentLoop(
 					execCtx = tools.WithTodoState(execCtx, todoState)
 					execCtx = tools.WithProcessManager(execCtx, processManager)
 					execCtx = tools.WithSkillRuntime(execCtx, a.skillRuntime)
-					return a.executeInvocation(execCtx, tcCopy, invocationCopy, paramsCopy, sessionID, mcpConfigs)
+					execResult := a.executeInvocation(execCtx, tcCopy, invocationCopy, paramsCopy, sessionID, mcpConfigs)
+					if isSuccessfulBuiltinTodoUpdate(invocationCopy, execResult) && callbacks.OnTodoUpdate != nil {
+						update, parseErr := parseTodoUpdateParams(paramsCopy)
+						if parseErr != nil {
+							return &tools.ExecuteResult{Error: fmt.Sprintf("failed to parse todo update: %s", parseErr.Error())}
+						}
+						if err := callbacks.OnTodoUpdate(update); err != nil {
+							return &tools.ExecuteResult{Error: fmt.Sprintf("OnTodoUpdate callback failed: %s", err.Error())}
+						}
+					}
+					return execResult
 				},
 			})
 		}
@@ -774,15 +738,18 @@ func (a *AgentService) RunAgentLoop(
 
 // isPlanModeAllowedTool returns true if the tool function name is allowed in plan mode.
 func isPlanModeAllowedTool(funcName string) bool {
+	if funcName == "todo__update" {
+		return false
+	}
 	// Handle tools without __ separator (e.g. plan_start).
 	switch funcName {
-	case "plan_start", constants.RunSubagentTool, constants.TodoUpdateTool:
+	case "plan_start", constants.RunSubagentTool, todoUpdateFuncName:
 		return true
 	}
 	// Handle tools with __ separator (e.g. web_search__search, file_read__read, plan_complete__submit).
 	toolName, _, _ := parseToolCallName(funcName)
 	switch toolName {
-	case "web_search", "web_extract", "file_read", "search_files", "skills", "plan_complete":
+	case "web_search", "web_extract", "file_read", "search_files", "skills", "todo", "plan_complete":
 		return true
 	default:
 		return false
@@ -893,6 +860,27 @@ func parseTodoUpdate(arguments string) (TodoUpdate, error) {
 	}
 	update.Note = strings.TrimSpace(update.Note)
 	return update, nil
+}
+
+func parseTodoUpdateParams(params map[string]any) (TodoUpdate, error) {
+	if params == nil {
+		return TodoUpdate{}, fmt.Errorf("arguments are required")
+	}
+	raw, err := json.Marshal(params)
+	if err != nil {
+		return TodoUpdate{}, fmt.Errorf("failed to encode params: %w", err)
+	}
+	return parseTodoUpdate(string(raw))
+}
+
+func isSuccessfulBuiltinTodoUpdate(invocation resolvedToolInvocation, result *tools.ExecuteResult) bool {
+	if invocation.toolName != "todo" || invocation.command != "update" {
+		return false
+	}
+	if result == nil {
+		return false
+	}
+	return strings.TrimSpace(result.Error) == ""
 }
 
 // executeToolCall runs a built-in tool command with uniform error handling.

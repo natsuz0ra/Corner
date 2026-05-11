@@ -482,7 +482,7 @@ func historicalToolFunctionName(record domain.ToolCallRecord) string {
 	switch toolName {
 	case "":
 		return ""
-	case constants.ActivateSkillTool, constants.RunSubagentTool, constants.TodoUpdateTool, constants.PlanStartTool, constants.PlanCompleteTool:
+	case constants.ActivateSkillTool, constants.RunSubagentTool, constants.PlanStartTool, constants.PlanCompleteTool:
 		return toolName
 	default:
 		if command == "" {
@@ -494,7 +494,7 @@ func historicalToolFunctionName(record domain.ToolCallRecord) string {
 		if isLikelyMCPToolRecord(toolName) {
 			return mcp.BuildFuncName(toolName, command)
 		}
-		return toolName + "__" + command
+		return buildBuiltinToolFuncName(toolName, command)
 	}
 }
 
