@@ -110,9 +110,18 @@ func TestBuildToolDefs_ExecRunSchema(t *testing.T) {
 func TestBuildToolDefs_FileToolSchemas(t *testing.T) {
 	defs := BuildToolDefs()
 	expected := map[string][]string{
-		"file_read__read":   {},
-		"file_edit__edit":   {},
-		"file_write__write": {},
+		"file_read__read":      {},
+		"file_edit__edit":      {},
+		"file_write__write":    {},
+		"process__list":        {},
+		"process__status":      {},
+		"process__stop":        {},
+		"search_files__search": {},
+		"skills__list":         {},
+		"skills__view":         {},
+		"todo__list":           {},
+		"todo__update":         {},
+		"web_extract__extract": {},
 	}
 	for name, requiredParams := range expected {
 		def := findToolDef(defs, name)

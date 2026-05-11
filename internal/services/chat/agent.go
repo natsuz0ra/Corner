@@ -30,6 +30,10 @@ type AgentService struct {
 	readFilesMu     sync.Mutex
 	readFilesBySess map[string]*tools.ReadFileState
 	readFilesAt     map[string]time.Time
+	todosBySess     map[string]*tools.TodoState
+	todosAt         map[string]time.Time
+	processesBySess map[string]*tools.ProcessManager
+	processesAt     map[string]time.Time
 }
 
 // cachedToolDefs is a cached tool-definition bundle with MCP metadata.
@@ -48,6 +52,10 @@ func NewAgentService(providerFactory *llmsvc.Factory, mcpManager *mcp.Manager, s
 		toolCache:       make(map[string]cachedToolDefs),
 		readFilesBySess: make(map[string]*tools.ReadFileState),
 		readFilesAt:     make(map[string]time.Time),
+		todosBySess:     make(map[string]*tools.TodoState),
+		todosAt:         make(map[string]time.Time),
+		processesBySess: make(map[string]*tools.ProcessManager),
+		processesAt:     make(map[string]time.Time),
 	}
 }
 
@@ -96,6 +104,86 @@ func (a *AgentService) evictOldReadFileSessionsLocked(maxEvict int) {
 		}
 		delete(a.readFilesBySess, oldestSession)
 		delete(a.readFilesAt, oldestSession)
+	}
+}
+
+func (a *AgentService) getSessionTodoState(sessionID string) *tools.TodoState {
+	key := strings.TrimSpace(sessionID)
+	if key == "" {
+		return tools.NewTodoState()
+	}
+	a.readFilesMu.Lock()
+	defer a.readFilesMu.Unlock()
+	if a.todosBySess == nil {
+		a.todosBySess = make(map[string]*tools.TodoState)
+	}
+	if a.todosAt == nil {
+		a.todosAt = make(map[string]time.Time)
+	}
+	state := a.todosBySess[key]
+	if state == nil {
+		state = tools.NewTodoState()
+		a.todosBySess[key] = state
+	}
+	a.todosAt[key] = time.Now()
+	if len(a.todosBySess) > 1024 {
+		a.evictOldTodoSessionsLocked(256)
+	}
+	return state
+}
+
+func (a *AgentService) evictOldTodoSessionsLocked(maxEvict int) {
+	for i := 0; i < maxEvict && len(a.todosAt) > 0; i++ {
+		var oldestSession string
+		var oldestTime time.Time
+		for sessionID, touchedAt := range a.todosAt {
+			if oldestSession == "" || touchedAt.Before(oldestTime) {
+				oldestSession = sessionID
+				oldestTime = touchedAt
+			}
+		}
+		delete(a.todosBySess, oldestSession)
+		delete(a.todosAt, oldestSession)
+	}
+}
+
+func (a *AgentService) getSessionProcessManager(sessionID string) *tools.ProcessManager {
+	key := strings.TrimSpace(sessionID)
+	if key == "" {
+		return tools.NewProcessManager()
+	}
+	a.readFilesMu.Lock()
+	defer a.readFilesMu.Unlock()
+	if a.processesBySess == nil {
+		a.processesBySess = make(map[string]*tools.ProcessManager)
+	}
+	if a.processesAt == nil {
+		a.processesAt = make(map[string]time.Time)
+	}
+	manager := a.processesBySess[key]
+	if manager == nil {
+		manager = tools.NewProcessManager()
+		a.processesBySess[key] = manager
+	}
+	a.processesAt[key] = time.Now()
+	if len(a.processesBySess) > 1024 {
+		a.evictOldProcessSessionsLocked(256)
+	}
+	return manager
+}
+
+func (a *AgentService) evictOldProcessSessionsLocked(maxEvict int) {
+	for i := 0; i < maxEvict && len(a.processesAt) > 0; i++ {
+		var oldestSession string
+		var oldestTime time.Time
+		for sessionID, touchedAt := range a.processesAt {
+			if oldestSession == "" || touchedAt.Before(oldestTime) {
+				oldestSession = sessionID
+				oldestTime = touchedAt
+			}
+		}
+		delete(a.processesBySess, oldestSession)
+		delete(a.processesAt, oldestSession)
 	}
 }
 
@@ -386,6 +474,8 @@ func (a *AgentService) RunAgentLoop(
 
 	var finalAnswer strings.Builder
 	readFileState := a.getSessionReadFileState(sessionID)
+	todoState := a.getSessionTodoState(sessionID)
+	processManager := a.getSessionProcessManager(sessionID)
 
 	provider := a.providerFactory.GetProvider(modelConfig.Provider)
 
@@ -664,6 +754,9 @@ func (a *AgentService) RunAgentLoop(
 						execCtx = sandboxpolicy.WithPolicy(execCtx, opts.SandboxPolicy)
 					}
 					execCtx = tools.WithReadFileState(execCtx, readFileState)
+					execCtx = tools.WithTodoState(execCtx, todoState)
+					execCtx = tools.WithProcessManager(execCtx, processManager)
+					execCtx = tools.WithSkillRuntime(execCtx, a.skillRuntime)
 					return a.executeInvocation(execCtx, tcCopy, invocationCopy, paramsCopy, sessionID, mcpConfigs)
 				},
 			})
@@ -689,7 +782,7 @@ func isPlanModeAllowedTool(funcName string) bool {
 	// Handle tools with __ separator (e.g. web_search__search, file_read__read, plan_complete__submit).
 	toolName, _, _ := parseToolCallName(funcName)
 	switch toolName {
-	case "web_search", "file_read", "plan_complete":
+	case "web_search", "web_extract", "file_read", "search_files", "skills", "plan_complete":
 		return true
 	default:
 		return false
