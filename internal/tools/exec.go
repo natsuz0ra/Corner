@@ -42,6 +42,7 @@ type execRunConfig struct {
 	workingDirectory   string
 	description        string
 	sandboxPermissions string
+	background         bool
 }
 
 // execInvocation is a single os/exec invocation.
@@ -63,6 +64,8 @@ type execOutputPayload struct {
 	DurationMs         int64  `json:"duration_ms"`
 	SandboxPermissions string `json:"sandbox_permissions"`
 	SandboxMode        string `json:"sandbox_mode"`
+	Background         bool   `json:"background,omitempty"`
+	ProcessID          string `json:"process_id,omitempty"`
 }
 
 func init() {
@@ -88,6 +91,7 @@ func (e *execTool) Commands() []Command {
 				{Name: "description", Required: false, Description: "Short human-readable intent for approval and audit. Required unless reason is provided.", Example: "Run unit tests for tools package"},
 				{Name: "reason", Required: false, Description: "Alternative short audit reason when description is not provided.", Example: "Verify the subagent's code change"},
 				{Name: "sandbox_permissions", Required: false, Description: "Permission intent for approval context: default or required_approval. This does not bypass approval; subagents inherit the parent approval flow.", Example: "required_approval", Schema: map[string]any{"type": "string", "enum": []string{execSandboxPermissionsDefault, execSandboxPermissionsReqApproval}}},
+				{Name: "background", Required: false, Description: "Start the command as a managed background process and return process_id immediately.", Example: "false"},
 			},
 		},
 	}
@@ -126,6 +130,52 @@ func (e *execTool) run(ctx context.Context, params map[string]any) (*ExecuteResu
 	sandboxMode := string(sandboxpolicy.ModeDangerFullAccess)
 	if policy != nil {
 		sandboxMode = string(policy.Mode())
+	}
+	if cfg.background {
+		manager := processManagerFromContext(ctx)
+		processID := manager.Start(cfg.command, func(runCtx context.Context) processRunResult {
+			start := time.Now()
+			result, runErr := sandboxpolicy.RunCommand(runCtx, policy, sandboxpolicy.CommandRequest{
+				CommandName: invocation.commandName,
+				CommandArgs: invocation.commandArgs,
+				Dir:         invocation.workingDirectory,
+				Timeout:     time.Duration(cfg.timeoutMs) * time.Millisecond,
+			})
+			stdoutTrimmed, _ := trimOutput(result.Stdout)
+			stderrTrimmed, _ := trimOutput(result.Stderr)
+			runResult := processRunResult{
+				Stdout:     decodeCommandOutput(runtime.GOOS, stdoutTrimmed),
+				Stderr:     decodeCommandOutput(runtime.GOOS, stderrTrimmed),
+				ExitCode:   result.ExitCode,
+				TimedOut:   result.TimedOut,
+				DurationMs: result.DurationMs,
+			}
+			if runResult.DurationMs == 0 {
+				runResult.DurationMs = time.Since(start).Milliseconds()
+			}
+			if runErr != nil {
+				runResult.Error = formatExecError(runErr).Error()
+			}
+			return runResult
+		})
+		out, err := encodeExecOutput(execOutputPayload{
+			Stdout:             "",
+			Stderr:             "",
+			ExitCode:           0,
+			TimedOut:           false,
+			Truncated:          false,
+			Shell:              invocation.shell,
+			WorkingDirectory:   invocation.workingDirectory,
+			DurationMs:         0,
+			SandboxPermissions: cfg.sandboxPermissions,
+			SandboxMode:        sandboxMode,
+			Background:         true,
+			ProcessID:          processID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &ExecuteResult{Output: out}, nil
 	}
 	result, err := sandboxpolicy.RunCommand(ctx, policy, sandboxpolicy.CommandRequest{
 		CommandName: invocation.commandName,
@@ -180,6 +230,11 @@ func parseExecRunConfig(params map[string]any) (execRunConfig, error) {
 		return execRunConfig{}, fmt.Errorf("invalid sandbox_permissions value: %s (allowed: default|required_approval)", cfg.sandboxPermissions)
 	}
 	cfg.timeoutMs = resolveTimeoutMs(paramString(params, "timeout_ms"))
+	background, _, err := paramBool(params, "background")
+	if err != nil {
+		return execRunConfig{}, err
+	}
+	cfg.background = background
 
 	wd, err := resolveWorkingDirectory(paramString(params, "working_directory"))
 	if err != nil {

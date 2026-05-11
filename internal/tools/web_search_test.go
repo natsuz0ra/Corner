@@ -2,32 +2,35 @@ package tools
 
 import (
 	"context"
+	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
 func TestWebSearchToolSearchSuccess(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("unexpected method: %s", r.Method)
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer test-key" {
 			t.Fatalf("unexpected auth header: %s", got)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{
 			"query":"Who is Leo Messi?",
 			"answer":"Messi is an Argentine footballer.",
 			"results":[
 				{"title":"Britannica","url":"https://www.britannica.com/facts/Lionel-Messi","content":"summary text","score":0.88}
 			]
-		}`))
-	}))
-	defer server.Close()
+		}`)),
+			Request: r,
+		}, nil
+	})}
 
-	tool := newWebSearchTool(server.URL, server.Client(), func() string { return "test-key" })
+	tool := newWebSearchTool("https://example.test", client, func() string { return "test-key" })
 	result, err := tool.Execute(context.Background(), "search", map[string]any{"query": "Who is Leo Messi?"})
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
@@ -58,13 +61,16 @@ func TestWebSearchToolMissingAPIKey(t *testing.T) {
 }
 
 func TestWebSearchToolUpstreamError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(`{"detail":{"error":"Invalid topic. Must be 'general' or 'news'."}}`))
-	}))
-	defer server.Close()
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"detail":{"error":"Invalid topic. Must be 'general' or 'news'."}}`)),
+			Request:    r,
+		}, nil
+	})}
 
-	tool := newWebSearchTool(server.URL, server.Client(), func() string { return "test-key" })
+	tool := newWebSearchTool("https://example.test", client, func() string { return "test-key" })
 	result, err := tool.Execute(context.Background(), "search", map[string]any{"query": "test"})
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
