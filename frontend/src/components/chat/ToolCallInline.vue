@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { mdiConsoleLine, mdiFileDocumentOutline, mdiFileEditOutline, mdiFilePlusOutline, mdiHelpCircleOutline, mdiSourceBranch, mdiWeb } from '@mdi/js'
 import MdiIcon from '@/components/ui/MdiIcon.vue'
 import FileToolDisplay from '@/components/chat/FileToolDisplay.vue'
 import ThinkingBlock from '@/components/chat/ThinkingBlock.vue'
 import type { ToolCallItem } from '@/api/chat'
 import { buildSubagentTimeline } from '@/utils/subagentTimeline'
-import { buildToolCallSummary, buildToolResultDisplay, filterToolParamsForDetail, formatDisplayText, formatToolParams, parseAskQuestionsReadableAnswers } from '@/utils/toolDisplay'
+import { buildToolResultDisplay, filterToolParamsForDetail, formatDisplayText, formatToolParams, parseAskQuestionsReadableAnswers } from '@/utils/toolDisplay'
 import { hasPendingNestedApproval, shouldAutoExpandToolCall } from '@/utils/toolApprovalExpansion'
 import { isFileTool } from '@/utils/fileToolDisplay'
+import { useToolCallDisplay } from '@/composables/chat/useToolCallDisplay'
 
 const props = withDefaults(defineProps<{
   item: ToolCallItem
@@ -26,32 +26,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const expanded = ref(false)
 const subagentTimelineExpanded = ref(false)
-
-const toolIcon = computed(() => {
-  if (props.item.toolName === 'exec') return mdiConsoleLine
-  if (props.item.toolName === 'http_request') return mdiWeb
-  if (props.item.toolName === 'web_search') return mdiWeb
-  if (props.item.toolName === 'ask_questions') return mdiHelpCircleOutline
-  if (props.item.toolName === 'run_subagent') return mdiSourceBranch
-  if (props.item.toolName === 'file_read') return mdiFileDocumentOutline
-  if (props.item.toolName === 'file_edit') return mdiFileEditOutline
-  if (props.item.toolName === 'file_write') return mdiFilePlusOutline
-  return mdiConsoleLine
-})
-
-const toolLabel = computed(() => {
-  if (props.item.toolName === 'exec') return t('toolExec')
-  if (props.item.toolName === 'http_request') return t('toolHttpRequest')
-  if (props.item.toolName === 'web_search') return t('toolWebSearch')
-  if (props.item.toolName === 'run_subagent') return t('toolRunSubagent')
-  if (props.item.toolName === 'ask_questions') return t('toolAskQuestions')
-  if (props.item.toolName === 'file_read') return 'file_read'
-  if (props.item.toolName === 'file_edit') return 'file_edit'
-  if (props.item.toolName === 'file_write') return 'file_write'
-  return props.item.toolName
-})
-
-const toolSummary = computed(() => buildToolCallSummary(props.item))
+const { toolIcon, toolLabel, toolSummary } = useToolCallDisplay(() => props.item, (key) => t(key))
 
 const statusIcon = computed(() => {
   switch (props.item.status) {

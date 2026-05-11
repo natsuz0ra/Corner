@@ -8,7 +8,23 @@ import (
 	"strings"
 )
 
-const searchFilesDefaultMaxMatches = 100
+const (
+	searchFilesDefaultMaxMatches        = 50
+	searchFilesMaxMatches               = 100
+	searchFilesDefaultMaxMatchesPerFile = 5
+	searchFilesMaxLineRunes             = 220
+)
+
+type searchFileMatch struct {
+	line int
+	text string
+}
+
+type searchFileGroup struct {
+	path    string
+	total   int
+	matches []searchFileMatch
+}
 
 type searchFilesTool struct{}
 
@@ -30,7 +46,8 @@ func (s *searchFilesTool) Commands() []Command {
 			{Name: "path", Required: false, Description: "Directory or file to search. Defaults to current working directory.", Example: "/path/to/repo"},
 			{Name: "query", Required: true, Description: "Text to search for in file names and UTF-8 file contents.", Example: "func BuildToolDefs"},
 			{Name: "pattern", Required: false, Description: "Optional glob matched against file basename or relative path.", Example: "*.go"},
-			{Name: "max_matches", Required: false, Description: "Maximum matches to return. Default 100.", Example: "50"},
+			{Name: "max_matches", Required: false, Description: "Maximum matches to return. Default 50, max 100.", Example: "50"},
+			{Name: "max_matches_per_file", Required: false, Description: "Maximum matches to show per file. Default 5.", Example: "5"},
 		},
 	}}
 }
@@ -64,8 +81,18 @@ func (s *searchFilesTool) search(ctx context.Context, params map[string]any) (*E
 	if err != nil {
 		return nil, err
 	}
-	if maxMatches <= 0 || maxMatches > searchFilesDefaultMaxMatches {
+	if maxMatches <= 0 {
 		maxMatches = searchFilesDefaultMaxMatches
+	}
+	if maxMatches > searchFilesMaxMatches {
+		maxMatches = searchFilesMaxMatches
+	}
+	maxMatchesPerFile, _, err := paramInt(params, "max_matches_per_file")
+	if err != nil {
+		return nil, err
+	}
+	if maxMatchesPerFile <= 0 {
+		maxMatchesPerFile = searchFilesDefaultMaxMatchesPerFile
 	}
 	pattern := paramStringTrim(params, "pattern")
 
@@ -74,12 +101,11 @@ func (s *searchFilesTool) search(ctx context.Context, params map[string]any) (*E
 		return nil, fmt.Errorf("failed to stat search path: %w", err)
 	}
 
-	var out strings.Builder
-	matches := 0
+	groupsByPath := make(map[string]*searchFileGroup)
+	var groupOrder []string
+	shown := 0
+	total := 0
 	visit := func(path string, info os.FileInfo) error {
-		if matches >= maxMatches {
-			return filepath.SkipAll
-		}
 		if info.IsDir() {
 			name := info.Name()
 			if name == ".git" || name == "node_modules" || name == "web/dist" {
@@ -100,12 +126,28 @@ func (s *searchFilesTool) search(ctx context.Context, params map[string]any) (*E
 		if pattern != "" && !globMatches(pattern, rel, filepath.Base(path)) {
 			return nil
 		}
-		if strings.Contains(filepath.Base(path), query) {
-			out.WriteString(fmt.Sprintf("%s: filename match\n", path))
-			matches++
-			if matches >= maxMatches {
-				return nil
+		group := func() *searchFileGroup {
+			existing := groupsByPath[path]
+			if existing != nil {
+				return existing
 			}
+			next := &searchFileGroup{path: path}
+			groupsByPath[path] = next
+			groupOrder = append(groupOrder, path)
+			return next
+		}
+		addMatch := func(line int, text string) {
+			g := group()
+			g.total++
+			total++
+			if shown >= maxMatches || len(g.matches) >= maxMatchesPerFile {
+				return
+			}
+			g.matches = append(g.matches, searchFileMatch{line: line, text: truncateSearchFileLine(strings.TrimSpace(text))})
+			shown++
+		}
+		if strings.Contains(filepath.Base(path), query) {
+			addMatch(0, "filename match")
 		}
 		if info.Size() > fileReadMaxSizeBytes {
 			return nil
@@ -120,11 +162,7 @@ func (s *searchFilesTool) search(ctx context.Context, params map[string]any) (*E
 		}
 		for i, line := range splitTextLines(text) {
 			if strings.Contains(line, query) {
-				out.WriteString(fmt.Sprintf("%s:%d: %s\n", path, i+1, strings.TrimSpace(line)))
-				matches++
-				if matches >= maxMatches {
-					return nil
-				}
+				addMatch(i+1, line)
 			}
 		}
 		return nil
@@ -143,10 +181,10 @@ func (s *searchFilesTool) search(ctx context.Context, params map[string]any) (*E
 	if err != nil {
 		return nil, err
 	}
-	if matches == 0 {
+	if total == 0 {
 		return &ExecuteResult{Output: "No matches found."}, nil
 	}
-	return &ExecuteResult{Output: fmt.Sprintf("Matches: %d\n%s", matches, strings.TrimSpace(out.String()))}, nil
+	return &ExecuteResult{Output: formatSearchFileGroups(groupOrder, groupsByPath, shown, total)}, nil
 }
 
 func globMatches(pattern, rel, base string) bool {
@@ -155,4 +193,40 @@ func globMatches(pattern, rel, base string) bool {
 	}
 	ok, _ := filepath.Match(filepath.ToSlash(pattern), filepath.ToSlash(rel))
 	return ok
+}
+
+func formatSearchFileGroups(order []string, groups map[string]*searchFileGroup, shown int, total int) string {
+	truncated := shown < total
+	var out strings.Builder
+	out.WriteString(fmt.Sprintf("Matches: %d shown, %d found, files=%d, truncated=%t\n", shown, total, len(order), truncated))
+	for _, path := range order {
+		group := groups[path]
+		if group == nil || len(group.matches) == 0 {
+			continue
+		}
+		if len(group.matches) == group.total {
+			out.WriteString(fmt.Sprintf("%s (%d matches)\n", group.path, group.total))
+		} else {
+			out.WriteString(fmt.Sprintf("%s (%d of %d matches)\n", group.path, len(group.matches), group.total))
+		}
+		for _, match := range group.matches {
+			if match.line <= 0 {
+				out.WriteString("  filename match\n")
+				continue
+			}
+			out.WriteString(fmt.Sprintf("  L%d: %s\n", match.line, match.text))
+		}
+	}
+	if truncated {
+		out.WriteString("Output truncated. Refine path/pattern/query or raise max_matches/max_matches_per_file for more results.\n")
+	}
+	return strings.TrimSpace(out.String())
+}
+
+func truncateSearchFileLine(line string) string {
+	runes := []rune(line)
+	if len(runes) <= searchFilesMaxLineRunes {
+		return line
+	}
+	return string(runes[:searchFilesMaxLineRunes]) + "..."
 }

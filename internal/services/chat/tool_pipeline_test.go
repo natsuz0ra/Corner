@@ -164,6 +164,21 @@ func TestBuildToolDefs_FileReadDescriptionPrefersBatchRanges(t *testing.T) {
 	}
 }
 
+func TestBuildToolDefs_SearchFilesSchemaIncludesPerFileLimit(t *testing.T) {
+	defs := BuildToolDefs()
+	def := findToolDef(defs, "search_files__search")
+	if def == nil {
+		t.Fatal("expected search_files__search tool definition")
+	}
+	properties, ok := def.Parameters["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("search_files parameters.properties has unexpected type: %#v", def.Parameters["properties"])
+	}
+	if _, ok := properties["max_matches_per_file"]; !ok {
+		t.Fatalf("search_files__search missing max_matches_per_file property: %#v", properties)
+	}
+}
+
 func TestRequiresToolApproval_FileWritesInStandardMode(t *testing.T) {
 	if !requiresToolApproval("file_edit", false, constants.ApprovalModeStandard) {
 		t.Fatal("file_edit should require approval in standard mode")

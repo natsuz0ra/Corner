@@ -43,6 +43,26 @@ test('buildToolCallSummary uses query and http request fields', () => {
   )
 })
 
+test('buildToolCallSummary formats newly added tools compactly', () => {
+  assert.equal(
+    buildToolCallSummary(tool({ toolName: 'search_files', command: 'search', params: { query: 'BuildToolDefs', path: 'internal/tools', pattern: '*.go' } })),
+    'BuildToolDefs in internal/tools (*.go)',
+  )
+  assert.equal(
+    buildToolCallSummary(tool({ toolName: 'web_extract', command: 'extract', params: { url: 'https://example.test/docs/intro?utm=long' } })),
+    'example.test/docs/intro',
+  )
+  assert.equal(buildToolCallSummary(tool({ toolName: 'skills', command: 'list', params: {} })), 'List skills')
+  assert.equal(buildToolCallSummary(tool({ toolName: 'skills', command: 'view', params: { name: 'imagegen' } })), 'imagegen')
+  assert.equal(buildToolCallSummary(tool({ toolName: 'todo', command: 'list', params: {} })), 'List todos')
+  assert.equal(
+    buildToolCallSummary(tool({ toolName: 'todo', command: 'update', params: { items: [{ id: 'a' }, { id: 'b' }] } })),
+    'Update 2 todos',
+  )
+  assert.equal(buildToolCallSummary(tool({ toolName: 'process', command: 'list', params: {} })), 'List processes')
+  assert.equal(buildToolCallSummary(tool({ toolName: 'process', command: 'status', params: { process_id: 'proc-1' } })), 'proc-1')
+})
+
 test('buildToolCallSummary uses file tool paths and operations', () => {
   assert.equal(
     buildToolCallSummary(tool({ toolName: 'file_read', command: 'read', params: { file_path: 'frontend/src/App.vue' } })),
@@ -118,6 +138,18 @@ test('filterToolParamsForDetail removes params already shown in summary', () => 
   assert.deepEqual(
     filterToolParamsForDetail(tool({ toolName: 'web_search', command: 'search', params: { query: 'SlimeBot latest' } })),
     {},
+  )
+  assert.deepEqual(
+    filterToolParamsForDetail(tool({ toolName: 'search_files', command: 'search', params: { query: 'BuildToolDefs', path: 'internal/tools', pattern: '*.go', max_matches: 20 } })),
+    { max_matches: 20 },
+  )
+  assert.deepEqual(
+    filterToolParamsForDetail(tool({ toolName: 'web_extract', command: 'extract', params: { url: 'https://example.test/docs/intro' } })),
+    {},
+  )
+  assert.deepEqual(
+    filterToolParamsForDetail(tool({ toolName: 'process', command: 'stop', params: { process_id: 'proc-1', reason: 'cleanup' } })),
+    { reason: 'cleanup' },
   )
   assert.deepEqual(
     filterToolParamsForDetail(tool({
