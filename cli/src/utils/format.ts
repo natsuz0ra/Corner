@@ -144,6 +144,12 @@ export interface ExecCompactSummary {
   preview: string[];
 }
 
+export interface WebExtractOutput {
+  url: string;
+  title: string;
+  content: string;
+}
+
 function isJSONObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -399,6 +405,41 @@ export function formatToolExecutionCompactOutput(toolName: string, command: stri
   }
 
   return formatToolExecutionOutput(toolName, command, raw);
+}
+
+export function parseWebExtractOutput(raw: string): WebExtractOutput | null {
+  const normalized = formatToolTextValue(raw);
+  const lines = normalized.replace(/\r\n/g, "\n").split("\n");
+  const urlLine = lines.find((line) => line.startsWith("URL:"));
+  const contentIndex = lines.findIndex((line) => line.startsWith("Content:"));
+  if (!urlLine || contentIndex < 0) return null;
+
+  const url = urlLine.slice("URL:".length).trim();
+  if (!url) return null;
+
+  const titleLine = lines.slice(0, contentIndex).find((line) => line.startsWith("Title:"));
+  const title = titleLine ? titleLine.slice("Title:".length).trim() : "";
+  const contentLine = lines[contentIndex] || "";
+  const inlineContent = contentLine.slice("Content:".length).trim();
+  const contentTail = lines.slice(contentIndex + 1).join("\n").trim();
+  const content = [inlineContent, contentTail].filter(Boolean).join("\n").trim();
+  return { url, title, content };
+}
+
+export function formatWebExtractCompactOutput(raw: string, maxContentLength = 220): string {
+  const parsed = parseWebExtractOutput(raw);
+  if (!parsed) {
+    const fallback = truncateText(formatToolTextValue(raw), maxContentLength);
+    return `${fallback}\n(ctrl+o to expand)`;
+  }
+
+  const lines = [`URL: ${parsed.url}`];
+  if (parsed.title) {
+    lines.push(`Title: ${parsed.title}`);
+  }
+  lines.push(`Content: ${truncateText(parsed.content, maxContentLength)}`);
+  lines.push("(ctrl+o to expand)");
+  return lines.join("\n");
 }
 
 /** Truncates multi-line text into a single-line preview. */

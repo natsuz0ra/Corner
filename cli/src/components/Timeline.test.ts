@@ -157,6 +157,56 @@ test("formatToolOutputLines shows failure preview for collapsed exec", () => {
   assert.ok(lines.some((line) => line.includes("preview: boom 1")));
 });
 
+test("formatToolOutputLines shows compact web_extract summary when collapsed", () => {
+  const longContent = [
+    "This is the start of the extracted page content.",
+    Array.from({ length: 60 }, (_, index) => `visible${index + 1}`).join(" "),
+    "This sentence should stay hidden in the collapsed preview because it appears after the preview limit.",
+  ].join(" ");
+  const entry: TimelineEntry = {
+    kind: "tool",
+    content: "",
+    toolName: "web_extract",
+    command: "extract",
+    status: "completed",
+    output: [
+      "URL: https://example.test/article",
+      "Title: Example Article",
+      "Content:",
+      longContent,
+    ].join("\n"),
+  };
+
+  const lines = formatToolOutputLines(entry, 120, false);
+
+  assert.ok(lines.some((line) => line.includes("URL: https://example.test/article")));
+  assert.ok(lines.some((line) => line.includes("Title: Example Article")));
+  assert.ok(lines.some((line) => line.includes("ctrl+o to expand")));
+  assert.ok(lines.every((line) => !line.includes("should stay hidden")));
+});
+
+test("formatToolOutputLines shows full web_extract output when expanded", () => {
+  const entry: TimelineEntry = {
+    kind: "tool",
+    content: "",
+    toolName: "web_extract",
+    command: "extract",
+    status: "completed",
+    output: [
+      "URL: https://example.test/article",
+      "Title: Example Article",
+      "Content:",
+      "Full content line one.",
+      "Full content line two.",
+    ].join("\n"),
+  };
+
+  const lines = formatToolOutputLines(entry, 120, true);
+
+  assert.ok(lines.some((line) => line.includes("Full content line one.")));
+  assert.ok(lines.some((line) => line.includes("Full content line two.")));
+});
+
 test("formatFileToolTimelineLines shows only file_read summary", () => {
   const entry: TimelineEntry = {
     kind: "tool",
