@@ -19,7 +19,7 @@ import (
 	"slimebot/internal/tools"
 )
 
-const todoUpdateFuncName = "todo_update"
+const todoUpdateFuncName = tools.TodoUpdateFunctionName
 
 // AgentService runs the LLM loop with tools, approvals, and MCP/skill loading.
 type AgentService struct {
@@ -192,65 +192,7 @@ func (a *AgentService) evictOldProcessSessionsLocked(maxEvict int) {
 // BuildToolDefs builds function-calling tool definitions from the global registry.
 // Each command becomes one function named {tool}__{command}, except stable aliases.
 func BuildToolDefs() []llmsvc.ToolDef {
-	var defs []llmsvc.ToolDef
-	for _, t := range tools.All() {
-		if tools.IsStableNameTool(t.Name()) {
-			continue
-		}
-		for _, cmd := range t.Commands() {
-			properties := make(map[string]any)
-			var required []string
-			for _, p := range cmd.Params {
-				prop := map[string]any{}
-				if schema, ok := p.Schema.(map[string]any); ok && len(schema) > 0 {
-					for k, v := range schema {
-						prop[k] = v
-					}
-				} else {
-					prop["type"] = "string"
-				}
-				prop["description"] = p.Description
-				if p.Example != "" {
-					prop["example"] = p.Example
-				}
-				properties[p.Name] = prop
-				if p.Required {
-					required = append(required, p.Name)
-				}
-			}
-
-			funcName := buildBuiltinToolFuncName(t.Name(), cmd.Name)
-			desc := fmt.Sprintf("[%s] %s", t.Name(), cmd.Description)
-
-			params := map[string]any{
-				"type":       "object",
-				"properties": properties,
-			}
-			if len(required) > 0 {
-				params["required"] = required
-			}
-
-			defs = append(defs, llmsvc.ToolDef{
-				Name:        funcName,
-				Description: desc,
-				Parameters:  params,
-			})
-		}
-	}
-	sort.Slice(defs, func(i, j int) bool {
-		if defs[i].Name == defs[j].Name {
-			return defs[i].Description < defs[j].Description
-		}
-		return defs[i].Name < defs[j].Name
-	})
-	return defs
-}
-
-func buildBuiltinToolFuncName(toolName, command string) string {
-	if toolName == "todo" && command == "update" {
-		return todoUpdateFuncName
-	}
-	return toolName + "__" + command
+	return tools.BuildRegistryToolDefs()
 }
 
 // buildRuntimeToolDefs merges built-in, skill, and MCP tools and returns MCP name mapping.
@@ -723,11 +665,11 @@ func filterPlanModeMCPMeta(meta map[string]mcp.ToolMeta) map[string]mcp.ToolMeta
 
 // parseToolCallName parses "{tool}__{command}" function names.
 func parseToolCallName(funcName string) (toolName, command string, err error) {
-	parts := strings.SplitN(funcName, "__", 2)
-	if len(parts) != 2 {
+	toolName, command, ok := tools.ParseFunctionName(funcName)
+	if !ok {
 		return "", "", fmt.Errorf("invalid tool function name format: %s", funcName)
 	}
-	return parts[0], parts[1], nil
+	return toolName, command, nil
 }
 
 // parseToolCallArgs normalizes tool arguments to string maps for built-in tools.

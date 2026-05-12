@@ -213,6 +213,70 @@ func TestToolMetadataCentralizesPlanAndApprovalRules(t *testing.T) {
 	}
 }
 
+func TestModelFunctionNameHandlesTodoAlias(t *testing.T) {
+	if got := ModelFunctionName("todo", "update"); got != TodoUpdateFunctionName {
+		t.Fatalf("todo update function name = %s, want %s", got, TodoUpdateFunctionName)
+	}
+	if got := ModelFunctionName("file_read", "read"); got != "file_read__read" {
+		t.Fatalf("file_read function name = %s, want file_read__read", got)
+	}
+}
+
+func TestBuildRegistryToolDefsAliasesAndSkipsStableSpecialTools(t *testing.T) {
+	defs := BuildRegistryToolDefs()
+	if containsToolDefName(defs, "todo__update") {
+		t.Fatalf("todo__update should not be exposed: %#v", specialToolNames(defs))
+	}
+	for _, name := range []string{TodoUpdateFunctionName, "exec__run", "file_read__read", "search_files__search"} {
+		if !containsToolDefName(defs, name) {
+			t.Fatalf("expected registry tool %s in %#v", name, specialToolNames(defs))
+		}
+	}
+	for _, name := range []string{"activate_skill__activate", "run_subagent__run"} {
+		if containsToolDefName(defs, name) {
+			t.Fatalf("stable special tool %s must not be exposed: %#v", name, specialToolNames(defs))
+		}
+	}
+	for i := 1; i < len(defs); i++ {
+		if defs[i-1].Name > defs[i].Name {
+			t.Fatalf("registry tool defs are not sorted: %q > %q", defs[i-1].Name, defs[i].Name)
+		}
+	}
+}
+
+func TestBuildRegistryToolDefsPreservesKeySchemas(t *testing.T) {
+	defs := BuildRegistryToolDefs()
+	execDef := findSpecialToolDef(defs, "exec__run")
+	if execDef == nil {
+		t.Fatal("expected exec__run tool definition")
+	}
+	execProps, ok := execDef.Parameters["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("exec__run parameters.properties has unexpected type: %#v", execDef.Parameters["properties"])
+	}
+	for _, name := range []string{"command", "timeout_ms", "shell", "working_directory", "description", "reason", "sandbox_permissions"} {
+		if _, ok := execProps[name]; !ok {
+			t.Fatalf("exec__run missing property %q", name)
+		}
+	}
+	required, ok := execDef.Parameters["required"].([]string)
+	if !ok || len(required) != 1 || required[0] != "command" {
+		t.Fatalf("exec__run required = %#v, want [command]", execDef.Parameters["required"])
+	}
+
+	searchDef := findSpecialToolDef(defs, "search_files__search")
+	if searchDef == nil {
+		t.Fatal("expected search_files__search tool definition")
+	}
+	searchProps, ok := searchDef.Parameters["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("search_files parameters.properties has unexpected type: %#v", searchDef.Parameters["properties"])
+	}
+	if _, ok := searchProps["max_matches_per_file"]; !ok {
+		t.Fatalf("search_files__search missing max_matches_per_file property: %#v", searchProps)
+	}
+}
+
 func containsToolDefName(defs []llmsvc.ToolDef, name string) bool {
 	for _, def := range defs {
 		if def.Name == name {
@@ -228,6 +292,15 @@ func specialToolNames(defs []llmsvc.ToolDef) []string {
 		names = append(names, def.Name)
 	}
 	return names
+}
+
+func findSpecialToolDef(defs []llmsvc.ToolDef, name string) *llmsvc.ToolDef {
+	for i := range defs {
+		if defs[i].Name == name {
+			return &defs[i]
+		}
+	}
+	return nil
 }
 
 type captureSubagentRunner struct {
