@@ -194,6 +194,9 @@ func (a *AgentService) evictOldProcessSessionsLocked(maxEvict int) {
 func BuildToolDefs() []llmsvc.ToolDef {
 	var defs []llmsvc.ToolDef
 	for _, t := range tools.All() {
+		if tools.IsStableNameTool(t.Name()) {
+			continue
+		}
 		for _, cmd := range t.Commands() {
 			properties := make(map[string]any)
 			var required []string
@@ -250,31 +253,6 @@ func buildBuiltinToolFuncName(toolName, command string) string {
 	return toolName + "__" + command
 }
 
-func buildRunSubagentToolDef() llmsvc.ToolDef {
-	return llmsvc.ToolDef{
-		Name:        constants.RunSubagentTool,
-		Description: "[subagent] Delegate bounded, concise, independent sub-tasks to a nested agent with isolated context (no chat history). Prefer this only when separate focused research, codebase inspection, validation, or summarization has a clear stopping point. The parent agent remains responsible for integrating the result.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"task": map[string]any{
-					"type":        "string",
-					"description": "Concrete self-contained task for the sub-agent, including the expected deliverable and boundaries.",
-				},
-				"title": map[string]any{
-					"type":        "string",
-					"description": "Short one-line title for the sub-agent task, about 80 characters or less.",
-				},
-				"context": map[string]any{
-					"type":        "string",
-					"description": "Optional compressed background from the main assistant; include only state the isolated sub-agent needs.",
-				},
-			},
-			"required": []string{"title", "task"},
-		},
-	}
-}
-
 func buildPlanCompleteToolDef() llmsvc.ToolDef {
 	return llmsvc.ToolDef{
 		Name:        constants.PlanCompleteTool,
@@ -318,12 +296,12 @@ func (a *AgentService) buildRuntimeToolDefs(ctx context.Context, configs []domai
 		if err != nil {
 			return nil, nil, err
 		}
-		if def := a.skillRuntime.BuildActivateSkillToolDef(skills); def != nil {
+		if def := tools.BuildActivateSkillToolDef(skills); def != nil {
 			defs = append(defs, *def)
 		}
 	}
 	if depth == 0 {
-		defs = append(defs, buildRunSubagentToolDef())
+		defs = append(defs, tools.BuildRunSubagentToolDef())
 	}
 	if a.mcp == nil || len(configs) == 0 {
 		return defs, metaByFunc, nil
@@ -593,13 +571,14 @@ func (a *AgentService) RunAgentLoop(
 
 			if tc.Name == constants.ActivateSkillTool && a.skillRuntime != nil {
 				flushParallelJobs()
-				skillName := strings.TrimSpace(fmt.Sprintf("%v", params["name"]))
-				content, _, activateErr := a.skillRuntime.ActivateSkill(skillName, activatedSkills)
-				if activateErr != nil {
-					messages = appendToolMessage(messages, tc.ID, fmt.Sprintf("failed to activate skill: %s", activateErr.Error()))
+				execCtx := tools.WithSkillRuntime(ctx, a.skillRuntime)
+				execCtx = tools.WithActivatedSkills(execCtx, activatedSkills)
+				execResult := executeToolCall(execCtx, constants.ActivateSkillTool, "activate", params)
+				if strings.TrimSpace(execResult.Error) != "" {
+					messages = appendToolMessage(messages, tc.ID, fmt.Sprintf("failed to activate skill: %s", execResult.Error))
 					continue
 				}
-				messages = appendToolMessage(messages, tc.ID, content)
+				messages = appendToolMessage(messages, tc.ID, execResult.Output)
 				continue
 			}
 
@@ -693,15 +672,25 @@ func (a *AgentService) RunAgentLoop(
 						childActivatedSkills := cloneActivatedSkills(activatedSkills)
 						activatedSkillsMu.Unlock()
 
-						execResult, err := a.executeRunSubagentTool(execCtx, modelConfig, sessionID, mcpConfigs, childActivatedSkills, callbacks, opts, tcCopy, invocationCopy, paramsCopy, opts.SubagentModelID, "")
+						runner := agentSubagentRunner{
+							agent:               a,
+							parentModel:         modelConfig,
+							sessionID:           sessionID,
+							mcpConfigs:          mcpConfigs,
+							activatedSkills:     childActivatedSkills,
+							callbacks:           callbacks,
+							opts:                opts,
+							toolCall:            tcCopy,
+							invocation:          invocationCopy,
+							userSubagentModelID: opts.SubagentModelID,
+						}
+						execCtx = tools.WithSubagentRunner(execCtx, runner)
+						execResult := a.executeInvocation(execCtx, tcCopy, invocationCopy, paramsCopy, sessionID, mcpConfigs)
 
 						activatedSkillsMu.Lock()
 						mergeActivatedSkills(activatedSkills, childActivatedSkills)
 						activatedSkillsMu.Unlock()
 
-						if err != nil {
-							return &tools.ExecuteResult{Error: err.Error()}
-						}
 						return execResult
 					}
 					if opts.SandboxPolicy != nil {
@@ -738,22 +727,7 @@ func (a *AgentService) RunAgentLoop(
 
 // isPlanModeAllowedTool returns true if the tool function name is allowed in plan mode.
 func isPlanModeAllowedTool(funcName string) bool {
-	if funcName == "todo__update" {
-		return false
-	}
-	// Handle tools without __ separator (e.g. plan_start).
-	switch funcName {
-	case "plan_start", constants.RunSubagentTool, todoUpdateFuncName:
-		return true
-	}
-	// Handle tools with __ separator (e.g. web_search__search, file_read__read, plan_complete__submit).
-	toolName, _, _ := parseToolCallName(funcName)
-	switch toolName {
-	case "web_search", "web_extract", "file_read", "search_files", "skills", "todo", "plan_complete":
-		return true
-	default:
-		return false
-	}
+	return tools.IsPlanModeAllowedFunction(funcName)
 }
 
 // filterPlanModeToolDefs keeps only read-only tool definitions for plan mode.
@@ -771,11 +745,7 @@ func filterPlanModeToolDefs(defs []llmsvc.ToolDef) []llmsvc.ToolDef {
 func filterPlanModeMCPMeta(meta map[string]mcp.ToolMeta) map[string]mcp.ToolMeta {
 	filtered := make(map[string]mcp.ToolMeta)
 	for k, v := range meta {
-		toolName, _, err := parseToolCallName(k)
-		if err != nil {
-			continue
-		}
-		if isPlanModeAllowedTool(toolName) {
+		if isPlanModeAllowedTool(k) {
 			filtered[k] = v
 		}
 	}

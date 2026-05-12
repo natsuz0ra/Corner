@@ -2,11 +2,15 @@ package chat
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"slimebot/internal/constants"
 	llmsvc "slimebot/internal/services/llm"
+	skillsvc "slimebot/internal/services/skill"
+	"slimebot/internal/tools"
 )
 
 func TestBuildRuntimeToolDefs_IncludesRunSubagentAtDepth0Only(t *testing.T) {
@@ -30,8 +34,52 @@ func TestBuildRuntimeToolDefs_IncludesRunSubagentAtDepth0Only(t *testing.T) {
 	}
 }
 
+func TestBuildRuntimeToolDefs_ExposesSpecialToolsOnlyWithStableNames(t *testing.T) {
+	ctx := context.Background()
+	agent := NewAgentService(nil, nil, nil)
+
+	defs, _, err := agent.buildRuntimeToolDefs(ctx, nil, 0)
+	if err != nil {
+		t.Fatalf("buildRuntimeToolDefs failed: %v", err)
+	}
+	if containsToolName(defs, "run_subagent__run") {
+		t.Fatalf("run_subagent must only be exposed as stable tool name: %#v", toolNames(defs))
+	}
+	if containsToolName(defs, "activate_skill__activate") {
+		t.Fatalf("activate_skill must only be exposed as stable tool name: %#v", toolNames(defs))
+	}
+}
+
+func TestBuildRuntimeToolDefs_ExposesActivateSkillOnlyWhenSkillsExist(t *testing.T) {
+	ctx := context.Background()
+
+	withoutSkills := NewAgentService(nil, nil, nil)
+	defs, _, err := withoutSkills.buildRuntimeToolDefs(ctx, nil, 0)
+	if err != nil {
+		t.Fatalf("buildRuntimeToolDefs without skills failed: %v", err)
+	}
+	if containsToolName(defs, constants.ActivateSkillTool) {
+		t.Fatalf("activate_skill should not be exposed without a skill runtime: %#v", toolNames(defs))
+	}
+
+	root := t.TempDir()
+	writeChatToolSkill(t, root, "alpha", "Alpha skill", "Alpha body")
+	runtime := skillsvc.NewSkillRuntimeService(skillsvc.NewFileSystemSkillStore(root), root)
+	withSkills := NewAgentService(nil, nil, runtime)
+	defs, _, err = withSkills.buildRuntimeToolDefs(ctx, nil, 0)
+	if err != nil {
+		t.Fatalf("buildRuntimeToolDefs with skills failed: %v", err)
+	}
+	if !containsToolName(defs, constants.ActivateSkillTool) {
+		t.Fatalf("activate_skill should be exposed when enabled skills exist: %#v", toolNames(defs))
+	}
+	if containsToolName(defs, "activate_skill__activate") {
+		t.Fatalf("activate_skill command alias must not be exposed: %#v", toolNames(defs))
+	}
+}
+
 func TestRunSubagentToolDef_EncouragesBoundedDelegationWithIsolation(t *testing.T) {
-	def := buildRunSubagentToolDef()
+	def := tools.BuildRunSubagentToolDef()
 	desc := def.Description
 	for _, want := range []string{
 		"bounded",
@@ -195,4 +243,16 @@ func toolNames(defs []llmsvc.ToolDef) []string {
 		names = append(names, def.Name)
 	}
 	return names
+}
+
+func writeChatToolSkill(t *testing.T, root, name, desc, body string) {
+	t.Helper()
+	dir := filepath.Join(root, name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir skill: %v", err)
+	}
+	content := "---\nname: " + name + "\ndescription: " + desc + "\n---\n\n" + body + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write skill: %v", err)
+	}
 }
