@@ -264,18 +264,15 @@ func (a *AgentService) buildRuntimeToolDefs(ctx context.Context, configs []domai
 	}
 	defs := BuildToolDefs()
 	metaByFunc := make(map[string]mcp.ToolMeta)
+	specialOpts := tools.SpecialToolOptions{IncludeRunSubagent: depth == 0}
 	if a.skillRuntime != nil {
 		skills, err := a.skillRuntime.ListSkills()
 		if err != nil {
 			return nil, nil, err
 		}
-		if def := tools.BuildActivateSkillToolDef(skills); def != nil {
-			defs = append(defs, *def)
-		}
+		specialOpts.Skills = skills
 	}
-	if depth == 0 {
-		defs = append(defs, tools.BuildRunSubagentToolDef())
-	}
+	defs = append(defs, tools.BuildSpecialToolDefs(specialOpts)...)
 	if a.mcp == nil || len(configs) == 0 {
 		return defs, metaByFunc, nil
 	}
@@ -387,7 +384,7 @@ func (a *AgentService) RunAgentLoop(
 	if opts.PlanMode {
 		toolDefs = filterPlanModeToolDefs(toolDefs)
 		mcpToolMeta = filterPlanModeMCPMeta(mcpToolMeta)
-		toolDefs = append(toolDefs, tools.BuildPlanToolDefs()...)
+		toolDefs = append(toolDefs, tools.BuildSpecialToolDefs(tools.SpecialToolOptions{IncludePlanTools: true})...)
 	}
 	messages := make([]llmsvc.ChatMessage, len(contextMessages))
 	copy(messages, contextMessages)
