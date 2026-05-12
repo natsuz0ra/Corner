@@ -10,6 +10,7 @@ import {
   TOOL_OUTPUT_PREVIEW_LINES,
   formatToolExecutionOutput,
   formatToolExecutionCompactOutput,
+  formatWebExtractCompactOutput,
   formatToolTextValue,
   formatToolParamEntries,
   filterToolParamsForDetail,
@@ -91,10 +92,14 @@ export function formatToolOutputLines(entry: TimelineEntry, maxWidth: number, ex
   const normalizedTool = (entry.toolName || "").trim().toLowerCase();
   const normalizedCommand = (entry.command || "").trim().toLowerCase();
   const useExecCompact = !expanded && normalizedTool === "exec" && normalizedCommand === "run";
+  const useWebExtractCompact = !expanded && normalizedTool === "web_extract" && normalizedCommand === "extract";
+  const useCompactOutput = useExecCompact || useWebExtractCompact;
   const formatted = useExecCompact
     ? formatToolExecutionCompactOutput(entry.toolName || "", entry.command || "", raw || "")
+    : useWebExtractCompact
+      ? formatWebExtractCompactOutput(raw || "")
     : formatToolExecutionOutput(entry.toolName || "", entry.command || "", raw || "");
-  const { lines: rawLines } = useExecCompact
+  const { lines: rawLines } = useCompactOutput
     ? { lines: formatted.split("\n") }
     : formatCollapsedLines(formatted, TOOL_OUTPUT_PREVIEW_LINES, expanded);
   const result: string[] = [];
