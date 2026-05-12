@@ -253,33 +253,6 @@ func buildBuiltinToolFuncName(toolName, command string) string {
 	return toolName + "__" + command
 }
 
-func buildPlanCompleteToolDef() llmsvc.ToolDef {
-	return llmsvc.ToolDef{
-		Name:        constants.PlanCompleteTool,
-		Description: "[plan] Call this tool ONLY when your complete plan has been written in your response. This submits the plan for user review. You MUST call this tool when you finish writing your plan — without it the user will not see the review menu.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"title": map[string]any{
-					"type":        "string",
-					"description": "Short title for the plan. Omit to auto-detect from the first heading.",
-				},
-			},
-		},
-	}
-}
-
-func buildPlanStartToolDef() llmsvc.ToolDef {
-	return llmsvc.ToolDef{
-		Name:        constants.PlanStartTool,
-		Description: "[plan] Call this tool when you are ready to begin writing your plan. All text output BEFORE this call will appear as narration; all text AFTER will be the plan body. You MUST call this before writing your plan.",
-		Parameters: map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
-		},
-	}
-}
-
 // buildRuntimeToolDefs merges built-in, skill, and MCP tools and returns MCP name mapping.
 func (a *AgentService) buildRuntimeToolDefs(ctx context.Context, configs []domain.MCPConfig, depth int) ([]llmsvc.ToolDef, map[string]mcp.ToolMeta, error) {
 	cacheKey := buildToolDefsCacheKey(configs, depth)
@@ -414,8 +387,7 @@ func (a *AgentService) RunAgentLoop(
 	if opts.PlanMode {
 		toolDefs = filterPlanModeToolDefs(toolDefs)
 		mcpToolMeta = filterPlanModeMCPMeta(mcpToolMeta)
-		toolDefs = append(toolDefs, buildPlanStartToolDef())
-		toolDefs = append(toolDefs, buildPlanCompleteToolDef())
+		toolDefs = append(toolDefs, tools.BuildPlanToolDefs()...)
 	}
 	messages := make([]llmsvc.ChatMessage, len(contextMessages))
 	copy(messages, contextMessages)

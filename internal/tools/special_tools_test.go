@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"slimebot/internal/constants"
 	skillsvc "slimebot/internal/services/skill"
 )
 
@@ -64,6 +65,53 @@ func TestRunSubagentToolRequiresRunnerAndTask(t *testing.T) {
 	_, err = (&runSubagentTool{}).Execute(ctx, "run", map[string]any{"title": "Inspect"})
 	if err == nil || !strings.Contains(err.Error(), "task is required") {
 		t.Fatalf("expected missing task error, got %v", err)
+	}
+}
+
+func TestBuildPlanToolDefs(t *testing.T) {
+	defs := BuildPlanToolDefs()
+	if len(defs) != 2 {
+		t.Fatalf("expected two plan tool defs, got %d: %#v", len(defs), defs)
+	}
+	if defs[0].Name != constants.PlanStartTool {
+		t.Fatalf("expected first plan tool to be %s, got %s", constants.PlanStartTool, defs[0].Name)
+	}
+	if defs[1].Name != constants.PlanCompleteTool {
+		t.Fatalf("expected second plan tool to be %s, got %s", constants.PlanCompleteTool, defs[1].Name)
+	}
+
+	startParams := defs[0].Parameters
+	if startParams["type"] != "object" {
+		t.Fatalf("expected plan_start object schema, got %#v", startParams["type"])
+	}
+	startProps, ok := startParams["properties"].(map[string]any)
+	if !ok || len(startProps) != 0 {
+		t.Fatalf("expected plan_start empty properties, got %#v", startParams["properties"])
+	}
+
+	completeParams := defs[1].Parameters
+	completeProps, ok := completeParams["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected plan_complete properties, got %#v", completeParams["properties"])
+	}
+	titleProp, ok := completeProps["title"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected plan_complete title property, got %#v", completeProps["title"])
+	}
+	if titleProp["type"] != "string" {
+		t.Fatalf("expected title property to be string, got %#v", titleProp["type"])
+	}
+	if _, ok := completeParams["required"]; ok {
+		t.Fatalf("plan_complete title should remain optional, got required=%#v", completeParams["required"])
+	}
+}
+
+func TestPlanToolsAllowedInPlanMode(t *testing.T) {
+	if !IsPlanModeAllowedFunction(constants.PlanStartTool) {
+		t.Fatalf("expected %s to be allowed in plan mode", constants.PlanStartTool)
+	}
+	if !IsPlanModeAllowedFunction(constants.PlanCompleteTool) {
+		t.Fatalf("expected %s to be allowed in plan mode", constants.PlanCompleteTool)
 	}
 }
 
