@@ -854,7 +854,7 @@ func determineToolApprovalPolicy(toolName string, isMCP bool, approvalMode strin
 	if approvalMode == constants.ApprovalModeAuto {
 		return toolApprovalPolicyNone
 	}
-	if toolName != constants.ExecToolName && toolName != "file_edit" && toolName != "file_write" {
+	if !tools.IsApprovalSensitiveTool(toolName) {
 		return toolApprovalPolicyNone
 	}
 	if approvalMode == constants.ApprovalModeAutoReview {

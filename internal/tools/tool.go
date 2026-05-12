@@ -3,8 +3,6 @@ package tools
 import (
 	"context"
 	"strings"
-
-	"slimebot/internal/constants"
 )
 
 // CommandParam describes one parameter for a tool command.
@@ -43,12 +41,8 @@ type Tool interface {
 }
 
 func IsStableNameTool(name string) bool {
-	switch name {
-	case constants.ActivateSkillTool, constants.RunSubagentTool:
-		return true
-	default:
-		return false
-	}
+	meta, ok := MetadataForTool(name)
+	return ok && meta.StableName && meta.Name == strings.TrimSpace(name)
 }
 
 // IsPlanModeAllowedFunction reports whether a model-facing tool function is
@@ -58,24 +52,15 @@ func IsPlanModeAllowedFunction(funcName string) bool {
 	if funcName == "" || funcName == "todo__update" {
 		return false
 	}
-	switch funcName {
-	case constants.PlanStartTool, constants.PlanCompleteTool, constants.RunSubagentTool, "todo_update":
+	if meta, ok := MetadataForFunction(funcName); ok && meta.AllowedInPlanMode {
 		return true
 	}
-	toolName, _, ok := ParseFunctionName(funcName)
-	if !ok {
-		return false
-	}
-	return IsPlanModeAllowedCommand(toolName)
+	return false
 }
 
 func IsPlanModeAllowedCommand(toolName string) bool {
-	switch strings.TrimSpace(toolName) {
-	case "web_search", "web_extract", "file_read", "search_files", "skills", "todo", "plan_complete":
-		return true
-	default:
-		return false
-	}
+	meta, ok := MetadataForTool(toolName)
+	return ok && meta.AllowedInPlanMode
 }
 
 func ParseFunctionName(funcName string) (toolName, command string, ok bool) {

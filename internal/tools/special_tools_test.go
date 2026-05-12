@@ -165,6 +165,54 @@ func TestBuildSpecialToolDefsRespectsVisibilityOptions(t *testing.T) {
 	}
 }
 
+func TestMetadataForFunctionResolvesStableSpecialTools(t *testing.T) {
+	cases := []struct {
+		funcName string
+		toolName string
+		command  string
+		stable   bool
+	}{
+		{funcName: constants.ActivateSkillTool, toolName: constants.ActivateSkillTool, command: "activate", stable: true},
+		{funcName: constants.RunSubagentTool, toolName: constants.RunSubagentTool, command: "run", stable: true},
+		{funcName: "todo_update", toolName: "todo", command: "update", stable: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.funcName, func(t *testing.T) {
+			meta, ok := MetadataForFunction(tc.funcName)
+			if !ok {
+				t.Fatalf("expected metadata for %s", tc.funcName)
+			}
+			if meta.Name != tc.toolName || meta.DefaultCommand != tc.command || meta.StableName != tc.stable {
+				t.Fatalf("unexpected metadata for %s: %+v", tc.funcName, meta)
+			}
+		})
+	}
+}
+
+func TestToolMetadataCentralizesPlanAndApprovalRules(t *testing.T) {
+	if IsPlanModeAllowedFunction("todo__update") {
+		t.Fatal("todo__update should remain blocked in plan mode")
+	}
+	for _, name := range []string{constants.PlanStartTool, constants.PlanCompleteTool} {
+		meta, ok := MetadataForFunction(name)
+		if !ok {
+			t.Fatalf("expected metadata for %s", name)
+		}
+		if !meta.AllowedInPlanMode || !meta.HistoricalStableName {
+			t.Fatalf("expected %s to be plan-allowed and historical-stable, got %+v", name, meta)
+		}
+	}
+	for _, name := range []string{constants.ExecToolName, "file_edit", "file_write"} {
+		if !IsApprovalSensitiveTool(name) {
+			t.Fatalf("expected %s to be approval-sensitive", name)
+		}
+	}
+	if IsApprovalSensitiveTool("file_read") {
+		t.Fatal("file_read should not be approval-sensitive")
+	}
+}
+
 func containsToolDefName(defs []llmsvc.ToolDef, name string) bool {
 	for _, def := range defs {
 		if def.Name == name {

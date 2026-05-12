@@ -31,29 +31,11 @@ const (
 
 // resolveToolInvocation normalizes a model function name into a tool invocation.
 func resolveToolInvocation(tc llmsvc.ToolCallInfo, mcpToolMeta map[string]mcp.ToolMeta, approvalMode string) (resolvedToolInvocation, error) {
-	if tc.Name == constants.ActivateSkillTool {
+	if meta, ok := tools.MetadataForFunction(tc.Name); ok && meta.StableName && meta.DefaultCommand != "" {
+		policy := determineToolApprovalPolicy(meta.Name, false, approvalMode)
 		return resolvedToolInvocation{
-			toolName:         constants.ActivateSkillTool,
-			command:          "activate",
-			isMCP:            false,
-			requiresApproval: false,
-			approvalPolicy:   toolApprovalPolicyNone,
-		}, nil
-	}
-	if tc.Name == constants.RunSubagentTool {
-		return resolvedToolInvocation{
-			toolName:         constants.RunSubagentTool,
-			command:          "run",
-			isMCP:            false,
-			requiresApproval: false,
-			approvalPolicy:   toolApprovalPolicyNone,
-		}, nil
-	}
-	if tc.Name == todoUpdateFuncName {
-		policy := determineToolApprovalPolicy("todo", false, approvalMode)
-		return resolvedToolInvocation{
-			toolName:         "todo",
-			command:          "update",
+			toolName:         meta.Name,
+			command:          meta.DefaultCommand,
 			isMCP:            false,
 			requiresApproval: policy != toolApprovalPolicyNone,
 			approvalPolicy:   policy,

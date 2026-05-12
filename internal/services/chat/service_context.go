@@ -15,6 +15,7 @@ import (
 	"slimebot/internal/constants"
 	"slimebot/internal/domain"
 	llmsvc "slimebot/internal/services/llm"
+	"slimebot/internal/tools"
 	prompts "slimebot/prompts"
 )
 
@@ -479,11 +480,12 @@ func buildHistoricalToolReplay(records []domain.ToolCallRecord) (llmsvc.ChatMess
 func historicalToolFunctionName(record domain.ToolCallRecord) string {
 	toolName := strings.TrimSpace(record.ToolName)
 	command := strings.TrimSpace(record.Command)
+	if tools.IsHistoricalStableName(toolName) {
+		return toolName
+	}
 	switch toolName {
 	case "":
 		return ""
-	case constants.ActivateSkillTool, constants.RunSubagentTool, constants.PlanStartTool, constants.PlanCompleteTool:
-		return toolName
 	default:
 		if command == "" {
 			return ""
