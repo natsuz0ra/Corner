@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"slimebot/internal/constants"
+	"slimebot/internal/domain"
+	llmsvc "slimebot/internal/services/llm"
 	skillsvc "slimebot/internal/services/skill"
 )
 
@@ -113,6 +115,71 @@ func TestPlanToolsAllowedInPlanMode(t *testing.T) {
 	if !IsPlanModeAllowedFunction(constants.PlanCompleteTool) {
 		t.Fatalf("expected %s to be allowed in plan mode", constants.PlanCompleteTool)
 	}
+}
+
+func TestBuildSpecialToolDefsIncludesOnlyRequestedStableTools(t *testing.T) {
+	defs := BuildSpecialToolDefs(SpecialToolOptions{
+		Skills: []domain.Skill{
+			{ID: "disabled", Enabled: false},
+			{ID: "alpha", Enabled: true},
+		},
+		IncludeRunSubagent: true,
+		IncludePlanTools:   true,
+	})
+
+	wantNames := []string{
+		constants.ActivateSkillTool,
+		constants.RunSubagentTool,
+		constants.PlanStartTool,
+		constants.PlanCompleteTool,
+	}
+	if len(defs) != len(wantNames) {
+		t.Fatalf("expected %d special defs, got %d: %#v", len(wantNames), len(defs), defs)
+	}
+	for i, want := range wantNames {
+		if defs[i].Name != want {
+			t.Fatalf("expected special def %d to be %s, got %s", i, want, defs[i].Name)
+		}
+	}
+	if containsToolDefName(defs, "activate_skill__activate") {
+		t.Fatalf("activate_skill must only be exposed as stable name: %#v", specialToolNames(defs))
+	}
+	if containsToolDefName(defs, "run_subagent__run") {
+		t.Fatalf("run_subagent must only be exposed as stable name: %#v", specialToolNames(defs))
+	}
+}
+
+func TestBuildSpecialToolDefsRespectsVisibilityOptions(t *testing.T) {
+	defs := BuildSpecialToolDefs(SpecialToolOptions{
+		Skills:             []domain.Skill{{ID: "disabled", Enabled: false}},
+		IncludeRunSubagent: false,
+		IncludePlanTools:   false,
+	})
+	if len(defs) != 0 {
+		t.Fatalf("expected no special defs, got %#v", specialToolNames(defs))
+	}
+
+	defs = BuildSpecialToolDefs(SpecialToolOptions{IncludeRunSubagent: true})
+	if len(defs) != 1 || defs[0].Name != constants.RunSubagentTool {
+		t.Fatalf("expected only run_subagent, got %#v", specialToolNames(defs))
+	}
+}
+
+func containsToolDefName(defs []llmsvc.ToolDef, name string) bool {
+	for _, def := range defs {
+		if def.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func specialToolNames(defs []llmsvc.ToolDef) []string {
+	names := make([]string, 0, len(defs))
+	for _, def := range defs {
+		names = append(names, def.Name)
+	}
+	return names
 }
 
 type captureSubagentRunner struct {
