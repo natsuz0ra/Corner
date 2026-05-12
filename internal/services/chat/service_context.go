@@ -496,7 +496,7 @@ func historicalToolFunctionName(record domain.ToolCallRecord) string {
 		if isLikelyMCPToolRecord(toolName) {
 			return mcp.BuildFuncName(toolName, command)
 		}
-		return buildBuiltinToolFuncName(toolName, command)
+		return tools.ModelFunctionName(toolName, command)
 	}
 }
 
