@@ -412,11 +412,13 @@ export function buildLightweightToolTimelineRows<T extends { kind: string; id: s
   }
 
   for (const entry of timeline) {
-    const tool = entry.kind === 'tool_start' && entry.toolCallId ? getTool(entry.toolCallId) : undefined
-    const display = tool ? buildLightweightToolDisplay(tool) : null
-    if (display) {
-      pending.push(display)
-      continue
+    if ((entry.kind === 'tool_start' || entry.kind === 'tool_result') && entry.toolCallId) {
+      const tool = getTool(entry.toolCallId)
+      const display = tool ? buildLightweightToolDisplay(tool) : null
+      if (display) {
+        if (entry.kind === 'tool_start') pending.push(display)
+        continue
+      }
     }
     flush()
     rows.push({ kind: 'timeline', entry })

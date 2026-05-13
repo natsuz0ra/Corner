@@ -92,6 +92,54 @@ test('buildLightweightToolTimelineRows merges consecutive lightweight tools only
   assert.equal(JSON.stringify(rows).includes('hidden search hits'), false)
 })
 
+test('buildLightweightToolTimelineRows ignores lightweight results while grouping consecutive tools', () => {
+  const calls = [
+    tool({ toolCallId: 'search-1', toolName: 'web_search', command: 'search', params: { query: 'alpha' }, status: 'completed', output: 'hidden alpha body' }),
+    tool({ toolCallId: 'search-2', toolName: 'web_search', command: 'search', params: { query: 'beta' }, status: 'completed', output: 'hidden beta body' }),
+  ]
+  const rows = buildLightweightToolTimelineRows(
+    [
+      { id: 's1', kind: 'tool_start' as const, toolCallId: 'search-1' },
+      { id: 'r1', kind: 'tool_result' as const, toolCallId: 'search-1' },
+      { id: 's2', kind: 'tool_start' as const, toolCallId: 'search-2' },
+      { id: 'r2', kind: 'tool_result' as const, toolCallId: 'search-2' },
+    ],
+    (id) => calls.find((item) => item.toolCallId === id),
+  )
+
+  assert.deepEqual(rows.map((row) => row.kind), ['lightweight_tool_group'])
+  const group = rows[0]!
+  assert.equal(group.kind, 'lightweight_tool_group')
+  assert.equal(group.kind === 'lightweight_tool_group' ? group.items.length : 0, 2)
+  assert.equal(group.kind === 'lightweight_tool_group' ? buildLightweightToolGroupSummary(group.items, 'zh') : '', '搜索 2 次')
+  assert.equal(JSON.stringify(rows).includes('tool_result'), false)
+  assert.equal(JSON.stringify(rows).includes('hidden alpha body'), false)
+  assert.equal(JSON.stringify(rows).includes('hidden beta body'), false)
+})
+
+test('buildLightweightToolTimelineRows keeps non-lightweight results as group breakers', () => {
+  const calls = [
+    tool({ toolCallId: 'search-1', toolName: 'web_search', command: 'search', params: { query: 'alpha' }, status: 'completed' }),
+    tool({ toolCallId: 'exec-1', toolName: 'exec', command: 'run', params: { command: 'npm test' }, status: 'completed', output: 'ok' }),
+    tool({ toolCallId: 'search-2', toolName: 'web_search', command: 'search', params: { query: 'beta' }, status: 'completed' }),
+  ]
+  const rows = buildLightweightToolTimelineRows(
+    [
+      { id: 's1', kind: 'tool_start' as const, toolCallId: 'search-1' },
+      { id: 'r1', kind: 'tool_result' as const, toolCallId: 'search-1' },
+      { id: 'e1', kind: 'tool_start' as const, toolCallId: 'exec-1' },
+      { id: 'er1', kind: 'tool_result' as const, toolCallId: 'exec-1' },
+      { id: 's2', kind: 'tool_start' as const, toolCallId: 'search-2' },
+      { id: 'r2', kind: 'tool_result' as const, toolCallId: 'search-2' },
+    ],
+    (id) => calls.find((item) => item.toolCallId === id),
+  )
+
+  assert.deepEqual(rows.map((row) => row.kind), ['lightweight_tool_group', 'timeline', 'timeline', 'lightweight_tool_group'])
+  assert.equal(rows[1]!.kind === 'timeline' ? rows[1].entry.id : '', 'e1')
+  assert.equal(rows[2]!.kind === 'timeline' ? rows[2].entry.id : '', 'er1')
+})
+
 test('buildLightweightToolGroupSummary counts activity categories', () => {
   const items = [
     buildLightweightToolDisplay(tool({ toolName: 'web_search', command: 'search', params: { query: 'a' } }))!,
@@ -363,4 +411,29 @@ test('ToolCallInline routes file tools through FileToolDisplay', () => {
   assert.match(source, /showResult && !isFileToolCall/)
   assert.doesNotMatch(readFileSync(resolve(import.meta.dirname, '../src/components/chat/FileToolDisplay.vue'), 'utf8'), /file-tool-diff-guide|├─|└─/)
   assert.doesNotMatch(readFileSync(resolve(import.meta.dirname, '../src/components/chat/FileToolDisplay.vue'), 'utf8'), /file-tool-diff-separator\">\\.\\.\\.</)
+})
+
+test('LightweightToolGroup left-aligns expanded items and uses status icons', () => {
+  const source = readFileSync(resolve(import.meta.dirname, '../src/components/chat/LightweightToolGroup.vue'), 'utf8')
+
+  assert.match(source, /import \{ mdiChevronDown, mdiFileSearchOutline \} from '@mdi\/js'/)
+  assert.match(source, /getToolCallLabel\(toolName === 'search_file' \? 'search_files' : toolName/)
+  assert.match(source, /\{\{ toolLabel\(item\.toolName\) \}\}/)
+  assert.doesNotMatch(source, /<span class="light-tool-item-label">\{\{ item\.label \}\}<\/span>/)
+  assert.match(source, /statusSymbol\(item\.status\)/)
+  assert.match(source, /return '\\u2713'/)
+  assert.match(source, /return '\\u2717'/)
+  assert.match(source, /var\(--tool-success-dot/)
+  assert.match(source, /var\(--tool-error-dot/)
+  assert.match(source, /padding: 0 10px 10px 10px;/)
+  assert.match(source, /grid-template-columns: 18px auto minmax\(0, 1fr\);/)
+  assert.match(source, /<Transition name="tool-subagent-expand">/)
+  assert.match(source, /transition: opacity 180ms ease, max-height 250ms ease;/)
+  assert.match(source, /transition: opacity 120ms ease, max-height 180ms ease;/)
+  assert.match(source, /\.tool-subagent-expand-enter-active,[\s\S]*\.tool-subagent-expand-leave-active\s*\{[\s\S]*overflow: hidden;/)
+  assert.match(source, /linear-gradient\(/)
+  assert.doesNotMatch(source, /background: var\(--card-bg\);/)
+  assert.match(source, /@media \(prefers-reduced-motion: reduce\)/)
+  assert.doesNotMatch(source, /padding: 0 10px 10px 36px;/)
+  assert.doesNotMatch(source, /grid-column: 2 \/ 4;/)
 })
