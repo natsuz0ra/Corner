@@ -556,7 +556,9 @@ test("buildTimelineDisplayRows groups consecutive lightweight tools and keeps fi
 
   assert.deepEqual(rows.map((row) => row.kind), ["lightweight_tool_group", "entry", "lightweight_tool_group"]);
   assert.equal(rows[0]!.kind === "lightweight_tool_group" ? rows[0].items.length : 0, 2);
+  assert.equal(rows[0]!.kind === "lightweight_tool_group" ? rows[0].trailing : true, false);
   assert.equal(rows[1]!.kind === "entry" ? rows[1].entry.toolCallId : "", "edit-1");
+  assert.equal(rows[2]!.kind === "lightweight_tool_group" ? rows[2].trailing : false, true);
   assert.equal(JSON.stringify(rows).includes("hidden result body"), false);
   assert.equal(JSON.stringify(rows).includes("hidden web body"), false);
   assert.equal(JSON.stringify(rows).includes("hidden file body"), false);
@@ -597,10 +599,118 @@ test("formatLightweightToolGroupLines summarizes and expands lightweight groups"
   assert.ok(collapsed[0]!.includes("ctrl+o to expand"));
   assert.ok(header.includes("1 search"));
   assert.ok(header.includes("2 files read"));
+  assert.ok(header.includes("1 failed"));
   assert.ok(header.includes("ctrl+o to expand"));
   assert.ok(expanded.slice(1).every((line) => line.startsWith("    └─ ")));
   assert.ok(expanded.some((line) => line.includes("SlimeBot latest")));
   assert.ok(expanded.some((line) => line.includes("permission denied")));
+});
+
+test("formatLightweightToolGroupLines previews latest three lightweight tools in tail mode", () => {
+  const rows = buildTimelineDisplayRows([
+    {
+      kind: "tool",
+      content: "",
+      toolCallId: "search-1",
+      toolName: "web_search",
+      command: "search",
+      status: "completed",
+      params: { query: "first query" },
+    },
+    {
+      kind: "tool",
+      content: "",
+      toolCallId: "search-2",
+      toolName: "web_search",
+      command: "search",
+      status: "completed",
+      params: { query: "second query" },
+    },
+    {
+      kind: "tool",
+      content: "",
+      toolCallId: "search-3",
+      toolName: "web_search",
+      command: "search",
+      status: "completed",
+      params: { query: "third query" },
+    },
+    {
+      kind: "tool",
+      content: "",
+      toolCallId: "search-4",
+      toolName: "web_search",
+      command: "search",
+      status: "executing",
+      params: { query: "fourth query" },
+    },
+    {
+      kind: "tool",
+      content: "",
+      toolCallId: "read-1",
+      toolName: "file_read",
+      command: "read",
+      status: "pending",
+      params: { file_path: "latest.ts" },
+    },
+  ]);
+  const group = rows[0]!;
+  assert.equal(group.kind, "lightweight_tool_group");
+  if (group.kind !== "lightweight_tool_group") return;
+
+  const preview = formatLightweightToolGroupLines(group.items, 120, true, { detailLimit: 3, tail: true, preview: true });
+  const joined = preview.join("\n");
+
+  assert.ok(preview[0]!.includes("latest 3"));
+  assert.ok(preview.some((line) => line.includes("2 earlier tool calls")));
+  assert.ok(joined.includes("third query"));
+  assert.ok(joined.includes("fourth query"));
+  assert.ok(joined.includes("latest.ts"));
+  assert.equal(joined.includes("first query"), false);
+  assert.equal(joined.includes("second query"), false);
+});
+
+test("formatLightweightToolGroupHeader can show running override and failure counts", () => {
+  const rows = buildTimelineDisplayRows([
+    {
+      kind: "tool",
+      content: "",
+      toolCallId: "search-1",
+      toolName: "web_search",
+      command: "search",
+      status: "error",
+      params: { query: "first failure" },
+      error: "network failed",
+    },
+    {
+      kind: "tool",
+      content: "",
+      toolCallId: "search-2",
+      toolName: "web_search",
+      command: "search",
+      status: "rejected",
+      params: { query: "second failure" },
+      error: "rejected",
+    },
+  ]);
+  const group = rows[0]!;
+  assert.equal(group.kind, "lightweight_tool_group");
+  if (group.kind !== "lightweight_tool_group") return;
+
+  assert.equal(group.trailing, true);
+  assert.match(formatLightweightToolGroupHeader(group.items, false), /2 failed/);
+  assert.match(formatLightweightToolGroupHeader(group.items, false, { statusOverride: "running" }), /running/);
+  assert.doesNotMatch(formatLightweightToolGroupHeader(group.items, false, { statusOverride: "running" }), /failed/);
+});
+
+test("Timeline renders streaming lightweight groups as latest-three preview without manual expansion", () => {
+  const source = readFileSync(resolve(import.meta.dirname, "Timeline.tsx"), "utf8");
+
+  assert.match(source, /const autoPreview = streaming && !toolOutputExpanded/);
+  assert.match(source, /const runningOverride = streaming && row\.trailing/);
+  assert.match(source, /const groupExpanded = toolOutputExpanded \|\| autoPreview/);
+  assert.match(source, /detailLimit: autoPreview \? 3 : undefined/);
+  assert.match(source, /statusOverride: runningOverride \? \("running" as const\) : undefined/);
 });
 
 function runSubagentFixture(): { parent: TimelineEntry; nested: TimelineEntry[] } {

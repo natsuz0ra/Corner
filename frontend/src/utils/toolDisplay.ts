@@ -76,11 +76,11 @@ export interface LightweightToolDisplay {
 
 export type LightweightToolTimelineRow<T> =
   | { kind: 'timeline'; entry: T }
-  | { kind: 'lightweight_tool_group'; id: string; items: LightweightToolDisplay[] }
+  | { kind: 'lightweight_tool_group'; id: string; items: LightweightToolDisplay[]; trailing: boolean }
 
 export type LightweightToolItemRow<T> =
   | { kind: 'item'; item: T }
-  | { kind: 'lightweight_tool_group'; id: string; items: LightweightToolDisplay[] }
+  | { kind: 'lightweight_tool_group'; id: string; items: LightweightToolDisplay[]; trailing: boolean }
 
 export function parseAskQuestionsAnswers(raw: string): AskQuestionsAnswer[] | null {
   const parsed = tryParseJSON(raw)
@@ -401,12 +401,13 @@ export function buildLightweightToolTimelineRows<T extends { kind: string; id: s
   const rows: LightweightToolTimelineRow<T>[] = []
   let pending: LightweightToolDisplay[] = []
 
-  const flush = () => {
+  const flush = (trailing: boolean) => {
     if (pending.length === 0) return
     rows.push({
       kind: 'lightweight_tool_group',
       id: `lightweight-${pending.map((item) => item.toolCallId).join('-')}`,
       items: pending,
+      trailing,
     })
     pending = []
   }
@@ -420,10 +421,10 @@ export function buildLightweightToolTimelineRows<T extends { kind: string; id: s
         continue
       }
     }
-    flush()
+    flush(false)
     rows.push({ kind: 'timeline', entry })
   }
-  flush()
+  flush(true)
   return rows
 }
 
@@ -434,12 +435,13 @@ export function buildLightweightToolRows<T extends { id: string }>(
   const rows: LightweightToolItemRow<T>[] = []
   let pending: LightweightToolDisplay[] = []
 
-  const flush = () => {
+  const flush = (trailing: boolean) => {
     if (pending.length === 0) return
     rows.push({
       kind: 'lightweight_tool_group',
       id: `lightweight-${pending.map((item) => item.toolCallId).join('-')}`,
       items: pending,
+      trailing,
     })
     pending = []
   }
@@ -451,10 +453,10 @@ export function buildLightweightToolRows<T extends { id: string }>(
       pending.push(display)
       continue
     }
-    flush()
+    flush(false)
     rows.push({ kind: 'item', item })
   }
-  flush()
+  flush(true)
   return rows
 }
 

@@ -37,7 +37,7 @@ const statusIcon = computed(() => {
     case 'rejected':
       return { symbol: '\u2717', class: 'inline-status--error' }
     case 'executing':
-      return { symbol: '\u27F3', class: 'inline-status--executing' }
+      return { symbol: '', class: 'inline-status--executing' }
     case 'pending':
       return { symbol: '\u23F3', class: 'inline-status--pending' }
     default:
@@ -158,11 +158,16 @@ function toggleSubagentTimeline() {
       </span>
 
       <span class="inline-tool-status" :class="statusIcon.class">
-        <span
+        <svg
           v-if="item.status === 'executing'"
           class="inline-spinner"
+          fill="none"
+          viewBox="0 0 16 16"
           aria-hidden="true"
-        >{{ statusIcon.symbol }}</span>
+        >
+          <circle class="inline-spinner-track" cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" />
+          <circle class="inline-spinner-head" cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="12 28" />
+        </svg>
         <template v-else>{{ statusIcon.symbol }}</template>
       </span>
 
@@ -241,6 +246,7 @@ function toggleSubagentTimeline() {
                 <LightweightToolGroup
                   v-if="timelineRow.kind === 'lightweight_tool_group'"
                   :items="timelineRow.items"
+                  :running-override="(item.status === 'pending' || item.status === 'reviewing' || item.status === 'executing') && timelineRow.trailing"
                 />
                 <ThinkingBlock
                   v-else-if="timelineRow.item.kind === 'thinking'"
@@ -441,8 +447,19 @@ function toggleSubagentTimeline() {
 .inline-status--pending { color: var(--tool-pending-dot, #facc15); }
 
 .inline-spinner {
+  width: 14px;
+  height: 14px;
   display: inline-block;
   animation: inline-spin 1s linear infinite;
+  transform-origin: center;
+}
+
+.inline-spinner-track {
+  opacity: 0.22;
+}
+
+.inline-spinner-head {
+  opacity: 0.88;
 }
 
 @keyframes inline-spin {

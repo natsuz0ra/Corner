@@ -369,19 +369,35 @@ export function Timeline({
         <React.Fragment key={row.kind === "lightweight_tool_group" ? row.id : `${row.entry.kind}-${row.entry.toolCallId ?? `r-${index}`}`}>
           {index > 0 && <Text> </Text>}
           {row.kind === "lightweight_tool_group" ? (
-            <Box flexDirection="column">
-              <Text>
-                <Text bold color="#2E7D32">{DOT}</Text>
-                <Text>{" "}</Text>
-                <Text bold>tools</Text>
-                <Text color="white">{` ${formatLightweightToolGroupHeader(row.items, toolOutputExpanded)}`}</Text>
-              </Text>
-              {toolOutputExpanded
-                ? formatLightweightToolGroupLines(row.items, maxWidth, true).slice(1).map((line, lineIndex) => (
-                  <Text key={`${row.id}-line-${lineIndex}`}>{line}</Text>
-                ))
-                : null}
-            </Box>
+            (() => {
+              const runningOverride = streaming && row.trailing;
+              const autoPreview = streaming && !toolOutputExpanded;
+              const groupExpanded = toolOutputExpanded || autoPreview;
+              const groupFormatOptions = {
+                detailLimit: autoPreview ? 3 : undefined,
+                tail: autoPreview,
+                preview: autoPreview,
+                statusOverride: runningOverride ? ("running" as const) : undefined,
+              };
+              const failed = row.items.some((item) => item.status === "error" || item.status === "rejected");
+              const dot = toolDotState(runningOverride ? "executing" : failed ? "error" : "completed");
+              const detailLines = groupExpanded
+                ? formatLightweightToolGroupLines(row.items, maxWidth, true, groupFormatOptions).slice(1)
+                : [];
+              return (
+                <Box flexDirection="column">
+                  <Text>
+                    <Text bold color={dot.color}>{dot.blink && !blinkOn ? " " : DOT}</Text>
+                    <Text>{" "}</Text>
+                    <Text bold>tools</Text>
+                    <Text color="white">{` ${formatLightweightToolGroupHeader(row.items, groupExpanded, groupFormatOptions)}`}</Text>
+                  </Text>
+                  {detailLines.map((line, lineIndex) => (
+                    <Text key={`${row.id}-line-${lineIndex}`}>{line}</Text>
+                  ))}
+                </Box>
+              );
+            })()
           ) : (
             <TimelineBlock
               entry={row.entry}
