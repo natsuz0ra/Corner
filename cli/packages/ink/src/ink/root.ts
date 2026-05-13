@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 import { logForDebugging } from '../utils/debug.js'
 
 import type { FrameEvent } from './frame.js'
-import Ink, { type Options as InkOptions } from './ink.js'
+import Ink, { type ForceRedrawOptions, type Options as InkOptions } from './ink.js'
 import instances from './instances.js'
 
 export type RenderOptions = {
@@ -73,14 +73,19 @@ export type Root = {
   waitUntilExit: () => Promise<void>
 }
 
-export const forceRedraw = (stdout: NodeJS.WriteStream = process.stdout): boolean => {
+export { type ForceRedrawOptions }
+
+export const forceRedraw = (
+  stdout: NodeJS.WriteStream = process.stdout,
+  options: ForceRedrawOptions = {}
+): boolean => {
   const instance = instances.get(stdout)
 
   if (!instance) {
     return false
   }
 
-  instance.forceRedraw()
+  instance.forceRedraw(options)
 
   return true
 }

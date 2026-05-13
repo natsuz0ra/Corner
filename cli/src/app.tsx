@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useReducer, useRef } from "react";
-import { Box, Text, useApp, useStdout } from "ink";
+import { Box, Text, forceRedraw, useApp, useStdout } from "ink";
 import { APIClient } from "./api/client.js";
 import { ApprovalView } from "./components/ApprovalView.js";
 import { PlanConfirmView } from "./components/PlanConfirmView.js";
@@ -91,9 +91,18 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
   const selectedCommandHintIndex = commandHints.length > 0
     ? Math.max(0, Math.min(commandHints.length - 1, commandHintCursor))
     : 0;
-  const clearScreenDeferred = useCallback(() => {
-    setImmediate(() => clearScreen());
-  }, []);
+
+  React.useEffect(() => {
+    setCommandHintCursor(0);
+  }, [state.inputValue]);
+
+  const redrawTerminal = useCallback(() => {
+    setImmediate(() => {
+      if (!forceRedraw(stdout, { clearScrollback: true })) {
+        clearScreen();
+      }
+    });
+  }, [stdout]);
 
   const appendSystem = useCallback((content: string) => {
     dispatch({ type: "APPEND_ENTRY", entry: { kind: "system", content } } as AppAction);
@@ -384,7 +393,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     dispatch({ type: "SET_SESSION", sessionId: session.id, sessionName: session.name } as AppAction);
     dispatch({ type: "CLOSE_MENU" } as AppAction);
     applyTerminalTitle(session.name);
-    clearScreenDeferred();
+    redrawTerminal();
     try {
       const history = await apiRef.current.getSessionMessages(session.id);
       dispatch({
@@ -399,7 +408,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     } catch (error) {
       appendSystem(`Failed to load session history: ${(error as Error).message}`);
     }
-  }, [appendSystem, applyTerminalTitle, clearScreenDeferred, refreshContextUsage, state.modelId]);
+  }, [appendSystem, applyTerminalTitle, redrawTerminal, refreshContextUsage, state.modelId]);
 
   const handleMenuSelect = useCallback(async (item: MenuItem | undefined) => {
     if (!item || !state.menuKind) return;
@@ -486,7 +495,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         if (session.id === state.sessionId) {
           dispatch({ type: "RESET_SESSION" } as AppAction);
           applyTerminalTitle("");
-          clearScreenDeferred();
+          redrawTerminal();
         }
         await loadSessions();
         return;
@@ -515,7 +524,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     } catch (error) {
       appendSystem(`Delete failed: ${(error as Error).message}`);
     }
-  }, [appendSystem, applyTerminalTitle, clearScreenDeferred, loadMCPConfigs, loadSessions, loadSkills, state.menuKind, state.sessionId]);
+  }, [appendSystem, applyTerminalTitle, redrawTerminal, loadMCPConfigs, loadSessions, loadSkills, state.menuKind, state.sessionId]);
 
   const handleMenuAdd = useCallback(() => {
     if (state.menuKind === "mcp") {
@@ -670,7 +679,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       newSession: () => {
         dispatch({ type: "RESET_SESSION" } as AppAction);
         applyTerminalTitle("");
-        clearScreenDeferred();
+        redrawTerminal();
       },
       loadSessions,
       loadModels,
@@ -688,7 +697,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
   }, [
     appendSystem,
     applyTerminalTitle,
-    clearScreenDeferred,
+    redrawTerminal,
     loadMCPConfigs,
     loadModels,
     loadSandboxSettings,
@@ -703,12 +712,14 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
   // Initial clear + default model.
   useEffect(() => {
-    clearScreen();
+    if (!forceRedraw(stdout, { clearScrollback: true })) {
+      clearScreen();
+    }
     applyTerminalTitle("");
     void loadDefaultModel();
     void loadApprovalMode();
     void loadThinkingLevel();
-  }, [applyTerminalTitle, loadDefaultModel, loadApprovalMode]);
+  }, [applyTerminalTitle, loadDefaultModel, loadApprovalMode, stdout]);
 
   // Terminal resize.
   useEffect(() => {

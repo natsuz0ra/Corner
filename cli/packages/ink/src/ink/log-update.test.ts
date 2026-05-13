@@ -30,10 +30,10 @@ const paint = (screen: Screen, y: number, text: string) => {
   }
 }
 
-const mkFrame = (screen: Screen, viewportW: number, viewportH: number): Frame => ({
+const mkFrame = (screen: Screen, viewportW: number, viewportH: number, cursorVisible = true): Frame => ({
   screen,
   viewport: { width: viewportW, height: viewportH },
-  cursor: { x: 0, y: 0, visible: true }
+  cursor: { x: 0, y: 0, visible: cursorVisible }
 })
 
 const stdoutOnly = (diff: ReturnType<LogUpdate['render']>) =>
@@ -111,5 +111,31 @@ describe('LogUpdate.render diff contract', () => {
 
     expect(stdoutOnly(diff)).toBe('')
     expect(diff.some(p => p.type === 'clearTerminal')).toBe(false)
+  })
+
+  it('hides the native cursor when dynamic output becomes visible', () => {
+    const w = 20
+    const h = 3
+    const prev = mkScreen(w, h)
+
+    const next = mkScreen(w, h)
+    paint(next, 0, 'prompt')
+    next.damage = { x: 0, y: 0, width: w, height: h }
+
+    const log = new LogUpdate({ isTTY: true, stylePool })
+    const diff = log.render(mkFrame(prev, w, h, true), mkFrame(next, w, h, false))
+
+    expect(diff[0]).toEqual({ type: 'cursorHide' })
+  })
+
+  it('shows the native cursor again when rendering is done', () => {
+    const w = 20
+    const h = 3
+    const prev = mkScreen(w, h)
+
+    const log = new LogUpdate({ isTTY: true, stylePool })
+    const diff = log.renderPreviousOutput_DEPRECATED(mkFrame(prev, w, h, false))
+
+    expect(diff).toEqual([{ type: 'cursorShow' }])
   })
 })
