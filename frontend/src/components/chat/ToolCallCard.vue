@@ -262,6 +262,7 @@ function toggleSubagentTimeline() {
             <LightweightToolGroup
               v-if="timelineRow.kind === 'lightweight_tool_group'"
               :items="timelineRow.items"
+              :running-override="(item.status === 'pending' || item.status === 'reviewing' || item.status === 'executing') && timelineRow.trailing"
             />
             <ThinkingBlock
               v-else-if="timelineRow.item.kind === 'thinking'"
@@ -472,6 +473,15 @@ function toggleSubagentTimeline() {
 
 .tool-status-spinner {
   color: var(--tool-running-text);
+  transform-origin: center;
+}
+
+.tool-status-spinner-track {
+  opacity: 0.22;
+}
+
+.tool-status-spinner-head {
+  opacity: 0.88;
 }
 
 .tool-section {

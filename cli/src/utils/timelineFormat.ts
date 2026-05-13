@@ -125,19 +125,51 @@ export function formatToolOutputLines(entry: TimelineEntry, maxWidth: number, ex
   return result;
 }
 
-export function formatLightweightToolGroupHeader(items: LightweightToolDisplay[], expanded: boolean): string {
+export interface LightweightToolGroupFormatOptions {
+  detailLimit?: number;
+  tail?: boolean;
+  preview?: boolean;
+  statusOverride?: "running" | "completed" | "failed";
+}
+
+export function formatLightweightToolGroupHeader(
+  items: LightweightToolDisplay[],
+  expanded: boolean,
+  options: LightweightToolGroupFormatOptions = {},
+): string {
   const summary = buildLightweightToolGroupSummary(items) || `${items.length} tool calls`;
   const hasActive = items.some((item) => item.status === "pending" || item.status === "reviewing" || item.status === "executing");
-  const hasFailure = items.some((item) => item.status === "error" || item.status === "rejected");
-  const status = hasActive ? "running" : hasFailure ? "failed" : "completed";
+  const failureCount = items.filter((item) => item.status === "error" || item.status === "rejected").length;
+  const status = options.statusOverride ?? (hasActive ? "running" : failureCount > 0 ? `${failureCount} failed` : "completed");
+  if (expanded && options.preview) {
+    const limit = Math.max(1, Math.floor(options.detailLimit ?? 3));
+    const shown = Math.min(items.length, limit);
+    return `${summary} | ${status} (live preview, latest ${shown})`;
+  }
   return `${summary} | ${status}${expanded ? " (ctrl+o to collapse)" : " (ctrl+o to expand)"}`;
 }
 
-export function formatLightweightToolGroupLines(items: LightweightToolDisplay[], maxWidth: number, expanded: boolean): string[] {
-  const lines = treeWrapLine("   => ", formatLightweightToolGroupHeader(items, expanded), maxWidth);
+export function formatLightweightToolGroupLines(
+  items: LightweightToolDisplay[],
+  maxWidth: number,
+  expanded: boolean,
+  options: LightweightToolGroupFormatOptions = {},
+): string[] {
+  const lines = treeWrapLine("   => ", formatLightweightToolGroupHeader(items, expanded, options), maxWidth);
   if (!expanded) return lines;
 
-  for (const item of items) {
+  const limit = options.detailLimit === undefined ? undefined : Math.max(0, Math.floor(options.detailLimit));
+  const visibleItems = limit === undefined || limit >= items.length
+    ? items
+    : options.tail
+      ? items.slice(-limit)
+      : items.slice(0, limit);
+  const hiddenCount = items.length - visibleItems.length;
+  if (hiddenCount > 0) {
+    lines.push(...treeWrapLine("    └─ ", `... ${hiddenCount} earlier tool call${hiddenCount === 1 ? "" : "s"}`, maxWidth));
+  }
+
+  for (const item of visibleItems) {
     const statusPart = formatToolStatusPart(item.status).text || item.status;
     const detail = item.error
       ? `${item.label}: ${item.target} | ${statusPart} | ${item.error}`
@@ -587,6 +619,7 @@ export type TimelineDisplayRow = {
   kind: "lightweight_tool_group";
   id: string;
   items: LightweightToolDisplay[];
+  trailing: boolean;
 };
 
 export function buildTimelineDisplayRows(entries: TimelineEntry[]): TimelineDisplayRow[] {
@@ -594,12 +627,13 @@ export function buildTimelineDisplayRows(entries: TimelineEntry[]): TimelineDisp
   const childrenByParent = buildChildrenByParent(entries);
   const rows: TimelineDisplayRow[] = [];
   let lightweightItems: LightweightToolDisplay[] = [];
-  const flushLightweight = () => {
+  const flushLightweight = (trailing: boolean) => {
     if (lightweightItems.length === 0) return;
     rows.push({
       kind: "lightweight_tool_group",
       id: `lightweight-${lightweightItems.map((item) => item.toolCallId).join("-")}`,
       items: lightweightItems,
+      trailing,
     });
     lightweightItems = [];
   };
@@ -617,7 +651,7 @@ export function buildTimelineDisplayRows(entries: TimelineEntry[]): TimelineDisp
         continue;
       }
     }
-    flushLightweight();
+    flushLightweight(false);
     let nestedTools: TimelineEntry[] | undefined;
     if (e.kind === "tool" && e.toolCallId) {
       const list = childrenByParent.get(e.toolCallId);
@@ -627,6 +661,6 @@ export function buildTimelineDisplayRows(entries: TimelineEntry[]): TimelineDisp
     }
     rows.push({ kind: "entry", entry: e, nestedTools });
   }
-  flushLightweight();
+  flushLightweight(true);
   return rows;
 }

@@ -9,6 +9,7 @@ import { mdiChevronDown, mdiFileSearchOutline } from '@mdi/js'
 
 const props = defineProps<{
   items: LightweightToolDisplay[]
+  runningOverride?: boolean
 }>()
 
 const { locale, t } = useI18n()
@@ -20,7 +21,7 @@ const summary = computed(() =>
 
 const hasActive = computed(() => props.items.some((item) => item.status === 'pending' || item.status === 'reviewing' || item.status === 'executing'))
 const hasFailure = computed(() => props.items.some((item) => item.status === 'error' || item.status === 'rejected'))
-const groupTone = computed(() => hasActive.value ? 'running' : hasFailure.value ? 'failed' : 'completed')
+const groupTone = computed(() => props.runningOverride || hasActive.value ? 'running' : hasFailure.value ? 'failed' : 'completed')
 
 function statusSymbol(status: LightweightToolDisplay['status']) {
   if (status === 'completed') return '\u2713'

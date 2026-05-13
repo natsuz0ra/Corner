@@ -143,6 +143,7 @@ onUnmounted(() => {
           <LightweightToolGroup
             v-if="row.kind === 'lightweight_tool_group'"
             :items="row.items"
+            :running-override="isStreaming && row.trailing"
           />
 
           <ThinkingBlock

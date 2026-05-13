@@ -85,9 +85,11 @@ test('buildLightweightToolTimelineRows merges consecutive lightweight tools only
   assert.deepEqual(rows.map((row) => row.kind), ['lightweight_tool_group', 'timeline', 'lightweight_tool_group'])
   assert.equal(rows[0]!.kind, 'lightweight_tool_group')
   assert.equal(rows[0]!.kind === 'lightweight_tool_group' ? rows[0].items.length : 0, 3)
+  assert.equal(rows[0]!.kind === 'lightweight_tool_group' ? rows[0].trailing : true, false)
   assert.equal(rows[1]!.kind === 'timeline' ? rows[1].entry.toolCallId : '', 'edit-1')
   assert.equal(rows[2]!.kind, 'lightweight_tool_group')
   assert.equal(rows[2]!.kind === 'lightweight_tool_group' ? rows[2].items[0]!.error : '', 'permission denied')
+  assert.equal(rows[2]!.kind === 'lightweight_tool_group' ? rows[2].trailing : false, true)
   assert.equal(JSON.stringify(rows).includes('secret file body'), false)
   assert.equal(JSON.stringify(rows).includes('hidden search hits'), false)
 })
@@ -138,6 +140,27 @@ test('buildLightweightToolTimelineRows keeps non-lightweight results as group br
   assert.deepEqual(rows.map((row) => row.kind), ['lightweight_tool_group', 'timeline', 'timeline', 'lightweight_tool_group'])
   assert.equal(rows[1]!.kind === 'timeline' ? rows[1].entry.id : '', 'e1')
   assert.equal(rows[2]!.kind === 'timeline' ? rows[2].entry.id : '', 'er1')
+  assert.equal(rows[0]!.kind === 'lightweight_tool_group' ? rows[0].trailing : true, false)
+  assert.equal(rows[3]!.kind === 'lightweight_tool_group' ? rows[3].trailing : false, true)
+})
+
+test('buildLightweightToolTimelineRows marks only the unbroken final group as trailing', () => {
+  const calls = [
+    tool({ toolCallId: 'search-1', toolName: 'web_search', command: 'search', params: { query: 'alpha' }, status: 'completed' }),
+    tool({ toolCallId: 'search-2', toolName: 'web_search', command: 'search', params: { query: 'beta' }, status: 'completed' }),
+  ]
+  const rows = buildLightweightToolTimelineRows(
+    [
+      { id: 's1', kind: 'tool_start' as const, toolCallId: 'search-1' },
+      { id: 'text-1', kind: 'text' as const, content: 'next content' },
+      { id: 's2', kind: 'tool_start' as const, toolCallId: 'search-2' },
+    ],
+    (id) => calls.find((item) => item.toolCallId === id),
+  )
+
+  assert.deepEqual(rows.map((row) => row.kind), ['lightweight_tool_group', 'timeline', 'lightweight_tool_group'])
+  assert.equal(rows[0]!.kind === 'lightweight_tool_group' ? rows[0].trailing : true, false)
+  assert.equal(rows[2]!.kind === 'lightweight_tool_group' ? rows[2].trailing : false, true)
 })
 
 test('buildLightweightToolGroupSummary counts activity categories', () => {
@@ -428,6 +451,7 @@ test('LightweightToolGroup left-aligns expanded items and uses status icons', ()
   assert.match(source, /padding: 0 10px 10px 10px;/)
   assert.match(source, /grid-template-columns: 18px auto minmax\(0, 1fr\);/)
   assert.match(source, /<Transition name="tool-subagent-expand">/)
+  assert.match(source, /runningOverride/)
   assert.match(source, /transition: opacity 180ms ease, max-height 250ms ease;/)
   assert.match(source, /transition: opacity 120ms ease, max-height 180ms ease;/)
   assert.match(source, /\.tool-subagent-expand-enter-active,[\s\S]*\.tool-subagent-expand-leave-active\s*\{[\s\S]*overflow: hidden;/)
@@ -436,4 +460,28 @@ test('LightweightToolGroup left-aligns expanded items and uses status icons', ()
   assert.match(source, /@media \(prefers-reduced-motion: reduce\)/)
   assert.doesNotMatch(source, /padding: 0 10px 10px 36px;/)
   assert.doesNotMatch(source, /grid-column: 2 \/ 4;/)
+})
+
+test('AssistantMessageBody passes streaming tail state to lightweight tool groups', () => {
+  const source = readFileSync(resolve(import.meta.dirname, '../src/components/chat/AssistantMessageBody.vue'), 'utf8')
+
+  assert.match(source, /:running-override="isStreaming && row\.trailing"/)
+})
+
+test('ToolExecutionDetailDialog does not force lightweight groups into running state', () => {
+  const source = readFileSync(resolve(import.meta.dirname, '../src/components/chat/ToolExecutionDetailDialog.vue'), 'utf8')
+
+  assert.doesNotMatch(source, /running-override/)
+})
+
+test('tool executing spinner uses a centered circular stroke instead of a wedge path', () => {
+  const headerSource = readFileSync(resolve(import.meta.dirname, '../src/components/chat/ToolCallHeader.vue'), 'utf8')
+  const inlineSource = readFileSync(resolve(import.meta.dirname, '../src/components/chat/ToolCallInline.vue'), 'utf8')
+
+  assert.match(headerSource, /tool-status-spinner-track/)
+  assert.match(headerSource, /tool-status-spinner-head/)
+  assert.match(headerSource, /stroke-dasharray="18 44"/)
+  assert.doesNotMatch(headerSource, /d="M4 12a8 8 0 018-8v8H4z"/)
+  assert.match(inlineSource, /inline-spinner-track/)
+  assert.match(inlineSource, /inline-spinner-head/)
 })
