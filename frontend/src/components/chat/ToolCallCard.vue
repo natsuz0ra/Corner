@@ -6,10 +6,11 @@ import MdiIcon from '@/components/ui/MdiIcon.vue'
 import ThinkingBlock from '@/components/chat/ThinkingBlock.vue'
 import ToolCallHeader from '@/components/chat/ToolCallHeader.vue'
 import FileToolDisplay from '@/components/chat/FileToolDisplay.vue'
+import LightweightToolGroup from '@/components/chat/LightweightToolGroup.vue'
 import type { ToolCallItem } from '@/api/chat'
 import { useToolCallDisplay } from '@/composables/chat/useToolCallDisplay'
 import { buildSubagentTimeline } from '@/utils/subagentTimeline'
-import { buildToolResultDisplay, filterToolParamsForDetail, formatDisplayText, formatToolParams, parseAskQuestionsReadableAnswers } from '@/utils/toolDisplay'
+import { buildLightweightToolDisplay, buildLightweightToolRows, buildToolResultDisplay, filterToolParamsForDetail, formatDisplayText, formatToolParams, parseAskQuestionsReadableAnswers } from '@/utils/toolDisplay'
 import { isFileTool } from '@/utils/fileToolDisplay'
 
 const props = withDefaults(defineProps<{
@@ -45,6 +46,7 @@ const subagentThinkingItems = computed(() => {
   return props.item.subagentThinkings ?? (props.item.subagentThinking ? [props.item.subagentThinking] : [])
 })
 const subagentTimelineItems = computed(() => buildSubagentTimeline(subagentThinkingItems.value, props.nestedTools))
+const subagentTimelineRows = computed(() => buildLightweightToolRows(subagentTimelineItems.value, (item) => item.kind === 'tool' ? item.tool : undefined))
 const showSubagentToolCallsThinking = computed(() => subagentTimelineItems.value.length > 0)
 
 const paramsDisplay = computed(() => {
@@ -72,6 +74,7 @@ const resultDisplay = computed(() => buildToolResultDisplay(props.item.toolName,
 const errorDisplay = computed(() => (props.item.error ? formatDisplayText(props.item.error) : ''))
 const isRunSubagent = computed(() => props.item.toolName === 'run_subagent')
 const isFileToolCall = computed(() => isFileTool(props.item))
+const lightweightDisplay = computed(() => buildLightweightToolDisplay(props.item))
 const showFileToolDisplay = computed(() => isFileToolCall.value && !isAskQuestions.value && !isRunSubagent.value)
 const showRunSubagentResult = computed(() => isRunSubagent.value && (showResult.value || showSubagentStream.value))
 const execExitOk = computed(() => resultDisplay.value.mode === 'exec' && resultDisplay.value.exec && resultDisplay.value.exec.exit_code === 0)
@@ -182,7 +185,12 @@ function toggleSubagentTimeline() {
           </svg>
         </summary>
         <div :id="outputPanelId" class="tool-output sb-scrollbar">
-          <template v-if="resultDisplay.mode === 'exec' && resultDisplay.exec">
+          <template v-if="lightweightDisplay">
+            <div class="tool-kv-grid">
+              <div class="tool-kv-pill">{{ lightweightDisplay.label }}: {{ lightweightDisplay.target }}</div>
+            </div>
+          </template>
+          <template v-else-if="resultDisplay.mode === 'exec' && resultDisplay.exec">
             <div class="tool-kv-grid">
               <div :class="['tool-kv-pill', execExitOk ? 'tool-kv-pill--ok' : 'tool-kv-pill--err']">exit_code: {{ resultDisplay.exec.exit_code }}</div>
               <div class="tool-kv-pill">timed_out: {{ resultDisplay.exec.timed_out }}</div>
@@ -250,17 +258,21 @@ function toggleSubagentTimeline() {
       </button>
       <Transition name="tool-subagent-expand">
         <div v-if="subagentTimelineExpanded" class="subagent-timeline-list">
-          <template v-for="timelineItem in subagentTimelineItems" :key="timelineItem.id">
+          <template v-for="timelineRow in subagentTimelineRows" :key="timelineRow.kind === 'lightweight_tool_group' ? timelineRow.id : timelineRow.item.id">
+            <LightweightToolGroup
+              v-if="timelineRow.kind === 'lightweight_tool_group'"
+              :items="timelineRow.items"
+            />
             <ThinkingBlock
-              v-if="timelineItem.kind === 'thinking'"
-              :content="timelineItem.thinking.content"
-              :done="timelineItem.thinking.done"
-              :duration-ms="timelineItem.thinking.durationMs"
+              v-else-if="timelineRow.item.kind === 'thinking'"
+              :content="timelineRow.item.thinking.content"
+              :done="timelineRow.item.thinking.done"
+              :duration-ms="timelineRow.item.thinking.durationMs"
               variant="subagent"
             />
             <ToolCallCard
               v-else
-              :item="timelineItem.tool"
+              :item="timelineRow.item.tool"
               :dense="true"
               @approve="emit('approve', $event)"
               @reject="emit('reject', $event)"
@@ -295,7 +307,12 @@ function toggleSubagentTimeline() {
           </svg>
         </summary>
         <div :id="outputPanelId" class="tool-output sb-scrollbar">
-          <template v-if="resultDisplay.mode === 'exec' && resultDisplay.exec">
+          <template v-if="lightweightDisplay">
+            <div class="tool-kv-grid">
+              <div class="tool-kv-pill">{{ lightweightDisplay.label }}: {{ lightweightDisplay.target }}</div>
+            </div>
+          </template>
+          <template v-else-if="resultDisplay.mode === 'exec' && resultDisplay.exec">
             <div class="tool-kv-grid">
               <div :class="['tool-kv-pill', execExitOk ? 'tool-kv-pill--ok' : 'tool-kv-pill--err']">exit_code: {{ resultDisplay.exec.exit_code }}</div>
               <div class="tool-kv-pill">timed_out: {{ resultDisplay.exec.timed_out }}</div>

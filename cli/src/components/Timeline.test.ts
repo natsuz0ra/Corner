@@ -18,6 +18,8 @@ import {
   formatToolParamLines,
   formatToolStatusPart,
   formatToolSummaryTag,
+  formatLightweightToolGroupHeader,
+  formatLightweightToolGroupLines,
   formatPlanFrameLines,
   formatWaitingPromptText,
   formatTodoListLines,
@@ -157,7 +159,7 @@ test("formatToolOutputLines shows failure preview for collapsed exec", () => {
   assert.ok(lines.some((line) => line.includes("preview: boom 1")));
 });
 
-test("formatToolOutputLines shows compact web_extract summary when collapsed", () => {
+test("formatToolOutputLines shows only web_extract activity when collapsed", () => {
   const longContent = [
     "This is the start of the extracted page content.",
     Array.from({ length: 60 }, (_, index) => `visible${index + 1}`).join(" "),
@@ -179,13 +181,13 @@ test("formatToolOutputLines shows compact web_extract summary when collapsed", (
 
   const lines = formatToolOutputLines(entry, 120, false);
 
-  assert.ok(lines.some((line) => line.includes("URL: https://example.test/article")));
-  assert.ok(lines.some((line) => line.includes("Title: Example Article")));
-  assert.ok(lines.some((line) => line.includes("ctrl+o to expand")));
+  assert.ok(lines.some((line) => line.includes("Browse: web page")));
+  assert.ok(lines.some((line) => line.includes("completed")));
   assert.ok(lines.every((line) => !line.includes("should stay hidden")));
+  assert.ok(lines.every((line) => !line.includes("This is the start")));
 });
 
-test("formatToolOutputLines shows full web_extract output when expanded", () => {
+test("formatToolOutputLines still hides web_extract output when expanded", () => {
   const entry: TimelineEntry = {
     kind: "tool",
     content: "",
@@ -203,8 +205,59 @@ test("formatToolOutputLines shows full web_extract output when expanded", () => 
 
   const lines = formatToolOutputLines(entry, 120, true);
 
-  assert.ok(lines.some((line) => line.includes("Full content line one.")));
-  assert.ok(lines.some((line) => line.includes("Full content line two.")));
+  assert.ok(lines.some((line) => line.includes("Browse: web page")));
+  assert.ok(lines.every((line) => !line.includes("Full content line one.")));
+  assert.ok(lines.every((line) => !line.includes("Full content line two.")));
+});
+
+test("formatToolOutputLines hides lightweight tool output bodies", () => {
+  const searchEntry: TimelineEntry = {
+    kind: "tool",
+    content: "",
+    toolName: "web_search",
+    command: "search",
+    status: "completed",
+    params: { query: "SlimeBot latest" },
+    output: JSON.stringify({
+      query: "SlimeBot latest",
+      results: [{ title: "Hidden result", url: "https://example.test", content: "secret snippet" }],
+    }),
+  };
+  const extractEntry: TimelineEntry = {
+    kind: "tool",
+    content: "",
+    toolName: "web_extract",
+    command: "extract",
+    status: "completed",
+    params: { url: "https://example.test/article" },
+    output: "URL: https://example.test/article\nTitle: Hidden\nContent:\nsecret article body",
+  };
+
+  const collapsed = [...formatToolOutputLines(searchEntry, 120, false), ...formatToolOutputLines(extractEntry, 120, false)];
+  const expanded = [...formatToolOutputLines(searchEntry, 120, true), ...formatToolOutputLines(extractEntry, 120, true)];
+
+  assert.ok(collapsed.some((line) => line.includes("completed")));
+  assert.ok(collapsed.every((line) => !line.includes("secret snippet")));
+  assert.ok(collapsed.every((line) => !line.includes("secret article body")));
+  assert.ok(expanded.every((line) => !line.includes("secret snippet")));
+  assert.ok(expanded.every((line) => !line.includes("secret article body")));
+});
+
+test("formatToolOutputLines hides web_extract failure body", () => {
+  const entry: TimelineEntry = {
+    kind: "tool",
+    content: "Body:\nsecret response body",
+    toolName: "web_extract",
+    command: "extract",
+    status: "error",
+    params: { url: "https://example.test/fail" },
+    error: "HTTP 500 from upstream\nBody:\nsecret response body",
+  };
+
+  const lines = formatToolOutputLines(entry, 120, true);
+
+  assert.ok(lines.some((line) => line.includes("HTTP 500 from upstream")));
+  assert.ok(lines.every((line) => !line.includes("secret response body")));
 });
 
 test("formatFileToolTimelineLines shows only file_read summary", () => {
@@ -453,8 +506,101 @@ test("buildTimelineDisplayRows hides top-level thinking entries by default", () 
     { kind: "assistant", content: "answer" },
   ]);
 
-  assert.deepEqual(rows.map((row) => row.entry.kind), ["user", "assistant"]);
-  assert.ok(rows.every((row) => !row.entry.content.includes("private reasoning")));
+  const entryRows = rows.filter((row) => row.kind === "entry");
+  assert.deepEqual(entryRows.map((row) => row.entry.kind), ["user", "assistant"]);
+  assert.ok(entryRows.every((row) => !row.entry.content.includes("private reasoning")));
+});
+
+test("buildTimelineDisplayRows groups consecutive lightweight tools and keeps file edits separate", () => {
+  const rows = buildTimelineDisplayRows([
+    {
+      kind: "tool",
+      content: "",
+      toolCallId: "search-1",
+      toolName: "web_search",
+      command: "search",
+      status: "completed",
+      params: { query: "SlimeBot latest" },
+      output: "hidden result body",
+    },
+    {
+      kind: "tool",
+      content: "",
+      toolCallId: "web-1",
+      toolName: "web_extract",
+      command: "extract",
+      status: "completed",
+      params: { url: "https://example.test/docs" },
+      output: "hidden web body",
+    },
+    {
+      kind: "tool",
+      content: "",
+      toolCallId: "edit-1",
+      toolName: "file_edit",
+      command: "edit",
+      status: "completed",
+      params: { file_path: "a.ts", old_string: "a", new_string: "b" },
+    },
+    {
+      kind: "tool",
+      content: "",
+      toolCallId: "read-1",
+      toolName: "file_read",
+      command: "read",
+      status: "completed",
+      params: { file_path: "b.ts" },
+      output: "hidden file body",
+    },
+  ]);
+
+  assert.deepEqual(rows.map((row) => row.kind), ["lightweight_tool_group", "entry", "lightweight_tool_group"]);
+  assert.equal(rows[0]!.kind === "lightweight_tool_group" ? rows[0].items.length : 0, 2);
+  assert.equal(rows[1]!.kind === "entry" ? rows[1].entry.toolCallId : "", "edit-1");
+  assert.equal(JSON.stringify(rows).includes("hidden result body"), false);
+  assert.equal(JSON.stringify(rows).includes("hidden web body"), false);
+  assert.equal(JSON.stringify(rows).includes("hidden file body"), false);
+});
+
+test("formatLightweightToolGroupLines summarizes and expands lightweight groups", () => {
+  const rows = buildTimelineDisplayRows([
+    {
+      kind: "tool",
+      content: "",
+      toolCallId: "search-1",
+      toolName: "web_search",
+      command: "search",
+      status: "completed",
+      params: { query: "SlimeBot latest" },
+    },
+    {
+      kind: "tool",
+      content: "",
+      toolCallId: "read-1",
+      toolName: "file_read",
+      command: "read",
+      status: "error",
+      params: { requests: [{ file_path: "a.ts" }, { file_path: "b.ts" }] },
+      error: "permission denied",
+    },
+  ]);
+  const group = rows[0]!;
+  assert.equal(group.kind, "lightweight_tool_group");
+  if (group.kind !== "lightweight_tool_group") return;
+
+  const collapsed = formatLightweightToolGroupLines(group.items, 120, false);
+  const expanded = formatLightweightToolGroupLines(group.items, 120, true);
+  const header = formatLightweightToolGroupHeader(group.items, false);
+
+  assert.ok(collapsed[0]!.includes("1 search"));
+  assert.ok(collapsed[0]!.includes("2 files read"));
+  assert.ok(collapsed[0]!.includes("ctrl+o to expand"));
+  assert.ok(header.includes("1 search"));
+  assert.ok(header.includes("2 files read"));
+  assert.ok(header.includes("ctrl+o to expand"));
+  assert.ok(expanded.slice(1).every((line) => line.startsWith("    └─ ")));
+  assert.ok(expanded.some((line) => line.includes("SlimeBot latest")));
+  assert.ok(expanded.some((line) => line.includes("permission denied")));
 });
 
 function runSubagentFixture(): { parent: TimelineEntry; nested: TimelineEntry[] } {

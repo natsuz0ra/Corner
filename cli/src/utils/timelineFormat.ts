@@ -15,6 +15,10 @@ import {
   formatToolParamEntries,
   filterToolParamsForDetail,
   truncateText,
+  buildLightweightToolDisplay,
+  buildLightweightToolGroupSummary,
+  isLightweightToolName,
+  type LightweightToolDisplay,
 } from "./format.js";
 import {
   buildFileToolDisplays,
@@ -91,6 +95,14 @@ export function formatToolOutputLines(entry: TimelineEntry, maxWidth: number, ex
     : (entry.output || entry.content);
   const normalizedTool = (entry.toolName || "").trim().toLowerCase();
   const normalizedCommand = (entry.command || "").trim().toLowerCase();
+  const lightweightDisplay = buildLightweightToolDisplay(entry);
+  if (lightweightDisplay) {
+    const statusPart = formatToolStatusPart(lightweightDisplay.status).text || lightweightDisplay.status;
+    const text = lightweightDisplay.error
+      ? `${lightweightDisplay.label}: ${lightweightDisplay.target} | ${statusPart} | ${lightweightDisplay.error}`
+      : `${lightweightDisplay.label}: ${lightweightDisplay.target} | ${statusPart}`;
+    return treeWrapLine("   => ", text, maxWidth);
+  }
   const useExecCompact = !expanded && normalizedTool === "exec" && normalizedCommand === "run";
   const useWebExtractCompact = !expanded && normalizedTool === "web_extract" && normalizedCommand === "extract";
   const useCompactOutput = useExecCompact || useWebExtractCompact;
@@ -111,6 +123,28 @@ export function formatToolOutputLines(entry: TimelineEntry, maxWidth: number, ex
     }
   }
   return result;
+}
+
+export function formatLightweightToolGroupHeader(items: LightweightToolDisplay[], expanded: boolean): string {
+  const summary = buildLightweightToolGroupSummary(items) || `${items.length} tool calls`;
+  const hasActive = items.some((item) => item.status === "pending" || item.status === "reviewing" || item.status === "executing");
+  const hasFailure = items.some((item) => item.status === "error" || item.status === "rejected");
+  const status = hasActive ? "running" : hasFailure ? "failed" : "completed";
+  return `${summary} | ${status}${expanded ? " (ctrl+o to collapse)" : " (ctrl+o to expand)"}`;
+}
+
+export function formatLightweightToolGroupLines(items: LightweightToolDisplay[], maxWidth: number, expanded: boolean): string[] {
+  const lines = treeWrapLine("   => ", formatLightweightToolGroupHeader(items, expanded), maxWidth);
+  if (!expanded) return lines;
+
+  for (const item of items) {
+    const statusPart = formatToolStatusPart(item.status).text || item.status;
+    const detail = item.error
+      ? `${item.label}: ${item.target} | ${statusPart} | ${item.error}`
+      : `${item.label}: ${item.target} | ${statusPart}`;
+    lines.push(...treeWrapLine("    └─ ", detail, maxWidth));
+  }
+  return lines;
 }
 
 export function formatToolParamLines(entry: TimelineEntry, maxWidth: number, expanded = false): string[] {
@@ -397,12 +431,25 @@ export function formatRunSubagentDetailLines(
   lines.push(`   Thinking & tools: ${thinkingToolsSummary}${expanded ? " (ctrl+o to collapse)" : " (ctrl+o to expand)"}`);
 
   if (expanded) {
+    let nestedLightweight: LightweightToolDisplay[] = [];
+    const flushNestedLightweight = () => {
+      if (nestedLightweight.length === 0) return;
+      lines.push(...formatLightweightToolGroupLines(nestedLightweight, maxWidth, true));
+      nestedLightweight = [];
+    };
     for (const child of nestedTools) {
+      const lightweight = buildLightweightToolDisplay(child);
+      if (lightweight) {
+        nestedLightweight.push(lightweight);
+        continue;
+      }
+      flushNestedLightweight();
       lines.push(...formatToolParamLinesForParams({ tool: formatToolInvocation(child.toolName || "", child.command || "") }, maxWidth));
       if (child.status === "completed" || child.status === "error" || child.status === "rejected") {
         lines.push(...formatToolOutputLines(child, maxWidth, true));
       }
     }
+    flushNestedLightweight();
   }
 
   const extraParamLines = formatToolParamLinesForParams(runSubagentExtraParams(entry.params), maxWidth);
@@ -533,14 +580,29 @@ function nestedToolCallIdsToSkip(entries: TimelineEntry[]): Set<string> {
 }
 
 export type TimelineDisplayRow = {
+  kind: "entry";
   entry: TimelineEntry;
   nestedTools?: TimelineEntry[];
+} | {
+  kind: "lightweight_tool_group";
+  id: string;
+  items: LightweightToolDisplay[];
 };
 
 export function buildTimelineDisplayRows(entries: TimelineEntry[]): TimelineDisplayRow[] {
   const skip = nestedToolCallIdsToSkip(entries);
   const childrenByParent = buildChildrenByParent(entries);
   const rows: TimelineDisplayRow[] = [];
+  let lightweightItems: LightweightToolDisplay[] = [];
+  const flushLightweight = () => {
+    if (lightweightItems.length === 0) return;
+    rows.push({
+      kind: "lightweight_tool_group",
+      id: `lightweight-${lightweightItems.map((item) => item.toolCallId).join("-")}`,
+      items: lightweightItems,
+    });
+    lightweightItems = [];
+  };
   for (const e of entries) {
     if (!SHOW_CLI_THINKING && e.kind === "thinking") {
       continue;
@@ -548,6 +610,14 @@ export function buildTimelineDisplayRows(entries: TimelineEntry[]): TimelineDisp
     if (e.kind === "tool" && e.toolCallId && skip.has(e.toolCallId)) {
       continue;
     }
+    if (e.kind === "tool" && !e.parentToolCallId && isLightweightToolName(e.toolName)) {
+      const display = buildLightweightToolDisplay(e);
+      if (display) {
+        lightweightItems.push(display);
+        continue;
+      }
+    }
+    flushLightweight();
     let nestedTools: TimelineEntry[] | undefined;
     if (e.kind === "tool" && e.toolCallId) {
       const list = childrenByParent.get(e.toolCallId);
@@ -555,7 +625,8 @@ export function buildTimelineDisplayRows(entries: TimelineEntry[]): TimelineDisp
         nestedTools = list;
       }
     }
-    rows.push({ entry: e, nestedTools });
+    rows.push({ kind: "entry", entry: e, nestedTools });
   }
+  flushLightweight();
   return rows;
 }

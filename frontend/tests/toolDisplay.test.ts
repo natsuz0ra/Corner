@@ -4,8 +4,12 @@ import { resolve } from 'node:path'
 import test from 'node:test'
 import type { ToolCallItem } from '../src/api/chat'
 import {
+  buildLightweightToolGroupSummary,
+  buildLightweightToolTimelineRows,
+  buildLightweightToolDisplay,
   buildToolCallSummary,
   filterToolParamsForDetail,
+  isLightweightToolCall,
 } from '../src/utils/toolDisplay'
 import {
   buildFileToolDisplay,
@@ -41,6 +45,72 @@ test('buildToolCallSummary uses query and http request fields', () => {
     buildToolCallSummary(tool({ toolName: 'http_request', command: 'request', params: { method: 'post', url: 'https://example.test/api' } })),
     'POST https://example.test/api',
   )
+})
+
+test('buildLightweightToolDisplay summarizes activity without output body', () => {
+  const display = buildLightweightToolDisplay(tool({
+    toolName: 'web_search',
+    command: 'search',
+    params: { query: 'SlimeBot latest' },
+    status: 'completed',
+    output: '{"results":[{"title":"Hidden body","url":"https://example.test","content":"do not show"}]}',
+  }))
+
+  assert.equal(display?.kind, 'search')
+  assert.equal(display?.target, 'SlimeBot latest')
+  assert.equal(display?.status, 'completed')
+  assert.equal(display?.error, '')
+  assert.equal(JSON.stringify(display).includes('do not show'), false)
+})
+
+test('buildLightweightToolTimelineRows merges consecutive lightweight tools only', () => {
+  const calls = [
+    tool({ toolCallId: 'search-1', toolName: 'web_search', command: 'search', params: { query: 'SlimeBot latest' }, status: 'completed' }),
+    tool({ toolCallId: 'web-1', toolName: 'web_extract', command: 'extract', params: { url: 'https://example.test/docs' }, status: 'completed' }),
+    tool({ toolCallId: 'read-1', toolName: 'file_read', command: 'read', params: { file_path: 'frontend/src/App.vue' }, status: 'completed', output: 'secret file body' }),
+    tool({ toolCallId: 'edit-1', toolName: 'file_edit', command: 'edit', params: { file_path: 'frontend/src/App.vue', old_string: 'a', new_string: 'b' }, status: 'completed' }),
+    tool({ toolCallId: 'search-2', toolName: 'search_files', command: 'search', params: { query: 'ToolCall', path: 'frontend/src' }, status: 'error', error: 'permission denied', output: 'hidden search hits' }),
+  ]
+  const rows = buildLightweightToolTimelineRows(
+    [
+      { id: 's1', kind: 'tool_start' as const, toolCallId: 'search-1' },
+      { id: 'w1', kind: 'tool_start' as const, toolCallId: 'web-1' },
+      { id: 'r1', kind: 'tool_start' as const, toolCallId: 'read-1' },
+      { id: 'e1', kind: 'tool_start' as const, toolCallId: 'edit-1' },
+      { id: 's2', kind: 'tool_start' as const, toolCallId: 'search-2' },
+    ],
+    (id) => calls.find((item) => item.toolCallId === id),
+  )
+
+  assert.deepEqual(rows.map((row) => row.kind), ['lightweight_tool_group', 'timeline', 'lightweight_tool_group'])
+  assert.equal(rows[0]!.kind, 'lightweight_tool_group')
+  assert.equal(rows[0]!.kind === 'lightweight_tool_group' ? rows[0].items.length : 0, 3)
+  assert.equal(rows[1]!.kind === 'timeline' ? rows[1].entry.toolCallId : '', 'edit-1')
+  assert.equal(rows[2]!.kind, 'lightweight_tool_group')
+  assert.equal(rows[2]!.kind === 'lightweight_tool_group' ? rows[2].items[0]!.error : '', 'permission denied')
+  assert.equal(JSON.stringify(rows).includes('secret file body'), false)
+  assert.equal(JSON.stringify(rows).includes('hidden search hits'), false)
+})
+
+test('buildLightweightToolGroupSummary counts activity categories', () => {
+  const items = [
+    buildLightweightToolDisplay(tool({ toolName: 'web_search', command: 'search', params: { query: 'a' } }))!,
+    buildLightweightToolDisplay(tool({ toolName: 'search_files', command: 'search', params: { query: 'b' } }))!,
+    buildLightweightToolDisplay(tool({ toolName: 'web_extract', command: 'extract', params: { url: 'https://example.test' } }))!,
+    buildLightweightToolDisplay(tool({ toolName: 'http_request', command: 'request', params: { method: 'GET', url: 'https://api.test' } }))!,
+    buildLightweightToolDisplay(tool({ toolName: 'file_read', command: 'read', params: { requests: [{ file_path: 'a.ts' }, { file_path: 'b.ts' }] } }))!,
+  ]
+
+  assert.equal(buildLightweightToolGroupSummary(items, 'zh'), '搜索 2 次，浏览 2 个网页，读取 2 个文件')
+  assert.equal(buildLightweightToolGroupSummary(items, 'en'), '2 searches, 2 web pages, 2 files read')
+})
+
+test('isLightweightToolCall excludes file edits and writes', () => {
+  assert.equal(isLightweightToolCall(tool({ toolName: 'file_read', command: 'read' })), true)
+  assert.equal(isLightweightToolCall(tool({ toolName: 'search_file', command: 'search' })), true)
+  assert.equal(isLightweightToolCall(tool({ toolName: 'file_edit', command: 'edit' })), false)
+  assert.equal(isLightweightToolCall(tool({ toolName: 'file_write', command: 'write' })), false)
+  assert.equal(isLightweightToolCall(tool({ toolName: 'exec', command: 'run' })), false)
 })
 
 test('buildToolCallSummary formats newly added tools compactly', () => {

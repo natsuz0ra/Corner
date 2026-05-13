@@ -25,6 +25,8 @@ import {
   formatPlanBorderLine,
   formatPlanningIndicatorParts,
   formatRunSubagentDetailLines,
+  formatLightweightToolGroupLines,
+  formatLightweightToolGroupHeader,
   formatSubagentStreamLines,
   formatSubagentThinkingLines,
   formatThinkingLabel,
@@ -364,18 +366,34 @@ export function Timeline({
   return (
     <Box flexDirection="column">
       {displayRows.map((row, index) => (
-        <React.Fragment key={`${row.entry.kind}-${row.entry.toolCallId ?? `r-${index}`}`}>
+        <React.Fragment key={row.kind === "lightweight_tool_group" ? row.id : `${row.entry.kind}-${row.entry.toolCallId ?? `r-${index}`}`}>
           {index > 0 && <Text> </Text>}
-          <TimelineBlock
-            entry={row.entry}
-            blinkOn={blinkOn}
-            maxWidth={maxWidth}
-            compact={compact}
-            toolOutputExpanded={toolOutputExpanded}
-            thinkingNumber={row.entry.kind === "thinking" ? ++thinkingCounter : undefined}
-            nestedTools={row.nestedTools}
-          />
-          {row.nestedTools && row.nestedTools.length > 0 && !isRunSubagentEntry(row.entry) ? (
+          {row.kind === "lightweight_tool_group" ? (
+            <Box flexDirection="column">
+              <Text>
+                <Text bold color="#2E7D32">{DOT}</Text>
+                <Text>{" "}</Text>
+                <Text bold>tools</Text>
+                <Text color="white">{` ${formatLightweightToolGroupHeader(row.items, toolOutputExpanded)}`}</Text>
+              </Text>
+              {toolOutputExpanded
+                ? formatLightweightToolGroupLines(row.items, maxWidth, true).slice(1).map((line, lineIndex) => (
+                  <Text key={`${row.id}-line-${lineIndex}`}>{line}</Text>
+                ))
+                : null}
+            </Box>
+          ) : (
+            <TimelineBlock
+              entry={row.entry}
+              blinkOn={blinkOn}
+              maxWidth={maxWidth}
+              compact={compact}
+              toolOutputExpanded={toolOutputExpanded}
+              thinkingNumber={row.entry.kind === "thinking" ? ++thinkingCounter : undefined}
+              nestedTools={row.nestedTools}
+            />
+          )}
+          {row.kind === "entry" && row.nestedTools && row.nestedTools.length > 0 && !isRunSubagentEntry(row.entry) ? (
             <Box flexDirection="column" marginLeft={2}>
               {row.nestedTools.map((child, ci) => (
                 <React.Fragment key={`nested-${child.toolCallId ?? ci}`}>
