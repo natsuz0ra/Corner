@@ -5,6 +5,8 @@ import type { ToolCallItem } from '@/api/chat'
 import type { ToolTimelineEntry } from '@/types/chat'
 import AppDialog from '@/components/ui/AppDialog.vue'
 import ToolCallCard from '@/components/chat/ToolCallCard.vue'
+import LightweightToolGroup from '@/components/chat/LightweightToolGroup.vue'
+import { buildLightweightToolTimelineRows } from '@/utils/toolDisplay'
 
 const props = withDefaults(defineProps<{
   visible: boolean
@@ -29,6 +31,25 @@ const orderedToolCalls = computed(() => {
     .map((entry) => props.items.find((toolCall) => toolCall.toolCallId === entry.toolCallId))
     .filter((toolCall): toolCall is ToolCallItem => !!toolCall)
     .filter((item) => !item.parentToolCallId)
+})
+const orderedToolRows = computed(() => {
+  const topLevelTimeline = props.toolTimeline.filter((entry) => {
+    if (entry.kind !== 'tool_start') return true
+    const item = props.items.find((toolCall) => toolCall.toolCallId === entry.toolCallId)
+    return !!item && !item.parentToolCallId
+  })
+  return buildLightweightToolTimelineRows(topLevelTimeline, (toolCallId) => props.items.find((toolCall) => toolCall.toolCallId === toolCallId))
+})
+const orderedRenderRows = computed(() => {
+  return orderedToolRows.value
+    .map((row) => {
+      if (row.kind === 'lightweight_tool_group') return row
+      const entry = row.entry
+      if (!('toolCallId' in entry)) return null
+      const item = props.items.find((toolCall) => toolCall.toolCallId === entry.toolCallId)
+      return item ? { kind: 'tool' as const, id: entry.id, item } : null
+    })
+    .filter((row): row is NonNullable<typeof row> => !!row)
 })
 
 function nestedForParent(parentId: string) {
@@ -75,17 +96,23 @@ function closeDialog() {
       </header>
 
       <div v-if="orderedToolCalls.length > 0" class="tool-detail-list sb-scrollbar" role="list">
-        <ToolCallCard
-          v-for="item in orderedToolCalls"
-          :key="item.toolCallId"
-          :item="item"
-          :nested-tools="nestedForParent(item.toolCallId)"
-          :show-preamble="true"
-          :dense="true"
-          role="listitem"
-          @approve="emit('approve', $event)"
-          @reject="emit('reject', $event)"
-        />
+        <template v-for="row in orderedRenderRows" :key="row.id">
+          <LightweightToolGroup
+            v-if="row.kind === 'lightweight_tool_group'"
+            :items="row.items"
+            role="listitem"
+          />
+          <ToolCallCard
+            v-else
+            :item="row.item"
+            :nested-tools="nestedForParent(row.item.toolCallId)"
+            :show-preamble="true"
+            :dense="true"
+            role="listitem"
+            @approve="emit('approve', $event)"
+            @reject="emit('reject', $event)"
+          />
+        </template>
       </div>
       <p v-else class="tool-detail-empty sb-text-secondary text-sm">
         {{ t('toolExecutionEmpty') }}
