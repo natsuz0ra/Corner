@@ -61,6 +61,7 @@ function main(): void {
       cliToken={cliToken}
       version={version}
     />,
+    { exitOnCtrlC: false },
   );
 }
 

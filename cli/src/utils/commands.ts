@@ -4,7 +4,14 @@
 
 import { SUPPORTED_COMMANDS, type CommandMeta } from "../types.js";
 
-const MAX_HINTS = 5;
+export const COMMAND_HINT_VISIBLE_LIMIT = 5;
+
+export interface VisibleCommandHints {
+  hints: CommandMeta[];
+  startIndex: number;
+  aboveCount: number;
+  belowCount: number;
+}
 
 function isCommandPrefixInput(input: string): boolean {
   const trimmedStart = input.trimStart();
@@ -24,10 +31,33 @@ export function matchCommandHints(input: string): CommandMeta[] {
   for (const cmd of SUPPORTED_COMMANDS) {
     if (cmd.command.startsWith(trimmed)) {
       matched.push(cmd);
-      if (matched.length >= MAX_HINTS) break;
     }
   }
   return matched;
+}
+
+/** Return the visible hint window while keeping the selected hint in view. */
+export function getVisibleCommandHints(
+  hints: CommandMeta[],
+  selectedIndex: number,
+  maxVisible = COMMAND_HINT_VISIBLE_LIMIT,
+): VisibleCommandHints {
+  if (hints.length === 0 || maxVisible <= 0) {
+    return { hints: [], startIndex: 0, aboveCount: 0, belowCount: 0 };
+  }
+
+  const visibleCount = Math.min(maxVisible, hints.length);
+  const selected = clampSelectedIndex(selectedIndex, hints.length);
+  const maxStart = hints.length - visibleCount;
+  const startIndex = Math.max(0, Math.min(selected - visibleCount + 1, maxStart));
+  const endIndex = startIndex + visibleCount;
+
+  return {
+    hints: hints.slice(startIndex, endIndex),
+    startIndex,
+    aboveCount: startIndex,
+    belowCount: hints.length - endIndex,
+  };
 }
 
 /** Tab completion: first matching full command */

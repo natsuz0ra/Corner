@@ -14,6 +14,7 @@ import { getYogaCounters } from '../native-ts/yoga-layout/index.js'
 import { logForDebugging } from '../utils/debug.js'
 import { logError } from '../utils/log.js'
 
+import { clearTerminal } from './clearTerminal.js'
 import { colorize } from './colorize.js'
 import App from './components/App.js'
 import type { CursorDeclaration, CursorDeclarationSetter } from './components/CursorDeclarationContext.js'
@@ -138,6 +139,10 @@ export type Options = {
   patchConsole: boolean
   waitUntilExit?: () => Promise<void>
   onFrame?: (event: FrameEvent) => void
+}
+
+export type ForceRedrawOptions = {
+  clearScrollback?: boolean
 }
 export default class Ink {
   private readonly log: LogUpdate
@@ -1121,12 +1126,12 @@ export default class Ink {
    * was cleared externally (macOS Cmd+K) and Ink's diff engine thinks
    * unchanged cells don't need repainting. Scrollback is preserved.
    */
-  forceRedraw(): void {
+  forceRedraw(options: ForceRedrawOptions = {}): void {
     if (!this.options.stdout.isTTY || this.isUnmounted || this.isPaused) {
       return
     }
 
-    this.options.stdout.write(ERASE_SCREEN + CURSOR_HOME)
+    this.options.stdout.write(options.clearScrollback ? clearTerminal : ERASE_SCREEN + CURSOR_HOME)
 
     if (this.altScreenActive) {
       this.resetFramesForAltScreen()

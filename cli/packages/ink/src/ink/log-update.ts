@@ -140,6 +140,7 @@ export class LogUpdate {
 
     const startTime = performance.now()
     const stylePool = this.options.stylePool
+    const cursorVisibilityPatch = getCursorVisibilityPatch(prev, next)
 
     // Since we assume the cursor is at the bottom on the screen, we only need
     // to clear when the viewport gets shorter (i.e. the cursor position drifts)
@@ -151,7 +152,7 @@ export class LogUpdate {
       next.viewport.height < prev.viewport.height ||
       (prev.viewport.width !== 0 && next.viewport.width !== prev.viewport.width)
     ) {
-      return fullResetSequence_CAUSES_FLICKER(next, 'resize', stylePool)
+      return [...cursorVisibilityPatch, ...fullResetSequence_CAUSES_FLICKER(next, 'resize', stylePool)]
     }
 
     // DECSTBM scroll optimization: when a ScrollBox's scrollTop changed,
@@ -223,7 +224,7 @@ export class LogUpdate {
         `Full reset (shrink->below): prevHeight=${prev.screen.height}, nextHeight=${next.screen.height}, viewport=${prev.viewport.height}`
       )
 
-      return fullResetSequence_CAUSES_FLICKER(next, 'offscreen', stylePool)
+      return [...cursorVisibilityPatch, ...fullResetSequence_CAUSES_FLICKER(next, 'offscreen', stylePool)]
     }
 
     if (prev.screen.height >= prev.viewport.height && prev.screen.height > 0 && cursorAtBottom && !isGrowing) {
@@ -245,11 +246,14 @@ export class LogUpdate {
         const prevLine = readLine(prev.screen, scrollbackChangeY)
         const nextLine = readLine(next.screen, scrollbackChangeY)
 
-        return fullResetSequence_CAUSES_FLICKER(next, 'offscreen', stylePool, {
-          triggerY: scrollbackChangeY,
-          prevLine,
-          nextLine
-        })
+        return [
+          ...cursorVisibilityPatch,
+          ...fullResetSequence_CAUSES_FLICKER(next, 'offscreen', stylePool, {
+            triggerY: scrollbackChangeY,
+            prevLine,
+            nextLine
+          })
+        ]
       }
     }
 
@@ -269,7 +273,7 @@ export class LogUpdate {
       // If we need to clear more lines than fit in the viewport, some are in
       // scrollback, so we need a full reset.
       if (linesToClear > prev.viewport.height) {
-        return fullResetSequence_CAUSES_FLICKER(next, 'offscreen', this.options.stylePool)
+        return [...cursorVisibilityPatch, ...fullResetSequence_CAUSES_FLICKER(next, 'offscreen', this.options.stylePool)]
       }
 
       // clear(N) moves cursor UP by N-1 lines and to column 0
@@ -369,11 +373,14 @@ export class LogUpdate {
     })
 
     if (needsFullReset) {
-      return fullResetSequence_CAUSES_FLICKER(next, 'offscreen', stylePool, {
-        triggerY: resetTriggerY,
-        prevLine: readLine(prev.screen, resetTriggerY),
-        nextLine: readLine(next.screen, resetTriggerY)
-      })
+      return [
+        ...cursorVisibilityPatch,
+        ...fullResetSequence_CAUSES_FLICKER(next, 'offscreen', stylePool, {
+          triggerY: resetTriggerY,
+          prevLine: readLine(prev.screen, resetTriggerY),
+          nextLine: readLine(next.screen, resetTriggerY)
+        })
+      ]
     }
 
     // Reset styles before rendering new rows (they'll set their own styles)
@@ -443,8 +450,20 @@ export class LogUpdate {
       )
     }
 
-    return scrollPatch.length > 0 ? [...scrollPatch, ...screen.diff] : screen.diff
+    return [...cursorVisibilityPatch, ...(scrollPatch.length > 0 ? [...scrollPatch, ...screen.diff] : screen.diff)]
   }
+}
+
+function getCursorVisibilityPatch(prev: Frame, next: Frame): Diff {
+  if (prev.cursor.visible && !next.cursor.visible) {
+    return [{ type: 'cursorHide' }]
+  }
+
+  if (!prev.cursor.visible && next.cursor.visible) {
+    return [{ type: 'cursorShow' }]
+  }
+
+  return []
 }
 
 function transitionHyperlink(diff: Diff, current: Hyperlink, target: Hyperlink): Hyperlink {

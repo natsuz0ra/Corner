@@ -11321,8 +11321,9 @@ var LogUpdate = class {
     }
     const startTime = performance.now();
     const stylePool = this.options.stylePool;
+    const cursorVisibilityPatch = getCursorVisibilityPatch(prev, next);
     if (next.viewport.height < prev.viewport.height || prev.viewport.width !== 0 && next.viewport.width !== prev.viewport.width) {
-      return fullResetSequence_CAUSES_FLICKER(next, "resize", stylePool);
+      return [...cursorVisibilityPatch, ...fullResetSequence_CAUSES_FLICKER(next, "resize", stylePool)];
     }
     let scrollPatch = [];
     if (altScreen && next.scrollHint && decstbmSafe) {
@@ -11346,7 +11347,7 @@ var LogUpdate = class {
       logForDebugging(
         `Full reset (shrink->below): prevHeight=${prev.screen.height}, nextHeight=${next.screen.height}, viewport=${prev.viewport.height}`
       );
-      return fullResetSequence_CAUSES_FLICKER(next, "offscreen", stylePool);
+      return [...cursorVisibilityPatch, ...fullResetSequence_CAUSES_FLICKER(next, "offscreen", stylePool)];
     }
     if (prev.screen.height >= prev.viewport.height && prev.screen.height > 0 && cursorAtBottom && !isGrowing) {
       const viewportY2 = prev.screen.height - prev.viewport.height;
@@ -11361,11 +11362,14 @@ var LogUpdate = class {
       if (scrollbackChangeY >= 0) {
         const prevLine = readLine(prev.screen, scrollbackChangeY);
         const nextLine = readLine(next.screen, scrollbackChangeY);
-        return fullResetSequence_CAUSES_FLICKER(next, "offscreen", stylePool, {
-          triggerY: scrollbackChangeY,
-          prevLine,
-          nextLine
-        });
+        return [
+          ...cursorVisibilityPatch,
+          ...fullResetSequence_CAUSES_FLICKER(next, "offscreen", stylePool, {
+            triggerY: scrollbackChangeY,
+            prevLine,
+            nextLine
+          })
+        ];
       }
     }
     const screen = new VirtualScreen(prev.cursor, next.viewport.width);
@@ -11375,7 +11379,7 @@ var LogUpdate = class {
     if (shrinking) {
       const linesToClear = prev.screen.height - next.screen.height;
       if (linesToClear > prev.viewport.height) {
-        return fullResetSequence_CAUSES_FLICKER(next, "offscreen", this.options.stylePool);
+        return [...cursorVisibilityPatch, ...fullResetSequence_CAUSES_FLICKER(next, "offscreen", this.options.stylePool)];
       }
       screen.txn((prev2) => [
         [
@@ -11432,11 +11436,14 @@ var LogUpdate = class {
       }
     });
     if (needsFullReset) {
-      return fullResetSequence_CAUSES_FLICKER(next, "offscreen", stylePool, {
-        triggerY: resetTriggerY,
-        prevLine: readLine(prev.screen, resetTriggerY),
-        nextLine: readLine(next.screen, resetTriggerY)
-      });
+      return [
+        ...cursorVisibilityPatch,
+        ...fullResetSequence_CAUSES_FLICKER(next, "offscreen", stylePool, {
+          triggerY: resetTriggerY,
+          prevLine: readLine(prev.screen, resetTriggerY),
+          nextLine: readLine(next.screen, resetTriggerY)
+        })
+      ];
     }
     currentStyleId = transitionStyle(screen.diff, stylePool, currentStyleId, stylePool.none);
     currentHyperlink = transitionHyperlink(screen.diff, currentHyperlink, void 0);
@@ -11474,9 +11481,18 @@ var LogUpdate = class {
         `Slow render: ${elapsed.toFixed(1)}ms, screen: ${next.screen.height}x${next.screen.width}, damage: ${damageInfo}, changes: ${screen.diff.length}`
       );
     }
-    return scrollPatch.length > 0 ? [...scrollPatch, ...screen.diff] : screen.diff;
+    return [...cursorVisibilityPatch, ...scrollPatch.length > 0 ? [...scrollPatch, ...screen.diff] : screen.diff];
   }
 };
+function getCursorVisibilityPatch(prev, next) {
+  if (prev.cursor.visible && !next.cursor.visible) {
+    return [{ type: "cursorHide" }];
+  }
+  if (!prev.cursor.visible && next.cursor.visible) {
+    return [{ type: "cursorShow" }];
+  }
+  return [];
+}
 function transitionHyperlink(diff2, current, target) {
   if (current !== target) {
     diff2.push({ type: "hyperlink", uri: target ?? "" });
@@ -13071,11 +13087,11 @@ var Ink = class {
    * was cleared externally (macOS Cmd+K) and Ink's diff engine thinks
    * unchanged cells don't need repainting. Scrollback is preserved.
    */
-  forceRedraw() {
+  forceRedraw(options = {}) {
     if (!this.options.stdout.isTTY || this.isUnmounted || this.isPaused) {
       return;
     }
-    this.options.stdout.write(ERASE_SCREEN + CURSOR_HOME);
+    this.options.stdout.write(options.clearScrollback ? clearTerminal : ERASE_SCREEN + CURSOR_HOME);
     if (this.altScreenActive) {
       this.resetFramesForAltScreen();
     } else {
@@ -14051,12 +14067,12 @@ var CONSOLE_STDOUT_METHODS = [
 var CONSOLE_STDERR_METHODS = ["warn", "error", "trace"];
 
 // src/ink/root.ts
-var forceRedraw = (stdout = process.stdout) => {
+var forceRedraw = (stdout = process.stdout, options = {}) => {
   const instance = instances_default.get(stdout);
   if (!instance) {
     return false;
   }
-  instance.forceRedraw();
+  instance.forceRedraw(options);
   return true;
 };
 var renderSync = (node, options) => {
