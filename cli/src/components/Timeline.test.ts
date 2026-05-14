@@ -18,6 +18,7 @@ import {
   formatToolParamLines,
   formatToolStatusPart,
   formatToolSummaryTag,
+  formatTimelineToolInvocation,
   formatLightweightToolGroupHeader,
   formatLightweightToolGroupLines,
   formatPlanFrameLines,
@@ -40,6 +41,11 @@ test("formatToolOutputLines aligns tool output with fixed spaces", () => {
   const lines = formatToolOutputLines(entry, 120, false);
 
   assert.deepEqual(lines, ["   => first line"]);
+});
+
+test("formatTimelineToolInvocation includes command for MCP-style custom tools", () => {
+  assert.equal(formatTimelineToolInvocation("github", "search_repositories"), "github | search_repositories");
+  assert.equal(formatTimelineToolInvocation("exec", "run"), "exec");
 });
 
 test("formatToolOutputLines wraps long lines and indents continuation lines", () => {

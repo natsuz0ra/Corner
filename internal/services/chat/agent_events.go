@@ -11,6 +11,7 @@ type ApprovalRequest struct {
 	ToolCallID       string         `json:"toolCallId"`
 	ToolName         string         `json:"toolName"`
 	Command          string         `json:"command"`
+	ModelFuncName    string         `json:"-"`
 	Params           map[string]any `json:"params"`
 	RequiresApproval bool           `json:"requiresApproval"`
 	ReviewStatus     string         `json:"reviewStatus,omitempty"`
@@ -71,6 +72,7 @@ type ToolCallResult struct {
 	ToolCallID       string `json:"toolCallId"`
 	ToolName         string `json:"toolName"`
 	Command          string `json:"command"`
+	ModelFuncName    string `json:"-"`
 	RequiresApproval bool   `json:"requiresApproval"`
 	Status           string `json:"status"`
 	Output           string `json:"output"`

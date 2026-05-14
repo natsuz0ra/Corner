@@ -18,6 +18,7 @@ import (
 type ToolMeta struct {
 	FuncName    string
 	ServerAlias string
+	ServerName  string
 	ToolName    string
 }
 
@@ -128,6 +129,10 @@ func (m *Manager) LoadTools(ctx context.Context, configs []domain.MCPConfig) ([]
 			}
 			var lm []ToolMeta
 			var ld []map[string]any
+			serverName := strings.TrimSpace(t.item.Name)
+			if serverName == "" {
+				serverName = entry.alias
+			}
 			for _, tool := range tools {
 				funcName := BuildFuncName(entry.alias, tool.Name)
 				inputSchema := tool.InputSchema
@@ -145,6 +150,7 @@ func (m *Manager) LoadTools(ctx context.Context, configs []domain.MCPConfig) ([]
 				lm = append(lm, ToolMeta{
 					FuncName:    funcName,
 					ServerAlias: entry.alias,
+					ServerName:  serverName,
 					ToolName:    tool.Name,
 				})
 			}

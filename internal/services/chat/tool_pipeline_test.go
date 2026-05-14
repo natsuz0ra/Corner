@@ -73,6 +73,41 @@ func TestResolveToolInvocation_TodoUpdateAlias(t *testing.T) {
 	}
 }
 
+func TestResolveToolInvocation_MCPUsesDisplayNamesAndKeepsExecutionMetadata(t *testing.T) {
+	tc := llmsvc.ToolCallInfo{
+		ID:        "call_mcp",
+		Name:      "mcp_config_1__search_repositories",
+		Arguments: `{"query":"slimebot"}`,
+	}
+
+	invocation, err := resolveToolInvocation(tc, map[string]mcp.ToolMeta{
+		"mcp_config_1__search_repositories": {
+			FuncName:    "mcp_config_1__search_repositories",
+			ServerAlias: "mcp_config_1",
+			ServerName:  "github",
+			ToolName:    "search_repositories",
+		},
+	}, constants.ApprovalModeStandard)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if invocation.toolName != "github" {
+		t.Fatalf("visible toolName = %q, want github", invocation.toolName)
+	}
+	if invocation.command != "search_repositories" {
+		t.Fatalf("visible command = %q, want search_repositories", invocation.command)
+	}
+	if invocation.serverAlias != "mcp_config_1" {
+		t.Fatalf("serverAlias = %q, want mcp_config_1", invocation.serverAlias)
+	}
+	if invocation.modelFuncName != "mcp_config_1__search_repositories" {
+		t.Fatalf("modelFuncName = %q, want mcp_config_1__search_repositories", invocation.modelFuncName)
+	}
+	if !invocation.isMCP {
+		t.Fatal("expected MCP invocation")
+	}
+}
+
 func TestBuildToolDefs_SortedByName(t *testing.T) {
 	defs := BuildToolDefs()
 	for i := 1; i < len(defs); i++ {

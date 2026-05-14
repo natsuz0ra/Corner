@@ -33,7 +33,7 @@ const { t } = useI18n()
 const isOutputExpanded = ref(false)
 const isCollapsed = ref(props.item.toolName === 'ask_questions')
 const subagentTimelineExpanded = ref(false)
-const { toolIcon, toolLabel, toolSummary, statusLabel, statusDotClass, statusTextClass } = useToolCallDisplay(
+const { toolIcon, toolLabel, toolCommandLabel, toolSummary, statusLabel, statusDotClass, statusTextClass } = useToolCallDisplay(
   () => props.item,
   (key) => t(key),
 )
@@ -111,6 +111,7 @@ function toggleSubagentTimeline() {
     <ToolCallHeader
       :tool-icon="toolIcon"
       :tool-label="toolLabel"
+      :tool-command-label="toolCommandLabel"
       :tool-summary="toolSummary"
       :status-label="statusLabel"
       :status-dot-class="statusDotClass"
@@ -395,6 +396,21 @@ function toggleSubagentTimeline() {
   font-size: 14px;
   font-weight: 600;
   line-height: 1;
+}
+
+.tool-command-label {
+  display: block;
+  max-width: min(28vw, 260px);
+  color: var(--tool-command-text);
+  background: var(--tool-command-bg);
+  border: 1px solid var(--tool-command-border);
+  border-radius: 7px;
+  padding: 1px 6px;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .tool-header {
