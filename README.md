@@ -37,6 +37,7 @@ A personal AI agent demo: an extensible foundation for conversational AI apps. I
 - **Configuration & extensions**
   - MCP configuration management
   - Skills: upload, list, delete, runtime activation
+  - AGENTS.md instructions: global instructions can be edited in the web settings; the CLI also reads project-level `AGENTS.md` files and merges them from the Git repository root to the current working directory before injecting them into the model context
 - **Messaging platforms** (Telegram today)
   - Platform configuration management
   - Inbound messages and replies
@@ -178,6 +179,7 @@ SlimeBot applies one sandbox policy across command execution, file tools, and bu
 ```text
 ~/.slimebot/
   config.cfg
+  AGENTS.md
   skills/
   storage/
     data.db
@@ -185,9 +187,18 @@ SlimeBot applies one sandbox policy across command execution, file tools, and bu
 ```
 
 - `config.cfg` — runtime configuration
+- `AGENTS.md` — global Agent instructions, readable and writable from the AGENTS tab in web settings
 - `storage/data.db` — SQLite
 - `storage/chat_uploads` — chat attachments
 - `skills/` — installed skills
+
+## AGENTS.md instructions
+
+- The global instructions file lives at `~/.slimebot/AGENTS.md` and provides long-lived working rules for all sessions.
+- The AGENTS tab in web settings reads global instructions with `GET /api/agents-instructions` and saves updates with `PUT /api/agents-instructions`.
+- CLI mode also reads `AGENTS.md` files from the current project. When the working directory is inside a Git repository, SlimeBot merges non-empty files in order from the repository root to the current working directory.
+- Regular Server/Web sessions inject only the global AGENTS instructions and do not read project-local files.
+- AGENTS content is part of the stable system prompt; changes to global or project instructions refresh the stable prompt cache.
 
 ## Memory model
 
@@ -258,6 +269,7 @@ VITE_WS_URL=ws://localhost:6247
 - Thinking level controls (`off` / `low` / `medium` / `high`) with streamed reasoning display
 - Subagent / nested agent, nested tool UI, and persisted parent linkage in tool-call history
 - MCP and skills
+- Global and project-level AGENTS.md instructions, plus the AGENTS editor in settings
 - SQLite-backed compact session summaries and context usage tracking
 - Telegram integration
 - Multimodal chat
