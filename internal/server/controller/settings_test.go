@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	agentssvc "slimebot/internal/services/agents"
 	settingssvc "slimebot/internal/services/settings"
 	"testing"
 )
@@ -15,12 +16,27 @@ type settingsServiceStub struct {
 	input    settingssvc.UpdateSettingsInput
 }
 
+type agentsInstructionsServiceStub struct {
+	content string
+	path    string
+	updated string
+}
+
 func (s *settingsServiceStub) Get(_ context.Context) (*settingssvc.AppSettings, error) {
 	return s.settings, nil
 }
 
 func (s *settingsServiceStub) Update(_ context.Context, input settingssvc.UpdateSettingsInput) error {
 	s.input = input
+	return nil
+}
+
+func (s *agentsInstructionsServiceStub) ReadGlobal(_ context.Context) (agentssvc.File, error) {
+	return agentssvc.File{Content: s.content, Path: s.path}, nil
+}
+
+func (s *agentsInstructionsServiceStub) UpdateGlobal(_ context.Context, content string) error {
+	s.updated = content
 	return nil
 }
 
@@ -86,5 +102,45 @@ func TestUpdateSettingsAcceptsCLISandboxFields(t *testing.T) {
 	}
 	if settingsStub.input.CLISandboxNetworkAllowedDomains == nil || len(*settingsStub.input.CLISandboxNetworkAllowedDomains) != 1 || (*settingsStub.input.CLISandboxNetworkAllowedDomains)[0] != "cli.example.com" {
 		t.Fatalf("cli sandbox domains input = %#v", settingsStub.input.CLISandboxNetworkAllowedDomains)
+	}
+}
+
+func TestGetAgentsInstructionsReturnsContentAndPath(t *testing.T) {
+	agentsStub := &agentsInstructionsServiceStub{content: "全局规则", path: "/tmp/AGENTS.md"}
+	controller := NewHTTPController(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	controller.SetAgentsInstructionsService(agentsStub)
+
+	req := httptest.NewRequest(http.MethodGet, "/agents-instructions", nil)
+	resp := httptest.NewRecorder()
+	controller.GetAgentsInstructions(NewChiContext(resp, req))
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", resp.Code, resp.Body.String())
+	}
+	var body map[string]string
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["content"] != "全局规则" || body["path"] != "/tmp/AGENTS.md" {
+		t.Fatalf("unexpected response: %#v", body)
+	}
+}
+
+func TestUpdateAgentsInstructionsPersistsContent(t *testing.T) {
+	agentsStub := &agentsInstructionsServiceStub{}
+	controller := NewHTTPController(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	controller.SetAgentsInstructionsService(agentsStub)
+	body := bytes.NewBufferString(`{"content":"新的规则"}`)
+
+	req := httptest.NewRequest(http.MethodPut, "/agents-instructions", body)
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	controller.UpdateAgentsInstructions(NewChiContext(resp, req))
+
+	if resp.Code != http.StatusNoContent {
+		t.Fatalf("status = %d body=%s", resp.Code, resp.Body.String())
+	}
+	if agentsStub.updated != "新的规则" {
+		t.Fatalf("updated content = %q", agentsStub.updated)
 	}
 }

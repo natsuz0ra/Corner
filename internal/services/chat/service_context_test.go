@@ -10,8 +10,24 @@ import (
 
 	"slimebot/internal/constants"
 	"slimebot/internal/domain"
+	agentssvc "slimebot/internal/services/agents"
 	llmsvc "slimebot/internal/services/llm"
 )
+
+type stubAgentsInstructions struct {
+	globalContent  string
+	projectContent string
+	globalCalls    int
+}
+
+func (s *stubAgentsInstructions) ReadGlobal(_ context.Context) (agentssvc.File, error) {
+	s.globalCalls++
+	return agentssvc.File{Content: s.globalContent, Path: "/tmp/AGENTS.md"}, nil
+}
+
+func (s *stubAgentsInstructions) ReadProject(_ context.Context, _ string) (string, error) {
+	return s.projectContent, nil
+}
 
 func TestBuildContextMessages_SystemPrefixStableAndNoLocalDateTime(t *testing.T) {
 	repo := newTestRepo(t)
@@ -142,6 +158,94 @@ func TestBuildContextMessages_NoRunContext_OmitsConfigDir(t *testing.T) {
 				t.Fatal("expected no working directory when RunContext is zero-valued")
 			}
 		}
+	}
+}
+
+func TestBuildContextMessages_IncludesGlobalAgentsInstructions(t *testing.T) {
+	repo := newTestRepo(t)
+	agents := &stubAgentsInstructions{globalContent: "全局规则"}
+	svc := NewChatService(repo, nil, nil, nil, nil)
+	svc.SetAgentsInstructions(agents)
+
+	msgs, err := svc.BuildContextMessages(context.Background(), "session-agents", llmsvc.ModelRuntimeConfig{})
+	if err != nil {
+		t.Fatalf("BuildContextMessages failed: %v", err)
+	}
+	if len(msgs) == 0 || !strings.Contains(msgs[0].Content, "# AGENTS.md instructions") {
+		t.Fatalf("expected AGENTS instructions in stable prompt, got %#v", msgs)
+	}
+	if !strings.Contains(msgs[0].Content, "全局规则") {
+		t.Fatalf("expected global agents content, got %q", msgs[0].Content)
+	}
+}
+
+func TestBuildContextMessages_EmptyAgentsInstructionsAreOmitted(t *testing.T) {
+	repo := newTestRepo(t)
+	svc := NewChatService(repo, nil, nil, nil, nil)
+	svc.SetAgentsInstructions(&stubAgentsInstructions{})
+
+	msgs, err := svc.BuildContextMessages(context.Background(), "session-empty-agents", llmsvc.ModelRuntimeConfig{})
+	if err != nil {
+		t.Fatalf("BuildContextMessages failed: %v", err)
+	}
+	if strings.Contains(msgs[0].Content, "# AGENTS.md instructions") {
+		t.Fatalf("empty AGENTS content should be omitted, got %q", msgs[0].Content)
+	}
+}
+
+func TestBuildContextMessages_CLIIncludesProjectAgentsInstructions(t *testing.T) {
+	repo := newTestRepo(t)
+	svc := NewChatService(repo, nil, nil, nil, nil)
+	svc.SetRunContext(RunContext{IsCLI: true, WorkingDir: "/workspace/project"})
+	svc.SetAgentsInstructions(&stubAgentsInstructions{
+		globalContent:  "global doc",
+		projectContent: "project doc",
+	})
+
+	msgs, err := svc.BuildContextMessages(context.Background(), "session-project-agents", llmsvc.ModelRuntimeConfig{})
+	if err != nil {
+		t.Fatalf("BuildContextMessages failed: %v", err)
+	}
+	if !strings.Contains(msgs[0].Content, "global doc") || !strings.Contains(msgs[0].Content, "--- project-doc ---") || !strings.Contains(msgs[0].Content, "project doc") {
+		t.Fatalf("expected global and project AGENTS content, got %q", msgs[0].Content)
+	}
+}
+
+func TestBuildContextMessages_ServerModeDoesNotReadProjectAgentsInstructions(t *testing.T) {
+	repo := newTestRepo(t)
+	svc := NewChatService(repo, nil, nil, nil, nil)
+	svc.SetRunContext(RunContext{IsCLI: false, WorkingDir: "/workspace/project"})
+	svc.SetAgentsInstructions(&stubAgentsInstructions{
+		globalContent:  "global doc",
+		projectContent: "project doc",
+	})
+
+	msgs, err := svc.BuildContextMessages(context.Background(), "session-server-agents", llmsvc.ModelRuntimeConfig{})
+	if err != nil {
+		t.Fatalf("BuildContextMessages failed: %v", err)
+	}
+	if strings.Contains(msgs[0].Content, "project doc") {
+		t.Fatalf("server mode should not include project AGENTS content, got %q", msgs[0].Content)
+	}
+}
+
+func TestBuildContextMessages_AgentsInstructionsInvalidateStablePromptCache(t *testing.T) {
+	repo := newTestRepo(t)
+	agents := &stubAgentsInstructions{globalContent: "first doc"}
+	svc := NewChatService(repo, nil, nil, nil, nil)
+	svc.SetAgentsInstructions(agents)
+
+	msgs1, err := svc.BuildContextMessages(context.Background(), "session-agents-cache", llmsvc.ModelRuntimeConfig{})
+	if err != nil {
+		t.Fatalf("first BuildContextMessages failed: %v", err)
+	}
+	agents.globalContent = "second doc"
+	msgs2, err := svc.BuildContextMessages(context.Background(), "session-agents-cache", llmsvc.ModelRuntimeConfig{})
+	if err != nil {
+		t.Fatalf("second BuildContextMessages failed: %v", err)
+	}
+	if !strings.Contains(msgs1[0].Content, "first doc") || !strings.Contains(msgs2[0].Content, "second doc") {
+		t.Fatalf("expected AGENTS changes to invalidate cache, first=%q second=%q", msgs1[0].Content, msgs2[0].Content)
 	}
 }
 

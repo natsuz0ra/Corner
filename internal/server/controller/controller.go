@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"slimebot/internal/auth"
+	agentssvc "slimebot/internal/services/agents"
 	chatsvc "slimebot/internal/services/chat"
 	configsvc "slimebot/internal/services/config"
 	sessionsvc "slimebot/internal/services/session"
@@ -30,6 +31,11 @@ type sessionService interface {
 type settingsService interface {
 	Get(ctx context.Context) (*settingssvc.AppSettings, error)
 	Update(ctx context.Context, input settingssvc.UpdateSettingsInput) error
+}
+
+type agentsInstructionsService interface {
+	ReadGlobal(ctx context.Context) (agentssvc.File, error)
+	UpdateGlobal(ctx context.Context, content string) error
 }
 
 type llmConfigService interface {
@@ -78,6 +84,7 @@ type HTTPController struct {
 	skillRuntime skillRuntimeService
 	chatUploads  chatUploadService
 	settings     settingsService
+	agents       agentsInstructionsService
 	auth         authService
 	sessions     sessionService
 	llmConfigs   llmConfigService
@@ -119,4 +126,8 @@ func NewHTTPController(
 
 func (h *HTTPController) SetChatContextUsageService(service chatContextUsageService) {
 	h.chatUsage = service
+}
+
+func (h *HTTPController) SetAgentsInstructionsService(service agentsInstructionsService) {
+	h.agents = service
 }

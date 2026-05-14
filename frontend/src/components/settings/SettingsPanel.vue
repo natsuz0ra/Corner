@@ -13,12 +13,14 @@ import SettingsBasicTab from '@/components/settings/SettingsBasicTab.vue'
 import SettingsLLMTab from '@/components/settings/SettingsLLMTab.vue'
 import SettingsMCPTab from '@/components/settings/SettingsMCPTab.vue'
 import SettingsSkillsTab from '@/components/settings/SettingsSkillsTab.vue'
+import SettingsAgentsTab from '@/components/settings/SettingsAgentsTab.vue'
 import SettingsPlatformTab from '@/components/settings/SettingsPlatformTab.vue'
 import SettingsAboutTab from '@/components/settings/SettingsAboutTab.vue'
 import AccountEditDialog from '@/components/settings/AccountEditDialog.vue'
 import { llmAPI } from '@/api/llm'
 import { mcpAPI } from '@/api/mcp'
 import { settingAPI } from '@/api/settings'
+import { agentsInstructionsAPI } from '@/api/agentsInstructions'
 import { skillsAPI } from '@/api/skills'
 import { messagePlatformAPI } from '@/api/messagePlatform'
 import type { AppSettings, ApprovalMode, LLMConfig, MCPConfig, MessagePlatformConfig, SandboxMode, SettingsTabKey, SkillItem, ThinkingLevel } from '@/types/settings'
@@ -53,6 +55,7 @@ const settingsTabs: { key: SettingsTabKey; labelKey: string }[] = [
   { key: 'llm', labelKey: 'llmSettings' },
   { key: 'mcp', labelKey: 'mcpSettings' },
   { key: 'skills', labelKey: 'skillsSettings' },
+  { key: 'agents', labelKey: 'agentsSettings' },
   { key: 'platform', labelKey: 'messagePlatformSettings' },
   { key: 'about', labelKey: 'aboutSettings' },
 ]
@@ -69,6 +72,9 @@ const llmSubmitting = ref(false)
 const mcpSubmitting = ref(false)
 const skillsUploading = ref(false)
 const skillsDropActive = ref(false)
+const agentsInstructionsContent = ref('')
+const agentsInstructionsPath = ref('')
+const agentsInstructionsSaving = ref(false)
 const sandboxMode = ref<SandboxMode>('workspace-write')
 const sandboxNetworkEnabled = ref(true)
 const skillsFileInputRef = ref<HTMLInputElement | null>(null)
@@ -188,6 +194,9 @@ async function loadData() {
     llmList.value = await llmAPI.list()
     mcpList.value = await mcpAPI.list()
     skillsList.value = await skillsAPI.list()
+    const agentsInstructions = await agentsInstructionsAPI.get()
+    agentsInstructionsContent.value = agentsInstructions.content
+    agentsInstructionsPath.value = agentsInstructions.path
     messagePlatformList.value = await messagePlatformAPI.list()
   } finally {
     loading.value = false
@@ -257,6 +266,19 @@ function deleteSkill(id: string) {
 
 function toggleSkillEnabled(id: string, enabled: boolean) {
   void setSkillEnabled(id, enabled)
+}
+
+async function saveAgentsInstructions() {
+  agentsInstructionsSaving.value = true
+  try {
+    await agentsInstructionsAPI.update(agentsInstructionsContent.value)
+    toast.success(t('saveSuccess'))
+  } catch (err: unknown) {
+    const response = err as { response?: { data?: { error?: string } } }
+    toast.error(response.response?.data?.error || t('agentsSaveFailed'))
+  } finally {
+    agentsInstructionsSaving.value = false
+  }
 }
 
 onMounted(loadData)
@@ -357,6 +379,14 @@ onMounted(loadData)
             />
           </template>
         </SettingsSkillsTab>
+
+        <SettingsAgentsTab
+          v-if="tab === 'agents'"
+          v-model:content="agentsInstructionsContent"
+          :path="agentsInstructionsPath"
+          :saving="agentsInstructionsSaving"
+          @save="saveAgentsInstructions"
+        />
 
         <SettingsPlatformTab
           v-if="tab === 'platform'"

@@ -30,7 +30,7 @@ func (s *ChatService) ResolveModelRuntimeConfig(ctx context.Context, modelID str
 
 // BuildSubagentMessages builds an isolated message list: system prompts + the delegated task.
 func (s *ChatService) BuildSubagentMessages(ctx context.Context, sessionID, task, parentContext string) ([]llmsvc.ChatMessage, error) {
-	systemPrompt, err := s.loadStableSystemPrompt()
+	systemPrompt, err := s.loadStableSystemPrompt(ctx)
 	if err != nil {
 		return nil, err
 	}

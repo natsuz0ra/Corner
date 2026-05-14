@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"time"
@@ -8,10 +9,16 @@ import (
 	"slimebot/internal/constants"
 	"slimebot/internal/domain"
 	"slimebot/internal/mcp"
+	agentssvc "slimebot/internal/services/agents"
 	llmsvc "slimebot/internal/services/llm"
 	plansvc "slimebot/internal/services/plan"
 	skillsvc "slimebot/internal/services/skill"
 )
+
+type agentsInstructionsReader interface {
+	ReadGlobal(ctx context.Context) (agentssvc.File, error)
+	ReadProject(ctx context.Context, workingDir string) (string, error)
+}
 
 // ChatService orchestrates the chat flow: context, agent, uploads, and per-session skills.
 type ChatService struct {
@@ -30,8 +37,10 @@ type ChatService struct {
 	systemPrompt    string
 	stablePrompt    string
 	stableCatalog   string
+	stableAgents    string
 
 	runContext RunContext
+	agents     agentsInstructionsReader
 
 	platformModelMu sync.Mutex
 	platformModelID string
@@ -103,6 +112,15 @@ func (s *ChatService) SetPlanService(ps *plansvc.PlanService) {
 // SetRunContext injects deployment/runtime info for the system prompt environment section.
 func (s *ChatService) SetRunContext(ctx RunContext) {
 	s.runContext = ctx
+}
+
+func (s *ChatService) SetAgentsInstructions(service agentsInstructionsReader) {
+	s.agents = service
+	s.promptMu.Lock()
+	s.stablePrompt = ""
+	s.stableCatalog = ""
+	s.stableAgents = ""
+	s.promptMu.Unlock()
 }
 
 // getSessionActivatedSkills returns a copy of activated skills for the session.
@@ -188,16 +206,17 @@ func (s *ChatService) setSystemPromptCached(prompt string) {
 }
 
 // getStableSystemPromptCached returns the stable system prompt and skill catalog snapshot.
-func (s *ChatService) getStableSystemPromptCached() (prompt string, catalog string) {
+func (s *ChatService) getStableSystemPromptCached() (prompt string, catalog string, agents string) {
 	s.promptMu.RLock()
 	defer s.promptMu.RUnlock()
-	return s.stablePrompt, s.stableCatalog
+	return s.stablePrompt, s.stableCatalog, s.stableAgents
 }
 
 // setStableSystemPromptCached updates stable system prompt and catalog snapshot.
-func (s *ChatService) setStableSystemPromptCached(prompt string, catalog string) {
+func (s *ChatService) setStableSystemPromptCached(prompt string, catalog string, agents string) {
 	s.promptMu.Lock()
 	defer s.promptMu.Unlock()
 	s.stablePrompt = prompt
 	s.stableCatalog = catalog
+	s.stableAgents = agents
 }
