@@ -468,6 +468,70 @@ func TestBuildContextMessages_ReplaysHistoricalToolCallsForLLMContext(t *testing
 	}
 }
 
+func TestBuildContextMessages_ReplaysMCPWithStoredModelFunctionName(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	session, err := repo.CreateSession(ctx, "mcp-tool-history")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	if _, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{
+		SessionID: session.ID,
+		Role:      "user",
+		Content:   "查一下仓库",
+	}); err != nil {
+		t.Fatalf("AddMessageWithInput user failed: %v", err)
+	}
+	assistant, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{
+		SessionID: session.ID,
+		Role:      "assistant",
+		Content:   "<!-- TOOL_CALL:tc-mcp -->查到了。",
+	})
+	if err != nil {
+		t.Fatalf("AddMessageWithInput assistant failed: %v", err)
+	}
+	if err := repo.UpsertToolCallStart(ctx, domain.ToolCallStartRecordInput{
+		SessionID:     session.ID,
+		RequestID:     "request-mcp-tool-history",
+		ToolCallID:    "tc-mcp",
+		ToolName:      "github",
+		Command:       "search_repositories",
+		ModelFuncName: "mcp_config_1__search_repositories",
+		Params:        map[string]any{"query": "slimebot"},
+		Status:        constants.ToolCallStatusExecuting,
+		StartedAt:     time.Now(),
+	}); err != nil {
+		t.Fatalf("UpsertToolCallStart failed: %v", err)
+	}
+	if err := repo.UpdateToolCallResult(ctx, domain.ToolCallResultRecordInput{
+		SessionID:  session.ID,
+		RequestID:  "request-mcp-tool-history",
+		ToolCallID: "tc-mcp",
+		Status:     constants.ToolCallStatusCompleted,
+		Output:     "repo found",
+		FinishedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("UpdateToolCallResult failed: %v", err)
+	}
+	if err := repo.BindToolCallsToAssistantMessage(ctx, session.ID, "request-mcp-tool-history", assistant.ID); err != nil {
+		t.Fatalf("BindToolCallsToAssistantMessage failed: %v", err)
+	}
+
+	svc := NewChatService(repo, nil, nil, nil, nil)
+	msgs, err := svc.BuildContextMessages(ctx, session.ID, llmsvc.ModelRuntimeConfig{})
+	if err != nil {
+		t.Fatalf("BuildContextMessages failed: %v", err)
+	}
+
+	history := msgs[2:]
+	if len(history) < 3 || history[1].Role != "assistant" || len(history[1].ToolCalls) != 1 {
+		t.Fatalf("expected assistant tool call replay, got %+v", history)
+	}
+	if got := history[1].ToolCalls[0].Name; got != "mcp_config_1__search_repositories" {
+		t.Fatalf("replayed tool func name = %q, want stored MCP function name", got)
+	}
+}
+
 func TestBuildContextMessages_ReplaysMultipleToolCallsInRecordedOrderAndSkipsNested(t *testing.T) {
 	repo := newTestRepo(t)
 	ctx := context.Background()

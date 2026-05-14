@@ -500,6 +500,7 @@ func (a *AgentService) RunAgentLoop(
 						ToolCallID:       tc.ID,
 						ToolName:         invocation.toolName,
 						Command:          invocation.command,
+						ModelFuncName:    invocation.modelFuncName,
 						Params:           params,
 						RequiresApproval: invocation.requiresApproval,
 					}); err != nil {
@@ -516,6 +517,7 @@ func (a *AgentService) RunAgentLoop(
 					ToolCallID:       tc.ID,
 					ToolName:         invocation.toolName,
 					Command:          invocation.command,
+					ModelFuncName:    invocation.modelFuncName,
 					RequiresApproval: invocation.requiresApproval,
 					Status:           constants.ToolCallStatusCompleted,
 					Output:           formattedAnswers,
@@ -533,6 +535,7 @@ func (a *AgentService) RunAgentLoop(
 					ToolCallID:       tc.ID,
 					ToolName:         invocation.toolName,
 					Command:          invocation.command,
+					ModelFuncName:    invocation.modelFuncName,
 					Params:           params,
 					RequiresApproval: invocation.requiresApproval,
 					ReviewStatus:     reviewStatus,
@@ -549,6 +552,7 @@ func (a *AgentService) RunAgentLoop(
 				toolCallID:       tc.ID,
 				toolName:         invocation.toolName,
 				command:          invocation.command,
+				modelFuncName:    invocation.modelFuncName,
 				requiresApproval: invocation.requiresApproval,
 				awaitApproval: func(approvalCtx context.Context) approvalDecision {
 					reviewMessages := make([]llmsvc.ChatMessage, len(messages))

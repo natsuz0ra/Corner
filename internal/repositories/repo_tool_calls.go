@@ -32,6 +32,7 @@ func (r *Repository) UpsertToolCallStart(ctx context.Context, input domain.ToolC
 		ToolCallID:       input.ToolCallID,
 		ToolName:         input.ToolName,
 		Command:          input.Command,
+		ModelFuncName:    strings.TrimSpace(input.ModelFuncName),
 		ParamsJSON:       paramsJSON,
 		Status:           input.Status,
 		RequiresApproval: input.RequiresApproval,
@@ -48,6 +49,7 @@ func (r *Repository) UpsertToolCallStart(ctx context.Context, input domain.ToolC
 		DoUpdates: clause.Assignments(map[string]any{
 			"tool_name":            input.ToolName,
 			"command":              input.Command,
+			"model_func_name":      strings.TrimSpace(input.ModelFuncName),
 			"params_json":          paramsJSON,
 			"status":               input.Status,
 			"requires_approval":    input.RequiresApproval,

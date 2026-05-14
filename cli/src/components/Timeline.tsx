@@ -34,6 +34,7 @@ import {
   formatToolParamLines,
   formatToolStatusPart,
   formatToolSummaryTag,
+  formatTimelineToolInvocation,
   getRunSubagentDetailLineColor,
   isFileToolEntry,
   isRunSubagentEntry,
@@ -232,7 +233,7 @@ function TimelineBlock({
       : "";
   const invocation =
     nestPrefix +
-    (entry.toolName || "tool").trim();
+    formatTimelineToolInvocation(entry.toolName, entry.command);
   const summaryParams = entry.subagentTitle
     ? { ...(entry.params || {}), title: entry.subagentTitle }
     : entry.params;

@@ -22,6 +22,7 @@ type ToolCallStartRecordInput struct {
 	ToolCallID       string
 	ToolName         string
 	Command          string
+	ModelFuncName    string
 	Params           map[string]any
 	Status           string
 	RequiresApproval bool

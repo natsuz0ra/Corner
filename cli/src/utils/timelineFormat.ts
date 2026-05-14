@@ -31,6 +31,30 @@ export const WAITING_STATS_COLOR = "#64748b";
 export const TOOL_SUMMARY_TAG_COLOR = "#7dd3fc";
 export const SHOW_CLI_THINKING = false;
 
+const BUILTIN_TIMELINE_TOOL_NAMES = new Set([
+  "ask_questions",
+  "exec",
+  "file_edit",
+  "file_read",
+  "file_write",
+  "http_request",
+  "process",
+  "run_subagent",
+  "search_file",
+  "search_files",
+  "skills",
+  "todo",
+  "web_extract",
+  "web_search",
+]);
+
+export function formatTimelineToolInvocation(toolName: string | undefined, command: string | undefined): string {
+  const name = (toolName || "tool").trim() || "tool";
+  const cmd = (command || "").trim();
+  if (!cmd || BUILTIN_TIMELINE_TOOL_NAMES.has(name.toLowerCase())) return name;
+  return `${name} | ${cmd}`;
+}
+
 export function toolDotState(status: ToolCallStatus): { color: string; blink: boolean } {
   switch (status) {
     case "pending":

@@ -56,6 +56,7 @@ type ToolCallRecord struct {
 	ToolCallID         string     `gorm:"size:128;index;not null;uniqueIndex:idx_tool_call_request,priority:3" json:"toolCallId"`
 	ToolName           string     `gorm:"size:128;not null" json:"toolName"`
 	Command            string     `gorm:"size:128;not null" json:"command"`
+	ModelFuncName      string     `gorm:"size:128" json:"-"`
 	ParamsJSON         string     `gorm:"type:text;not null" json:"paramsJson"`
 	Status             string     `gorm:"size:32;index;not null" json:"status"`
 	RequiresApproval   bool       `gorm:"not null;default:false" json:"requiresApproval"`

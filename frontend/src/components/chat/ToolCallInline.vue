@@ -27,7 +27,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const expanded = ref(false)
 const subagentTimelineExpanded = ref(false)
-const { toolIcon, toolLabel, toolSummary } = useToolCallDisplay(() => props.item, (key) => t(key))
+const { toolIcon, toolLabel, toolCommandLabel, toolSummary } = useToolCallDisplay(() => props.item, (key) => t(key))
 
 const statusIcon = computed(() => {
   switch (props.item.status) {
@@ -151,42 +151,43 @@ function toggleSubagentTimeline() {
         <MdiIcon :path="toolIcon" :size="14" class="inline-tool-icon" />
 
         <span class="inline-tool-name">{{ toolLabel }}</span>
-      <span v-if="toolSummary && !isAskQuestions" class="inline-tool-summary" :title="toolSummary">{{ toolSummary }}</span>
+        <span v-if="toolCommandLabel" class="inline-tool-command-name" :title="toolCommandLabel">{{ toolCommandLabel }}</span>
+        <span v-if="toolSummary && !isAskQuestions" class="inline-tool-summary" :title="toolSummary">{{ toolSummary }}</span>
 
-      <span v-if="showPendingLabel" class="inline-tool-pending-label">
-        {{ t('toolWaitingApproval') }}
-      </span>
+        <span v-if="showPendingLabel" class="inline-tool-pending-label">
+          {{ t('toolWaitingApproval') }}
+        </span>
 
-      <span class="inline-tool-status" :class="statusIcon.class">
+        <span class="inline-tool-status" :class="statusIcon.class">
+          <svg
+            v-if="item.status === 'executing'"
+            class="inline-spinner"
+            fill="none"
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+          >
+            <circle class="inline-spinner-track" cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" />
+            <circle class="inline-spinner-head" cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="12 28" />
+          </svg>
+          <template v-else>{{ statusIcon.symbol }}</template>
+        </span>
+
         <svg
-          v-if="item.status === 'executing'"
-          class="inline-spinner"
-          fill="none"
+          class="inline-tool-chevron"
+          :class="{ 'inline-tool-chevron--open': expanded }"
           viewBox="0 0 16 16"
+          width="14"
+          height="14"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
           aria-hidden="true"
         >
-          <circle class="inline-spinner-track" cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" />
-          <circle class="inline-spinner-head" cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="12 28" />
+          <path d="M4 6l4 4 4-4" />
         </svg>
-        <template v-else>{{ statusIcon.symbol }}</template>
-      </span>
-
-      <svg
-        class="inline-tool-chevron"
-        :class="{ 'inline-tool-chevron--open': expanded }"
-        viewBox="0 0 16 16"
-        width="14"
-        height="14"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M4 6l4 4 4-4" />
-      </svg>
-    </button>
+      </button>
 
     <Transition name="inline-expand">
       <div v-if="expanded" class="inline-tool-detail">
@@ -410,6 +411,21 @@ function toggleSubagentTimeline() {
   color: var(--tool-meta-text, #e2e8f0);
   font-weight: 600;
   white-space: nowrap;
+}
+
+.inline-tool-command-name {
+  display: inline-block;
+  max-width: min(28vw, 260px);
+  color: var(--tool-command-text, #94a3b8);
+  background: var(--tool-command-bg, rgba(30, 41, 59, 0.8));
+  border: 1px solid var(--tool-command-border, rgba(100, 116, 139, 0.2));
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .inline-tool-summary {

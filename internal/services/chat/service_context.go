@@ -478,6 +478,10 @@ func buildHistoricalToolReplay(records []domain.ToolCallRecord) (llmsvc.ChatMess
 }
 
 func historicalToolFunctionName(record domain.ToolCallRecord) string {
+	modelFuncName := strings.TrimSpace(record.ModelFuncName)
+	if modelFuncName != "" {
+		return modelFuncName
+	}
 	toolName := strings.TrimSpace(record.ToolName)
 	command := strings.TrimSpace(record.Command)
 	if tools.IsHistoricalStableName(toolName) {
