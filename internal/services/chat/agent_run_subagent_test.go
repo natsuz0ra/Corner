@@ -300,11 +300,12 @@ func TestHandleRunSubagentTool_ChildExecRequiredApprovalUsesManualApproval(t *te
 	}
 }
 
-func TestRunAgentLoop_HandlesTodoUpdateWithoutRegularToolCallback(t *testing.T) {
-	provider := &todoUpdateProvider{}
+func TestRunAgentLoop_BuiltinTodoUpdateTriggersRuntimeTodoEvent(t *testing.T) {
+	provider := &builtinTodoUpdateProvider{}
 	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil)
 	var updates []TodoUpdate
 	var toolStarts int
+	var toolResults []ToolCallResult
 
 	answer, err := agent.RunAgentLoop(
 		context.Background(),
@@ -322,6 +323,10 @@ func TestRunAgentLoop_HandlesTodoUpdateWithoutRegularToolCallback(t *testing.T) 
 				toolStarts++
 				return nil
 			},
+			OnToolCallResult: func(result ToolCallResult) error {
+				toolResults = append(toolResults, result)
+				return nil
+			},
 		},
 		AgentLoopOptions{},
 	)
@@ -331,8 +336,14 @@ func TestRunAgentLoop_HandlesTodoUpdateWithoutRegularToolCallback(t *testing.T) 
 	if answer != "done" {
 		t.Fatalf("unexpected final answer: %q", answer)
 	}
-	if toolStarts != 0 {
-		t.Fatalf("todo_update must not emit regular tool starts, got %d", toolStarts)
+	if toolStarts != 1 {
+		t.Fatalf("todo_update should emit a regular tool start, got %d", toolStarts)
+	}
+	if len(toolResults) != 1 {
+		t.Fatalf("todo_update should emit a regular tool result, got %d", len(toolResults))
+	}
+	if toolResults[0].ToolName != "todo" || toolResults[0].Command != "update" {
+		t.Fatalf("unexpected todo tool result: %+v", toolResults[0])
 	}
 	if len(updates) != 1 {
 		t.Fatalf("expected one todo update, got %d", len(updates))
@@ -351,12 +362,54 @@ func TestRunAgentLoop_HandlesTodoUpdateWithoutRegularToolCallback(t *testing.T) 
 	}
 }
 
-type todoUpdateProvider struct {
+func TestRunAgentLoop_InvalidBuiltinTodoUpdateDoesNotTriggerRuntimeTodoEvent(t *testing.T) {
+	provider := &builtinTodoUpdateProvider{
+		arguments: `{"note":"bad","items":[{"id":"1","content":"Inspect","status":"in_progress"},{"id":"2","content":"Implement","status":"in_progress"}]}`,
+	}
+	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil)
+	var updates []TodoUpdate
+	var toolResults []ToolCallResult
+
+	answer, err := agent.RunAgentLoop(
+		context.Background(),
+		llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI},
+		"session-1",
+		[]llmsvc.ChatMessage{{Role: "user", Content: "do several things"}},
+		nil,
+		map[string]struct{}{},
+		AgentCallbacks{
+			OnTodoUpdate: func(update TodoUpdate) error {
+				updates = append(updates, update)
+				return nil
+			},
+			OnToolCallResult: func(result ToolCallResult) error {
+				toolResults = append(toolResults, result)
+				return nil
+			},
+		},
+		AgentLoopOptions{},
+	)
+	if err != nil {
+		t.Fatalf("RunAgentLoop failed: %v", err)
+	}
+	if answer != "done" {
+		t.Fatalf("unexpected final answer: %q", answer)
+	}
+	if len(updates) != 0 {
+		t.Fatalf("invalid todo_update must not trigger runtime todo update, got %+v", updates)
+	}
+	if len(toolResults) != 1 || toolResults[0].Error == "" {
+		t.Fatalf("expected one errored todo tool result, got %+v", toolResults)
+	}
+}
+
+type builtinTodoUpdateProvider struct {
 	calls        int
+	arguments    string
 	seenMessages []llmsvc.ChatMessage
 }
 
-func (p *todoUpdateProvider) StreamChatWithTools(
+func (p *builtinTodoUpdateProvider) StreamChatWithTools(
 	_ context.Context,
 	_ llmsvc.ModelRuntimeConfig,
 	messages []llmsvc.ChatMessage,
@@ -365,23 +418,30 @@ func (p *todoUpdateProvider) StreamChatWithTools(
 ) (*llmsvc.StreamResult, error) {
 	p.calls++
 	p.seenMessages = append([]llmsvc.ChatMessage{}, messages...)
-	if !containsToolName(toolDefs, constants.TodoUpdateTool) {
-		return nil, fmt.Errorf("missing %s tool", constants.TodoUpdateTool)
+	if containsToolName(toolDefs, "todo__update") {
+		return nil, fmt.Errorf("todo__update tool should not be exposed")
+	}
+	if !containsToolName(toolDefs, todoUpdateFuncName) {
+		return nil, fmt.Errorf("missing %s tool", todoUpdateFuncName)
 	}
 	if p.calls == 1 {
+		args := p.arguments
+		if args == "" {
+			args = `{"note":"starting","items":[{"id":"1","content":"Inspect","status":"in_progress"},{"id":"2","content":"Implement","status":"pending"}]}`
+		}
 		return &llmsvc.StreamResult{
 			Type: llmsvc.StreamResultToolCalls,
 			ToolCalls: []llmsvc.ToolCallInfo{{
 				ID:        "todo-call-1",
-				Name:      constants.TodoUpdateTool,
-				Arguments: `{"note":"starting","items":[{"id":"1","content":"Inspect","status":"in_progress"},{"id":"2","content":"Implement","status":"pending"}]}`,
+				Name:      todoUpdateFuncName,
+				Arguments: args,
 			}},
 			AssistantMessage: llmsvc.ChatMessage{
 				Role: "assistant",
 				ToolCalls: []llmsvc.ToolCallInfo{{
 					ID:        "todo-call-1",
-					Name:      constants.TodoUpdateTool,
-					Arguments: `{"note":"starting","items":[{"id":"1","content":"Inspect","status":"in_progress"},{"id":"2","content":"Implement","status":"pending"}]}`,
+					Name:      todoUpdateFuncName,
+					Arguments: args,
 				}},
 			},
 		}, nil

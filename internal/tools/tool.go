@@ -1,6 +1,9 @@
 package tools
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 // CommandParam describes one parameter for a tool command.
 type CommandParam struct {
@@ -35,4 +38,35 @@ type Tool interface {
 	// Commands lists supported subcommands.
 	Commands() []Command
 	Execute(ctx context.Context, command string, params map[string]any) (*ExecuteResult, error)
+}
+
+func IsStableNameTool(name string) bool {
+	meta, ok := MetadataForTool(name)
+	return ok && meta.StableName && meta.Name == strings.TrimSpace(name)
+}
+
+// IsPlanModeAllowedFunction reports whether a model-facing tool function is
+// allowed while the agent is in read-only planning mode.
+func IsPlanModeAllowedFunction(funcName string) bool {
+	funcName = strings.TrimSpace(funcName)
+	if funcName == "" || funcName == "todo__update" {
+		return false
+	}
+	if meta, ok := MetadataForFunction(funcName); ok && meta.AllowedInPlanMode {
+		return true
+	}
+	return false
+}
+
+func IsPlanModeAllowedCommand(toolName string) bool {
+	meta, ok := MetadataForTool(toolName)
+	return ok && meta.AllowedInPlanMode
+}
+
+func ParseFunctionName(funcName string) (toolName, command string, ok bool) {
+	parts := strings.SplitN(funcName, "__", 2)
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
 }

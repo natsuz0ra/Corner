@@ -2,6 +2,7 @@ import { useInput } from "ink";
 import type { Key } from "ink";
 import type React from "react";
 import type { AppAction, AppState, MCPTemplate, MenuItem, ModelProvider } from "../types.js";
+import { handleChatShortcut } from "../controllers/commands.js";
 import { adjustContextSize, clampContextSize } from "../utils/contextSize.js";
 import { MCP_TEMPLATES } from "../types.js";
 import type { CLISocket } from "../ws/socket.js";
@@ -152,6 +153,18 @@ export function getApprovalKeyAction(state: AppState, input: string, key: Key): 
     return items.length > 0 ? { kind: "settle", items } : null;
   }
   return null;
+}
+
+export function handleStreamingChatShortcut(
+  state: AppState,
+  input: string,
+  key: Key,
+  dispatch: React.Dispatch<AppAction>,
+): boolean {
+  if (state.view !== "chat" || !state.streaming) {
+    return false;
+  }
+  return handleChatShortcut(input, key, dispatch);
 }
 
 export function useCliKeyboard({
@@ -442,6 +455,10 @@ export function useCliKeyboard({
     }
 
     if (state.view !== "chat") return;
+
+    if (handleStreamingChatShortcut(state, input, key, dispatch)) {
+      return;
+    }
 
     if (state.streaming && key.escape) {
       const sent = state.sessionId && socketRef.current?.sendStop(state.sessionId) || false;

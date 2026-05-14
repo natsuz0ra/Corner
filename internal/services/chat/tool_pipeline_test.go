@@ -55,6 +55,24 @@ func TestResolveToolInvocation_RunSubagent(t *testing.T) {
 	}
 }
 
+func TestResolveToolInvocation_TodoUpdateAlias(t *testing.T) {
+	tc := llmsvc.ToolCallInfo{
+		ID:        "call_todo",
+		Name:      todoUpdateFuncName,
+		Arguments: `{"items":[{"id":"1","content":"Inspect","status":"in_progress"}]}`,
+	}
+	invocation, err := resolveToolInvocation(tc, map[string]mcp.ToolMeta{}, constants.ApprovalModeStandard)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if invocation.toolName != "todo" {
+		t.Fatalf("unexpected toolName: %s", invocation.toolName)
+	}
+	if invocation.command != "update" {
+		t.Fatalf("unexpected command: %s", invocation.command)
+	}
+}
+
 func TestBuildToolDefs_SortedByName(t *testing.T) {
 	defs := BuildToolDefs()
 	for i := 1; i < len(defs); i++ {
@@ -109,10 +127,22 @@ func TestBuildToolDefs_ExecRunSchema(t *testing.T) {
 
 func TestBuildToolDefs_FileToolSchemas(t *testing.T) {
 	defs := BuildToolDefs()
+	if containsToolName(defs, "todo__update") {
+		t.Fatalf("todo__update should not be exposed by BuildToolDefs: %#v", toolNames(defs))
+	}
 	expected := map[string][]string{
-		"file_read__read":   {},
-		"file_edit__edit":   {},
-		"file_write__write": {},
+		"file_read__read":      {},
+		"file_edit__edit":      {},
+		"file_write__write":    {},
+		"process__list":        {},
+		"process__status":      {},
+		"process__stop":        {},
+		"search_files__search": {},
+		"skills__list":         {},
+		"skills__view":         {},
+		"todo__list":           {},
+		"todo_update":          {},
+		"web_extract__extract": {},
 	}
 	for name, requiredParams := range expected {
 		def := findToolDef(defs, name)
@@ -152,6 +182,21 @@ func TestBuildToolDefs_FileReadDescriptionPrefersBatchRanges(t *testing.T) {
 		if !strings.Contains(def.Description, want) {
 			t.Fatalf("file_read__read description missing %q: %q", want, def.Description)
 		}
+	}
+}
+
+func TestBuildToolDefs_SearchFilesSchemaIncludesPerFileLimit(t *testing.T) {
+	defs := BuildToolDefs()
+	def := findToolDef(defs, "search_files__search")
+	if def == nil {
+		t.Fatal("expected search_files__search tool definition")
+	}
+	properties, ok := def.Parameters["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("search_files parameters.properties has unexpected type: %#v", def.Parameters["properties"])
+	}
+	if _, ok := properties["max_matches_per_file"]; !ok {
+		t.Fatalf("search_files__search missing max_matches_per_file property: %#v", properties)
 	}
 }
 

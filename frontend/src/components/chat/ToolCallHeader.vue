@@ -51,8 +51,8 @@ const emit = defineEmits<{
           viewBox="0 0 24 24"
           aria-hidden="true"
         >
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          <circle class="tool-status-spinner-track" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" />
+          <circle class="tool-status-spinner-head" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="18 44" />
         </svg>
         <svg
           v-if="isAskQuestions"
@@ -74,3 +74,18 @@ const emit = defineEmits<{
     </div>
   </header>
 </template>
+
+<style scoped>
+.tool-status-spinner {
+  color: var(--tool-running-text);
+  transform-origin: center;
+}
+
+.tool-status-spinner-track {
+  opacity: 0.22;
+}
+
+.tool-status-spinner-head {
+  opacity: 0.88;
+}
+</style>

@@ -246,6 +246,34 @@ func TestExecRunTimeoutProducesStructuredFlag(t *testing.T) {
 	}
 }
 
+func TestExecRunBackgroundRegistersManagedProcess(t *testing.T) {
+	e := &execTool{}
+	manager := NewProcessManager()
+	ctx := WithProcessManager(context.Background(), manager)
+	command := "sleep 1"
+	if runtime.GOOS == "windows" {
+		command = "Start-Sleep -Seconds 1"
+	}
+	res, err := e.run(ctx, map[string]any{
+		"command":     command,
+		"description": "Start managed background process",
+		"background":  "true",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := parseExecOutput(t, res.Output)
+	if !out.Background || out.ProcessID == "" {
+		t.Fatalf("expected background process id, got %+v", out)
+	}
+	if item, ok := manager.Get(out.ProcessID); !ok || item.Status != "running" {
+		t.Fatalf("expected running managed process, got ok=%t item=%+v", ok, item)
+	}
+	if _, ok := manager.Stop(out.ProcessID); !ok {
+		t.Fatalf("expected process to stop: %s", out.ProcessID)
+	}
+}
+
 func TestExecRunDangerousCommandReturnsToolError(t *testing.T) {
 	e := &execTool{}
 	res, err := e.run(context.Background(), map[string]any{

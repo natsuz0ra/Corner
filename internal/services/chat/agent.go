@@ -19,6 +19,8 @@ import (
 	"slimebot/internal/tools"
 )
 
+const todoUpdateFuncName = tools.TodoUpdateFunctionName
+
 // AgentService runs the LLM loop with tools, approvals, and MCP/skill loading.
 type AgentService struct {
 	providerFactory *llmsvc.Factory
@@ -30,6 +32,10 @@ type AgentService struct {
 	readFilesMu     sync.Mutex
 	readFilesBySess map[string]*tools.ReadFileState
 	readFilesAt     map[string]time.Time
+	todosBySess     map[string]*tools.TodoState
+	todosAt         map[string]time.Time
+	processesBySess map[string]*tools.ProcessManager
+	processesAt     map[string]time.Time
 }
 
 // cachedToolDefs is a cached tool-definition bundle with MCP metadata.
@@ -48,6 +54,10 @@ func NewAgentService(providerFactory *llmsvc.Factory, mcpManager *mcp.Manager, s
 		toolCache:       make(map[string]cachedToolDefs),
 		readFilesBySess: make(map[string]*tools.ReadFileState),
 		readFilesAt:     make(map[string]time.Time),
+		todosBySess:     make(map[string]*tools.TodoState),
+		todosAt:         make(map[string]time.Time),
+		processesBySess: make(map[string]*tools.ProcessManager),
+		processesAt:     make(map[string]time.Time),
 	}
 }
 
@@ -99,148 +109,90 @@ func (a *AgentService) evictOldReadFileSessionsLocked(maxEvict int) {
 	}
 }
 
+func (a *AgentService) getSessionTodoState(sessionID string) *tools.TodoState {
+	key := strings.TrimSpace(sessionID)
+	if key == "" {
+		return tools.NewTodoState()
+	}
+	a.readFilesMu.Lock()
+	defer a.readFilesMu.Unlock()
+	if a.todosBySess == nil {
+		a.todosBySess = make(map[string]*tools.TodoState)
+	}
+	if a.todosAt == nil {
+		a.todosAt = make(map[string]time.Time)
+	}
+	state := a.todosBySess[key]
+	if state == nil {
+		state = tools.NewTodoState()
+		a.todosBySess[key] = state
+	}
+	a.todosAt[key] = time.Now()
+	if len(a.todosBySess) > 1024 {
+		a.evictOldTodoSessionsLocked(256)
+	}
+	return state
+}
+
+func (a *AgentService) evictOldTodoSessionsLocked(maxEvict int) {
+	for i := 0; i < maxEvict && len(a.todosAt) > 0; i++ {
+		var oldestSession string
+		var oldestTime time.Time
+		for sessionID, touchedAt := range a.todosAt {
+			if oldestSession == "" || touchedAt.Before(oldestTime) {
+				oldestSession = sessionID
+				oldestTime = touchedAt
+			}
+		}
+		delete(a.todosBySess, oldestSession)
+		delete(a.todosAt, oldestSession)
+	}
+}
+
+func (a *AgentService) getSessionProcessManager(sessionID string) *tools.ProcessManager {
+	key := strings.TrimSpace(sessionID)
+	if key == "" {
+		return tools.NewProcessManager()
+	}
+	a.readFilesMu.Lock()
+	defer a.readFilesMu.Unlock()
+	if a.processesBySess == nil {
+		a.processesBySess = make(map[string]*tools.ProcessManager)
+	}
+	if a.processesAt == nil {
+		a.processesAt = make(map[string]time.Time)
+	}
+	manager := a.processesBySess[key]
+	if manager == nil {
+		manager = tools.NewProcessManager()
+		a.processesBySess[key] = manager
+	}
+	a.processesAt[key] = time.Now()
+	if len(a.processesBySess) > 1024 {
+		a.evictOldProcessSessionsLocked(256)
+	}
+	return manager
+}
+
+func (a *AgentService) evictOldProcessSessionsLocked(maxEvict int) {
+	for i := 0; i < maxEvict && len(a.processesAt) > 0; i++ {
+		var oldestSession string
+		var oldestTime time.Time
+		for sessionID, touchedAt := range a.processesAt {
+			if oldestSession == "" || touchedAt.Before(oldestTime) {
+				oldestSession = sessionID
+				oldestTime = touchedAt
+			}
+		}
+		delete(a.processesBySess, oldestSession)
+		delete(a.processesAt, oldestSession)
+	}
+}
+
 // BuildToolDefs builds function-calling tool definitions from the global registry.
-// Each command becomes one function named {tool}__{command}.
+// Each command becomes one function named {tool}__{command}, except stable aliases.
 func BuildToolDefs() []llmsvc.ToolDef {
-	var defs []llmsvc.ToolDef
-	for _, t := range tools.All() {
-		for _, cmd := range t.Commands() {
-			properties := make(map[string]any)
-			var required []string
-			for _, p := range cmd.Params {
-				prop := map[string]any{}
-				if schema, ok := p.Schema.(map[string]any); ok && len(schema) > 0 {
-					for k, v := range schema {
-						prop[k] = v
-					}
-				} else {
-					prop["type"] = "string"
-				}
-				prop["description"] = p.Description
-				if p.Example != "" {
-					prop["example"] = p.Example
-				}
-				properties[p.Name] = prop
-				if p.Required {
-					required = append(required, p.Name)
-				}
-			}
-
-			funcName := t.Name() + "__" + cmd.Name
-			desc := fmt.Sprintf("[%s] %s", t.Name(), cmd.Description)
-
-			params := map[string]any{
-				"type":       "object",
-				"properties": properties,
-			}
-			if len(required) > 0 {
-				params["required"] = required
-			}
-
-			defs = append(defs, llmsvc.ToolDef{
-				Name:        funcName,
-				Description: desc,
-				Parameters:  params,
-			})
-		}
-	}
-	sort.Slice(defs, func(i, j int) bool {
-		if defs[i].Name == defs[j].Name {
-			return defs[i].Description < defs[j].Description
-		}
-		return defs[i].Name < defs[j].Name
-	})
-	return defs
-}
-
-func buildRunSubagentToolDef() llmsvc.ToolDef {
-	return llmsvc.ToolDef{
-		Name:        constants.RunSubagentTool,
-		Description: "[subagent] Delegate bounded, concise, independent sub-tasks to a nested agent with isolated context (no chat history). Prefer this only when separate focused research, codebase inspection, validation, or summarization has a clear stopping point. The parent agent remains responsible for integrating the result.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"task": map[string]any{
-					"type":        "string",
-					"description": "Concrete self-contained task for the sub-agent, including the expected deliverable and boundaries.",
-				},
-				"title": map[string]any{
-					"type":        "string",
-					"description": "Short one-line title for the sub-agent task, about 80 characters or less.",
-				},
-				"context": map[string]any{
-					"type":        "string",
-					"description": "Optional compressed background from the main assistant; include only state the isolated sub-agent needs.",
-				},
-			},
-			"required": []string{"title", "task"},
-		},
-	}
-}
-
-func buildPlanCompleteToolDef() llmsvc.ToolDef {
-	return llmsvc.ToolDef{
-		Name:        constants.PlanCompleteTool,
-		Description: "[plan] Call this tool ONLY when your complete plan has been written in your response. This submits the plan for user review. You MUST call this tool when you finish writing your plan — without it the user will not see the review menu.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"title": map[string]any{
-					"type":        "string",
-					"description": "Short title for the plan. Omit to auto-detect from the first heading.",
-				},
-			},
-		},
-	}
-}
-
-func buildPlanStartToolDef() llmsvc.ToolDef {
-	return llmsvc.ToolDef{
-		Name:        constants.PlanStartTool,
-		Description: "[plan] Call this tool when you are ready to begin writing your plan. All text output BEFORE this call will appear as narration; all text AFTER will be the plan body. You MUST call this before writing your plan.",
-		Parameters: map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
-		},
-	}
-}
-
-func buildTodoUpdateToolDef() llmsvc.ToolDef {
-	return llmsvc.ToolDef{
-		Name:        constants.TodoUpdateTool,
-		Description: "[progress] Update the temporary todo list for the current response when the task has multiple steps. Keep items short. Use exactly one in_progress item while work remains; mark all completed when finished.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"items": map[string]any{
-					"type": "array",
-					"items": map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"id": map[string]any{
-								"type":        "string",
-								"description": "Stable short id for this todo item within the current response.",
-							},
-							"content": map[string]any{
-								"type":        "string",
-								"description": "Short action-oriented todo text.",
-							},
-							"status": map[string]any{
-								"type": "string",
-								"enum": []string{"pending", "in_progress", "completed"},
-							},
-						},
-						"required": []string{"id", "content", "status"},
-					},
-				},
-				"note": map[string]any{
-					"type":        "string",
-					"description": "Optional short note about current progress.",
-				},
-			},
-			"required": []string{"items"},
-		},
-	}
+	return tools.BuildRegistryToolDefs()
 }
 
 // buildRuntimeToolDefs merges built-in, skill, and MCP tools and returns MCP name mapping.
@@ -254,18 +206,15 @@ func (a *AgentService) buildRuntimeToolDefs(ctx context.Context, configs []domai
 	}
 	defs := BuildToolDefs()
 	metaByFunc := make(map[string]mcp.ToolMeta)
+	specialOpts := tools.SpecialToolOptions{IncludeRunSubagent: depth == 0}
 	if a.skillRuntime != nil {
 		skills, err := a.skillRuntime.ListSkills()
 		if err != nil {
 			return nil, nil, err
 		}
-		if def := a.skillRuntime.BuildActivateSkillToolDef(skills); def != nil {
-			defs = append(defs, *def)
-		}
+		specialOpts.Skills = skills
 	}
-	if depth == 0 {
-		defs = append(defs, buildRunSubagentToolDef())
-	}
+	defs = append(defs, tools.BuildSpecialToolDefs(specialOpts)...)
 	if a.mcp == nil || len(configs) == 0 {
 		return defs, metaByFunc, nil
 	}
@@ -377,15 +326,15 @@ func (a *AgentService) RunAgentLoop(
 	if opts.PlanMode {
 		toolDefs = filterPlanModeToolDefs(toolDefs)
 		mcpToolMeta = filterPlanModeMCPMeta(mcpToolMeta)
-		toolDefs = append(toolDefs, buildPlanStartToolDef())
-		toolDefs = append(toolDefs, buildPlanCompleteToolDef())
+		toolDefs = append(toolDefs, tools.BuildSpecialToolDefs(tools.SpecialToolOptions{IncludePlanTools: true})...)
 	}
-	toolDefs = append(toolDefs, buildTodoUpdateToolDef())
 	messages := make([]llmsvc.ChatMessage, len(contextMessages))
 	copy(messages, contextMessages)
 
 	var finalAnswer strings.Builder
 	readFileState := a.getSessionReadFileState(sessionID)
+	todoState := a.getSessionTodoState(sessionID)
+	processManager := a.getSessionProcessManager(sessionID)
 
 	provider := a.providerFactory.GetProvider(modelConfig.Provider)
 
@@ -484,22 +433,6 @@ func (a *AgentService) RunAgentLoop(
 		}
 
 		for toolIndex, tc := range result.ToolCalls {
-			if tc.Name == constants.TodoUpdateTool {
-				flushParallelJobs()
-				update, parseErr := parseTodoUpdate(tc.Arguments)
-				if parseErr != nil {
-					messages = appendToolMessage(messages, tc.ID, fmt.Sprintf("failed to update todo list: %s", parseErr.Error()))
-					continue
-				}
-				if callbacks.OnTodoUpdate != nil {
-					if err := callbacks.OnTodoUpdate(update); err != nil {
-						return "", fmt.Errorf("OnTodoUpdate callback failed: %w", err)
-					}
-				}
-				messages = appendToolMessage(messages, tc.ID, fmt.Sprintf("Todo list updated: %d item(s).", len(update.Items)))
-				continue
-			}
-
 			// Handle plan_start: signal transition from research to plan writing.
 			if tc.Name == constants.PlanStartTool {
 				flushParallelJobs()
@@ -549,13 +482,14 @@ func (a *AgentService) RunAgentLoop(
 
 			if tc.Name == constants.ActivateSkillTool && a.skillRuntime != nil {
 				flushParallelJobs()
-				skillName := strings.TrimSpace(fmt.Sprintf("%v", params["name"]))
-				content, _, activateErr := a.skillRuntime.ActivateSkill(skillName, activatedSkills)
-				if activateErr != nil {
-					messages = appendToolMessage(messages, tc.ID, fmt.Sprintf("failed to activate skill: %s", activateErr.Error()))
+				execCtx := tools.WithSkillRuntime(ctx, a.skillRuntime)
+				execCtx = tools.WithActivatedSkills(execCtx, activatedSkills)
+				execResult := executeToolCall(execCtx, constants.ActivateSkillTool, "activate", params)
+				if strings.TrimSpace(execResult.Error) != "" {
+					messages = appendToolMessage(messages, tc.ID, fmt.Sprintf("failed to activate skill: %s", execResult.Error))
 					continue
 				}
-				messages = appendToolMessage(messages, tc.ID, content)
+				messages = appendToolMessage(messages, tc.ID, execResult.Output)
 				continue
 			}
 
@@ -649,22 +583,45 @@ func (a *AgentService) RunAgentLoop(
 						childActivatedSkills := cloneActivatedSkills(activatedSkills)
 						activatedSkillsMu.Unlock()
 
-						execResult, err := a.executeRunSubagentTool(execCtx, modelConfig, sessionID, mcpConfigs, childActivatedSkills, callbacks, opts, tcCopy, invocationCopy, paramsCopy, opts.SubagentModelID, "")
+						runner := agentSubagentRunner{
+							agent:               a,
+							parentModel:         modelConfig,
+							sessionID:           sessionID,
+							mcpConfigs:          mcpConfigs,
+							activatedSkills:     childActivatedSkills,
+							callbacks:           callbacks,
+							opts:                opts,
+							toolCall:            tcCopy,
+							invocation:          invocationCopy,
+							userSubagentModelID: opts.SubagentModelID,
+						}
+						execCtx = tools.WithSubagentRunner(execCtx, runner)
+						execResult := a.executeInvocation(execCtx, tcCopy, invocationCopy, paramsCopy, sessionID, mcpConfigs)
 
 						activatedSkillsMu.Lock()
 						mergeActivatedSkills(activatedSkills, childActivatedSkills)
 						activatedSkillsMu.Unlock()
 
-						if err != nil {
-							return &tools.ExecuteResult{Error: err.Error()}
-						}
 						return execResult
 					}
 					if opts.SandboxPolicy != nil {
 						execCtx = sandboxpolicy.WithPolicy(execCtx, opts.SandboxPolicy)
 					}
 					execCtx = tools.WithReadFileState(execCtx, readFileState)
-					return a.executeInvocation(execCtx, tcCopy, invocationCopy, paramsCopy, sessionID, mcpConfigs)
+					execCtx = tools.WithTodoState(execCtx, todoState)
+					execCtx = tools.WithProcessManager(execCtx, processManager)
+					execCtx = tools.WithSkillRuntime(execCtx, a.skillRuntime)
+					execResult := a.executeInvocation(execCtx, tcCopy, invocationCopy, paramsCopy, sessionID, mcpConfigs)
+					if isSuccessfulBuiltinTodoUpdate(invocationCopy, execResult) && callbacks.OnTodoUpdate != nil {
+						update, parseErr := parseTodoUpdateParams(paramsCopy)
+						if parseErr != nil {
+							return &tools.ExecuteResult{Error: fmt.Sprintf("failed to parse todo update: %s", parseErr.Error())}
+						}
+						if err := callbacks.OnTodoUpdate(update); err != nil {
+							return &tools.ExecuteResult{Error: fmt.Sprintf("OnTodoUpdate callback failed: %s", err.Error())}
+						}
+					}
+					return execResult
 				},
 			})
 		}
@@ -681,19 +638,7 @@ func (a *AgentService) RunAgentLoop(
 
 // isPlanModeAllowedTool returns true if the tool function name is allowed in plan mode.
 func isPlanModeAllowedTool(funcName string) bool {
-	// Handle tools without __ separator (e.g. plan_start).
-	switch funcName {
-	case "plan_start", constants.RunSubagentTool, constants.TodoUpdateTool:
-		return true
-	}
-	// Handle tools with __ separator (e.g. web_search__search, file_read__read, plan_complete__submit).
-	toolName, _, _ := parseToolCallName(funcName)
-	switch toolName {
-	case "web_search", "file_read", "plan_complete":
-		return true
-	default:
-		return false
-	}
+	return tools.IsPlanModeAllowedFunction(funcName)
 }
 
 // filterPlanModeToolDefs keeps only read-only tool definitions for plan mode.
@@ -711,11 +656,7 @@ func filterPlanModeToolDefs(defs []llmsvc.ToolDef) []llmsvc.ToolDef {
 func filterPlanModeMCPMeta(meta map[string]mcp.ToolMeta) map[string]mcp.ToolMeta {
 	filtered := make(map[string]mcp.ToolMeta)
 	for k, v := range meta {
-		toolName, _, err := parseToolCallName(k)
-		if err != nil {
-			continue
-		}
-		if isPlanModeAllowedTool(toolName) {
+		if isPlanModeAllowedTool(k) {
 			filtered[k] = v
 		}
 	}
@@ -724,11 +665,11 @@ func filterPlanModeMCPMeta(meta map[string]mcp.ToolMeta) map[string]mcp.ToolMeta
 
 // parseToolCallName parses "{tool}__{command}" function names.
 func parseToolCallName(funcName string) (toolName, command string, err error) {
-	parts := strings.SplitN(funcName, "__", 2)
-	if len(parts) != 2 {
+	toolName, command, ok := tools.ParseFunctionName(funcName)
+	if !ok {
 		return "", "", fmt.Errorf("invalid tool function name format: %s", funcName)
 	}
-	return parts[0], parts[1], nil
+	return toolName, command, nil
 }
 
 // parseToolCallArgs normalizes tool arguments to string maps for built-in tools.
@@ -802,6 +743,27 @@ func parseTodoUpdate(arguments string) (TodoUpdate, error) {
 	return update, nil
 }
 
+func parseTodoUpdateParams(params map[string]any) (TodoUpdate, error) {
+	if params == nil {
+		return TodoUpdate{}, fmt.Errorf("arguments are required")
+	}
+	raw, err := json.Marshal(params)
+	if err != nil {
+		return TodoUpdate{}, fmt.Errorf("failed to encode params: %w", err)
+	}
+	return parseTodoUpdate(string(raw))
+}
+
+func isSuccessfulBuiltinTodoUpdate(invocation resolvedToolInvocation, result *tools.ExecuteResult) bool {
+	if invocation.toolName != "todo" || invocation.command != "update" {
+		return false
+	}
+	if result == nil {
+		return false
+	}
+	return strings.TrimSpace(result.Error) == ""
+}
+
 // executeToolCall runs a built-in tool command with uniform error handling.
 func executeToolCall(ctx context.Context, toolName, command string, params map[string]any) *tools.ExecuteResult {
 	t, ok := tools.Get(toolName)
@@ -834,7 +796,7 @@ func determineToolApprovalPolicy(toolName string, isMCP bool, approvalMode strin
 	if approvalMode == constants.ApprovalModeAuto {
 		return toolApprovalPolicyNone
 	}
-	if toolName != constants.ExecToolName && toolName != "file_edit" && toolName != "file_write" {
+	if !tools.IsApprovalSensitiveTool(toolName) {
 		return toolApprovalPolicyNone
 	}
 	if approvalMode == constants.ApprovalModeAutoReview {

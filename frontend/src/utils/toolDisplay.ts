@@ -1,3 +1,5 @@
+import type { ToolCallItem } from '@/api/chat'
+import type { ToolCallStatus } from '@/types/chat'
 import { fileToolSummaryFromParams, isFileToolName } from './fileToolDisplay'
 
 export interface ExecOutputPayload {
@@ -57,6 +59,28 @@ export interface ToolCallSummaryInput {
   subagentTitle?: string
   subagentTask?: string
 }
+
+export type LightweightToolKind = 'search' | 'web' | 'file_read'
+
+export interface LightweightToolDisplay {
+  toolCallId: string
+  toolName: string
+  command: string
+  kind: LightweightToolKind
+  label: string
+  target: string
+  status: ToolCallStatus
+  error: string
+  count: number
+}
+
+export type LightweightToolTimelineRow<T> =
+  | { kind: 'timeline'; entry: T }
+  | { kind: 'lightweight_tool_group'; id: string; items: LightweightToolDisplay[]; trailing: boolean }
+
+export type LightweightToolItemRow<T> =
+  | { kind: 'item'; item: T }
+  | { kind: 'lightweight_tool_group'; id: string; items: LightweightToolDisplay[]; trailing: boolean }
 
 export function parseAskQuestionsAnswers(raw: string): AskQuestionsAnswer[] | null {
   const parsed = tryParseJSON(raw)
@@ -237,6 +261,205 @@ function firstNonEmptyParam(params: Record<string, unknown> | undefined): { key:
   return null
 }
 
+function compactURL(raw: string): string {
+  try {
+    const parsed = new URL(raw)
+    return `${parsed.host}${parsed.pathname}`.replace(/\/$/, '') || parsed.host
+  } catch {
+    return raw
+  }
+}
+
+function arrayParamLength(value: unknown): number {
+  if (Array.isArray(value)) return value.length
+  if (typeof value !== 'string') return 0
+  const parsed = tryParseJSON(value)
+  return Array.isArray(parsed) ? parsed.length : 0
+}
+
+function parseArrayParam(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value
+  if (typeof value !== 'string') return []
+  const parsed = tryParseJSON(value)
+  return Array.isArray(parsed) ? parsed : []
+}
+
+function baseName(path: string): string {
+  const normalized = path.replace(/\\/g, '/').replace(/\/$/, '')
+  return normalized.split('/').pop() || path
+}
+
+export function isLightweightToolName(toolName?: string) {
+  const name = (toolName || '').trim().toLowerCase()
+  return name === 'http_request' ||
+    name === 'web_extract' ||
+    name === 'web_search' ||
+    name === 'file_read' ||
+    name === 'search_files' ||
+    name === 'search_file'
+}
+
+export function isLightweightToolCall(item: Pick<ToolCallItem, 'toolName'>) {
+  return isLightweightToolName(item.toolName)
+}
+
+function lightweightToolKind(toolName: string): LightweightToolKind {
+  const name = toolName.trim().toLowerCase()
+  if (name === 'file_read') return 'file_read'
+  if (name === 'web_extract' || name === 'http_request') return 'web'
+  return 'search'
+}
+
+function fileReadTargetAndCount(params: Record<string, unknown> | undefined): { target: string; count: number } {
+  const requests = parseArrayParam(params?.requests)
+  if (requests.length > 0) {
+    const paths = requests
+      .map((item) => isRecord(item) ? String(item.file_path ?? '').trim() : '')
+      .filter(Boolean)
+    return {
+      target: paths.length === 1 ? paths[0]! : `${requests.length} files`,
+      count: requests.length,
+    }
+  }
+  const filePath = normalizedParam(params, 'file_path')
+  return { target: filePath || 'file', count: 1 }
+}
+
+export function buildLightweightToolDisplay(item: Pick<ToolCallItem, 'toolCallId' | 'toolName' | 'command' | 'params' | 'status' | 'error'>): LightweightToolDisplay | null {
+  const toolName = item.toolName.trim().toLowerCase()
+  if (!isLightweightToolName(toolName)) return null
+  const params = item.params || {}
+  const kind = lightweightToolKind(toolName)
+  let target = ''
+  let label = ''
+  let count = 1
+
+  if (toolName === 'web_search') {
+    label = 'Search'
+    target = normalizedParam(params, 'query') || 'web'
+  } else if (toolName === 'search_files' || toolName === 'search_file') {
+    label = 'Search files'
+    target = normalizedParam(params, 'query') || normalizedParam(params, 'pattern') || 'files'
+    const path = normalizedParam(params, 'path')
+    const pattern = normalizedParam(params, 'pattern')
+    if (path) target += ` in ${path}`
+    if (pattern && !target.includes(pattern)) target += ` (${pattern})`
+  } else if (toolName === 'web_extract') {
+    label = 'Browse'
+    target = compactURL(normalizedParam(params, 'url')) || 'web page'
+  } else if (toolName === 'http_request') {
+    label = 'Request'
+    const method = normalizedParam(params, 'method').toUpperCase()
+    const url = compactURL(normalizedParam(params, 'url'))
+    target = [method, url].filter(Boolean).join(' ') || 'URL'
+  } else {
+    label = 'Read'
+    const read = fileReadTargetAndCount(params)
+    target = read.count === 1 ? baseName(read.target) : read.target
+    count = read.count
+  }
+
+  return {
+    toolCallId: item.toolCallId,
+    toolName: item.toolName,
+    command: item.command,
+    kind,
+    label,
+    target,
+    status: item.status,
+    error: item.error || '',
+    count,
+  }
+}
+
+export function buildLightweightToolGroupSummary(items: LightweightToolDisplay[], locale: 'zh' | 'en' = 'zh') {
+  let searches = 0
+  let webPages = 0
+  let files = 0
+  for (const item of items) {
+    if (item.kind === 'search') searches += 1
+    if (item.kind === 'web') webPages += 1
+    if (item.kind === 'file_read') files += Math.max(1, item.count)
+  }
+  const parts: string[] = []
+  if (locale === 'en') {
+    if (searches > 0) parts.push(`${searches} ${searches === 1 ? 'search' : 'searches'}`)
+    if (webPages > 0) parts.push(`${webPages} web ${webPages === 1 ? 'page' : 'pages'}`)
+    if (files > 0) parts.push(`${files} ${files === 1 ? 'file' : 'files'} read`)
+    return parts.join(', ')
+  }
+  if (searches > 0) parts.push(`搜索 ${searches} 次`)
+  if (webPages > 0) parts.push(`浏览 ${webPages} 个网页`)
+  if (files > 0) parts.push(`读取 ${files} 个文件`)
+  return parts.join('，')
+}
+
+export function buildLightweightToolTimelineRows<T extends { kind: string; id: string; toolCallId?: string }>(
+  timeline: T[],
+  getTool: (toolCallId: string) => ToolCallItem | undefined,
+): LightweightToolTimelineRow<T>[] {
+  const rows: LightweightToolTimelineRow<T>[] = []
+  let pending: LightweightToolDisplay[] = []
+
+  const flush = (trailing: boolean) => {
+    if (pending.length === 0) return
+    rows.push({
+      kind: 'lightweight_tool_group',
+      id: `lightweight-${pending.map((item) => item.toolCallId).join('-')}`,
+      items: pending,
+      trailing,
+    })
+    pending = []
+  }
+
+  for (const entry of timeline) {
+    if ((entry.kind === 'tool_start' || entry.kind === 'tool_result') && entry.toolCallId) {
+      const tool = getTool(entry.toolCallId)
+      const display = tool ? buildLightweightToolDisplay(tool) : null
+      if (display) {
+        if (entry.kind === 'tool_start') pending.push(display)
+        continue
+      }
+    }
+    flush(false)
+    rows.push({ kind: 'timeline', entry })
+  }
+  flush(true)
+  return rows
+}
+
+export function buildLightweightToolRows<T extends { id: string }>(
+  items: T[],
+  getTool: (item: T) => ToolCallItem | undefined,
+): LightweightToolItemRow<T>[] {
+  const rows: LightweightToolItemRow<T>[] = []
+  let pending: LightweightToolDisplay[] = []
+
+  const flush = (trailing: boolean) => {
+    if (pending.length === 0) return
+    rows.push({
+      kind: 'lightweight_tool_group',
+      id: `lightweight-${pending.map((item) => item.toolCallId).join('-')}`,
+      items: pending,
+      trailing,
+    })
+    pending = []
+  }
+
+  for (const item of items) {
+    const tool = getTool(item)
+    const display = tool ? buildLightweightToolDisplay(tool) : null
+    if (display) {
+      pending.push(display)
+      continue
+    }
+    flush(false)
+    rows.push({ kind: 'item', item })
+  }
+  flush(true)
+  return rows
+}
+
 export function getToolSummaryParamKeys(toolCall: ToolCallSummaryInput): string[] {
   const toolName = toolCall.toolName.trim().toLowerCase()
   const command = toolCall.command.trim().toLowerCase()
@@ -256,6 +479,25 @@ export function getToolSummaryParamKeys(toolCall: ToolCallSummaryInput): string[
   }
   if (toolName === 'web_search' && normalizedParam(params, 'query') !== '') {
     return ['query']
+  }
+  if (toolName === 'search_files') {
+    const keys: string[] = []
+    if (normalizedParam(params, 'query') !== '') keys.push('query')
+    if (normalizedParam(params, 'path') !== '') keys.push('path')
+    if (normalizedParam(params, 'pattern') !== '') keys.push('pattern')
+    if (keys.length > 0) return keys
+  }
+  if (toolName === 'web_extract' && normalizedParam(params, 'url') !== '') {
+    return ['url']
+  }
+  if (toolName === 'skills' && command === 'view' && normalizedParam(params, 'name') !== '') {
+    return ['name']
+  }
+  if (toolName === 'todo' && command === 'update' && normalizedParam(params, 'items') !== '') {
+    return ['items']
+  }
+  if (toolName === 'process' && (command === 'status' || command === 'stop') && normalizedParam(params, 'process_id') !== '') {
+    return ['process_id']
   }
   if (toolName === 'run_subagent') {
     const keys: string[] = []
@@ -289,6 +531,34 @@ export function buildToolCallSummary(toolCall: ToolCallSummaryInput): string {
   if (toolName === 'web_search') {
     const query = normalizedParam(params, 'query')
     return query
+  }
+  if (toolName === 'search_files') {
+    const query = normalizedParam(params, 'query')
+    if (!query) return ''
+    const path = normalizedParam(params, 'path')
+    const pattern = normalizedParam(params, 'pattern')
+    let summary = query
+    if (path) summary += ` in ${path}`
+    if (pattern) summary += ` (${pattern})`
+    return summary
+  }
+  if (toolName === 'web_extract') {
+    return compactURL(normalizedParam(params, 'url'))
+  }
+  if (toolName === 'skills') {
+    if (command === 'list') return 'List skills'
+    if (command === 'view') return normalizedParam(params, 'name')
+  }
+  if (toolName === 'todo') {
+    if (command === 'list') return 'List todos'
+    if (command === 'update') {
+      const count = arrayParamLength(params.items)
+      return count > 0 ? `Update ${count} ${count === 1 ? 'todo' : 'todos'}` : 'Update todos'
+    }
+  }
+  if (toolName === 'process') {
+    if (command === 'list') return 'List processes'
+    if (command === 'status' || command === 'stop') return normalizedParam(params, 'process_id')
   }
   if (toolName === 'run_subagent') {
     const title = String(toolCall.subagentTitle ?? '').trim() || normalizedParam(params, 'title')

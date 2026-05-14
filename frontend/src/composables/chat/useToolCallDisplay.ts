@@ -1,5 +1,5 @@
 import { computed, type MaybeRefOrGetter, toValue } from 'vue'
-import { mdiConsoleLine, mdiFileDocumentOutline, mdiFileEditOutline, mdiFilePlusOutline, mdiHelpCircleOutline, mdiSourceBranch, mdiWeb } from '@mdi/js'
+import { mdiBookOpenOutline, mdiCogPlayOutline, mdiConsoleLine, mdiFileDocumentOutline, mdiFileEditOutline, mdiFilePlusOutline, mdiFileSearchOutline, mdiFormatListChecks, mdiHelpCircleOutline, mdiSourceBranch, mdiWeb, mdiWebBox } from '@mdi/js'
 import type { ToolCallItem } from '../../api/chat'
 import { buildToolCallSummary } from '../../utils/toolDisplay'
 
@@ -8,6 +8,11 @@ type Translate = (key: string) => string
 export function getToolCallIcon(toolName: string) {
   if (toolName === 'run_subagent') return mdiSourceBranch
   if (toolName === 'http_request' || toolName === 'web_search') return mdiWeb
+  if (toolName === 'search_files') return mdiFileSearchOutline
+  if (toolName === 'web_extract') return mdiWebBox
+  if (toolName === 'skills') return mdiBookOpenOutline
+  if (toolName === 'todo') return mdiFormatListChecks
+  if (toolName === 'process') return mdiCogPlayOutline
   if (toolName === 'ask_questions') return mdiHelpCircleOutline
   if (toolName === 'file_read') return mdiFileDocumentOutline
   if (toolName === 'file_edit') return mdiFileEditOutline
@@ -19,6 +24,11 @@ export function getToolCallLabel(toolName: string, t: Translate) {
   if (toolName === 'exec') return t('toolExec')
   if (toolName === 'http_request') return t('toolHttpRequest')
   if (toolName === 'web_search') return t('toolWebSearch')
+  if (toolName === 'search_files') return t('toolSearchFiles')
+  if (toolName === 'web_extract') return t('toolWebExtract')
+  if (toolName === 'skills') return t('toolSkills')
+  if (toolName === 'todo') return t('toolTodo')
+  if (toolName === 'process') return t('toolProcess')
   if (toolName === 'run_subagent') return t('toolRunSubagent')
   if (toolName === 'ask_questions') return t('toolAskQuestions')
   if (toolName === 'file_read') return t('toolFileRead')

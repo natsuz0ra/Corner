@@ -2,6 +2,7 @@
 import { TransitionGroup, computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ToolCallInline from '@/components/chat/ToolCallInline.vue'
+import LightweightToolGroup from '@/components/chat/LightweightToolGroup.vue'
 import ThinkingBlock from '@/components/chat/ThinkingBlock.vue'
 import PlanBlock from '@/components/chat/PlanBlock.vue'
 import TypingDots from '@/components/chat/TypingDots.vue'
@@ -9,6 +10,7 @@ import { renderMarkdown } from '@/utils/markdown'
 import type { MessageItem } from '@/api/chat'
 import { useChatContext } from '@/composables/chat/useChatContext'
 import { getCollapsedReplyTimeline } from '@/utils/replyBatchBuilder'
+import { buildLightweightToolTimelineRows } from '@/utils/toolDisplay'
 import { useChatStore } from '@/stores/chat'
 
 const props = defineProps<{
@@ -31,6 +33,9 @@ const renderedTimeline = computed(() => (
     ? fullTimeline.value
     : fullTimeline.value.filter((entry) => collapsedEntryIds.value.has(entry.id))
 ))
+const renderedRows = computed(() =>
+  buildLightweightToolTimelineRows(renderedTimeline.value, (toolCallId) => ctx.getReplyToolItem(props.item.id, toolCallId)),
+)
 const pendingApprovalIds = computed(() => fullTimeline.value
   .filter((entry) => entry.kind === 'tool_start')
   .map((entry) => entry.kind === 'tool_start' ? ctx.getReplyToolItem(props.item.id, entry.toolCallId) : undefined)
@@ -126,39 +131,45 @@ onUnmounted(() => {
       class="assistant-reply-timeline"
     >
       <div
-        v-for="(entry, index) in renderedTimeline"
-        :key="entry.id"
+        v-for="(row, index) in renderedRows"
+        :key="row.kind === 'lightweight_tool_group' ? row.id : row.entry.id"
         class="assistant-reply-segment"
         :class="[
-          `assistant-reply-segment--${entry.kind}`,
+          `assistant-reply-segment--${row.kind === 'lightweight_tool_group' ? 'tool_start' : row.entry.kind}`,
           index === 0 ? 'assistant-reply-segment--first-visible' : '',
         ]"
       >
         <div class="assistant-reply-segment-inner">
-          <ThinkingBlock
-            v-if="entry.kind === 'thinking'"
-            :content="entry.content"
-            :done="entry.done"
-            :duration-ms="entry.durationMs"
+          <LightweightToolGroup
+            v-if="row.kind === 'lightweight_tool_group'"
+            :items="row.items"
+            :running-override="isStreaming && row.trailing"
           />
 
-          <div v-else-if="entry.kind === 'text'" class="bubble-markdown sb-text-primary" v-html="renderMarkdown(entry.content)" />
+          <ThinkingBlock
+            v-else-if="row.entry.kind === 'thinking'"
+            :content="row.entry.content"
+            :done="row.entry.done"
+            :duration-ms="row.entry.durationMs"
+          />
 
-          <div v-else-if="entry.kind === 'notice'" class="assistant-context-notice">
-            {{ entry.content }}
+          <div v-else-if="row.entry.kind === 'text'" class="bubble-markdown sb-text-primary" v-html="renderMarkdown(row.entry.content)" />
+
+          <div v-else-if="row.entry.kind === 'notice'" class="assistant-context-notice">
+            {{ row.entry.content }}
           </div>
 
           <PlanBlock
-            v-else-if="entry.kind === 'plan'"
-            :content="entry.content"
-            :generating="entry.generating ?? false"
+            v-else-if="row.entry.kind === 'plan'"
+            :content="row.entry.content"
+            :generating="row.entry.generating ?? false"
             :active-target="currentSessionHasPendingPlanConfirmation && index === lastReadyPlanIndex"
           />
 
           <ToolCallInline
-            v-else-if="entry.kind === 'tool_start' && ctx.getReplyToolItem(item.id, entry.toolCallId)"
-            :item="ctx.getReplyToolItem(item.id, entry.toolCallId)!"
-            :nested-tools="ctx.getSubagentChildTools(item.id, entry.toolCallId)"
+            v-else-if="row.entry.kind === 'tool_start' && ctx.getReplyToolItem(item.id, row.entry.toolCallId)"
+            :item="ctx.getReplyToolItem(item.id, row.entry.toolCallId)!"
+            :nested-tools="ctx.getSubagentChildTools(item.id, row.entry.toolCallId)"
             @approve="ctx.approveToolCall($event, true)"
             @reject="ctx.approveToolCall($event, false)"
           />
