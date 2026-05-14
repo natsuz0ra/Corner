@@ -11,7 +11,6 @@ import (
 
 	"slimebot/internal/constants"
 	"slimebot/internal/domain"
-	llmsvc "slimebot/internal/services/llm"
 )
 
 // SkillRuntimeService manages skill directory injection, activation, and runtime deletion.
@@ -169,39 +168,6 @@ func (s *SkillRuntimeService) BuildCatalogPrompt() (string, []domain.Skill, erro
 	s.catalogMu.Unlock()
 
 	return prompt, items, nil
-}
-
-// BuildActivateSkillToolDef builds the activate_skill tool definition for the model.
-func (s *SkillRuntimeService) BuildActivateSkillToolDef(skills []domain.Skill) *llmsvc.ToolDef {
-	if len(skills) == 0 {
-		return nil
-	}
-	enumValues := make([]any, 0, len(skills))
-	for _, item := range skills {
-		if !item.Enabled {
-			continue
-		}
-		enumValues = append(enumValues, item.ID)
-	}
-	if len(enumValues) == 0 {
-		return nil
-	}
-
-	return &llmsvc.ToolDef{
-		Name:        "activate_skill",
-		Description: "Load a skill guide by name. Call only when the task matches the skill description.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"name": map[string]any{
-					"type":        "string",
-					"description": "Skill name or ID to activate.",
-					"enum":        enumValues,
-				},
-			},
-			"required": []string{"name"},
-		},
-	}
 }
 
 // ToolCacheKey returns a compact key for skill tool definition caching.

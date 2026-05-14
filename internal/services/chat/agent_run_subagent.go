@@ -15,6 +15,45 @@ import (
 
 const maxSubagentTitleRunes = 80
 
+type agentSubagentRunner struct {
+	agent               *AgentService
+	parentModel         llmsvc.ModelRuntimeConfig
+	sessionID           string
+	mcpConfigs          []domain.MCPConfig
+	activatedSkills     map[string]struct{}
+	callbacks           AgentCallbacks
+	opts                AgentLoopOptions
+	toolCall            llmsvc.ToolCallInfo
+	invocation          resolvedToolInvocation
+	userSubagentModelID string
+	preamble            string
+}
+
+func (r agentSubagentRunner) RunSubagent(ctx context.Context, request tools.SubagentRunRequest) (*tools.ExecuteResult, error) {
+	params := request.Params
+	if params == nil {
+		params = map[string]any{
+			"title":   request.Title,
+			"task":    request.Task,
+			"context": request.Context,
+		}
+	}
+	return r.agent.executeRunSubagentTool(
+		ctx,
+		r.parentModel,
+		r.sessionID,
+		r.mcpConfigs,
+		r.activatedSkills,
+		r.callbacks,
+		r.opts,
+		r.toolCall,
+		r.invocation,
+		params,
+		r.userSubagentModelID,
+		r.preamble,
+	)
+}
+
 func normalizeSubagentTitle(title, task string) string {
 	normalized := strings.Join(strings.Fields(strings.TrimSpace(title)), " ")
 	if normalized == "" {

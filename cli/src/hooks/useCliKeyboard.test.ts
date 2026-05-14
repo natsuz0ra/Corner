@@ -4,6 +4,7 @@ import type { Key } from "ink";
 import { createInitialState } from "../reducer.js";
 import {
   getApprovalKeyAction,
+  handleStreamingChatShortcut,
   getModelEditorFieldNavigationAction,
   getQuestionAnswerConfirmEnterAction,
   getQuestionAnswerQuestionKeyActions,
@@ -158,6 +159,39 @@ test("approval keyboard accepts lowercase shortcuts", () => {
     kind: "settle",
     items: [{ toolCallId: "call-a", approved: false }],
   });
+});
+
+test("streaming chat handles Ctrl+O and raw Ctrl+O globally", () => {
+  const state = {
+    ...createInitialState("http://127.0.0.1:8080", "token", "/tmp", "1.0.0"),
+    view: "chat" as const,
+    streaming: true,
+  };
+  const actions: string[] = [];
+  const dispatch = (action: { type: string }) => {
+    actions.push(action.type);
+    return action as any;
+  };
+
+  assert.equal(handleStreamingChatShortcut(state, "o", key({ ctrl: true }), dispatch as any), true);
+  assert.equal(handleStreamingChatShortcut(state, String.fromCharCode(15), key(), dispatch as any), true);
+  assert.equal(actions.filter((action) => action === "TOGGLE_TOOL_OUTPUT").length, 2);
+});
+
+test("streaming chat shortcut does not grab Ctrl+C stop handling", () => {
+  const state = {
+    ...createInitialState("http://127.0.0.1:8080", "token", "/tmp", "1.0.0"),
+    view: "chat" as const,
+    streaming: true,
+  };
+  const actions: string[] = [];
+  const dispatch = (action: { type: string }) => {
+    actions.push(action.type);
+    return action as any;
+  };
+
+  assert.equal(handleStreamingChatShortcut(state, "c", key({ ctrl: true }), dispatch as any), false);
+  assert.deepEqual(actions, []);
 });
 
 test("question answer confirm enter edits selected answer before submit row", () => {

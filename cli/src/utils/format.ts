@@ -1,5 +1,6 @@
 import wrapAnsi from "wrap-ansi";
 import { fileToolSummaryFromParams, isFileToolName } from "./fileToolDisplay.js";
+import type { TimelineEntry, ToolCallStatus } from "../types.js";
 
 /** Formats tool invocation text shown in timeline rows. */
 export function formatToolInvocation(toolName: string, command: string): string {
@@ -144,6 +145,26 @@ export interface ExecCompactSummary {
   preview: string[];
 }
 
+export interface WebExtractOutput {
+  url: string;
+  title: string;
+  content: string;
+}
+
+export type LightweightToolKind = "search" | "web" | "file_read";
+
+export interface LightweightToolDisplay {
+  toolCallId: string;
+  toolName: string;
+  command: string;
+  kind: LightweightToolKind;
+  label: string;
+  target: string;
+  status: ToolCallStatus;
+  error: string;
+  count: number;
+}
+
 function isJSONObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -156,6 +177,144 @@ function tryParseJSON(raw: string): unknown | null {
   } catch {
     return null;
   }
+}
+
+function parseArrayParam(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return [];
+  const parsed = tryParseJSON(value);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+function compactURL(raw: string): string {
+  try {
+    const parsed = new URL(raw);
+    return `${parsed.host}${parsed.pathname}`.replace(/\/$/, "") || parsed.host;
+  } catch {
+    return raw;
+  }
+}
+
+function baseName(path: string): string {
+  const normalized = path.replace(/\\/g, "/").replace(/\/$/, "");
+  return normalized.split("/").pop() || path;
+}
+
+function sanitizeLightweightError(toolName: string, error: string): string {
+  const trimmed = error.trim();
+  if (!trimmed) return "";
+
+  const name = toolName.trim().toLowerCase();
+  if (name !== "web_extract" && name !== "http_request") return trimmed;
+
+  const parsed = tryParseJSON(trimmed);
+  if (isJSONObject(parsed)) {
+    const message = String(parsed.error ?? parsed.message ?? parsed.statusText ?? "").trim();
+    const status = String(parsed.status ?? parsed.status_code ?? "").trim();
+    return [status, message].filter(Boolean).join(" ").trim() || "request failed";
+  }
+
+  const lines = trimmed.split(/\r?\n/);
+  const bodyStart = lines.findIndex((line) => /^\s*(body|content|response body)\s*:/i.test(line));
+  const visibleLines = bodyStart >= 0 ? lines.slice(0, bodyStart) : lines.slice(0, 1);
+  const visible = visibleLines.join("\n").trim();
+  if (visible) return visible;
+  return "request failed";
+}
+
+export function isLightweightToolName(toolName?: string): boolean {
+  const name = (toolName || "").trim().toLowerCase();
+  return name === "http_request" ||
+    name === "web_extract" ||
+    name === "web_search" ||
+    name === "file_read" ||
+    name === "search_files" ||
+    name === "search_file";
+}
+
+function lightweightToolKind(toolName: string): LightweightToolKind {
+  const name = toolName.trim().toLowerCase();
+  if (name === "file_read") return "file_read";
+  if (name === "web_extract" || name === "http_request") return "web";
+  return "search";
+}
+
+function fileReadTargetAndCount(params: Record<string, unknown> | undefined): { target: string; count: number } {
+  const requests = parseArrayParam(params?.requests);
+  if (requests.length > 0) {
+    const paths = requests
+      .map((item) => isJSONObject(item) ? String(item.file_path ?? "").trim() : "")
+      .filter(Boolean);
+    return {
+      target: paths.length === 1 ? paths[0]! : `${requests.length} files`,
+      count: requests.length,
+    };
+  }
+  const filePath = normalizedParam(params, "file_path");
+  return { target: filePath || "file", count: 1 };
+}
+
+export function buildLightweightToolDisplay(entry: TimelineEntry): LightweightToolDisplay | null {
+  const toolName = (entry.toolName || "").trim().toLowerCase();
+  if (!isLightweightToolName(toolName)) return null;
+  const params = entry.params || {};
+  const kind = lightweightToolKind(toolName);
+  let target = "";
+  let label = "";
+  let count = 1;
+
+  if (toolName === "web_search") {
+    label = "Search";
+    target = normalizedParam(params, "query") || "web";
+  } else if (toolName === "search_files" || toolName === "search_file") {
+    label = "Search files";
+    target = normalizedParam(params, "query") || normalizedParam(params, "pattern") || "files";
+    const path = normalizedParam(params, "path");
+    const pattern = normalizedParam(params, "pattern");
+    if (path) target += ` in ${path}`;
+    if (pattern && !target.includes(pattern)) target += ` (${pattern})`;
+  } else if (toolName === "web_extract") {
+    label = "Browse";
+    target = compactURL(normalizedParam(params, "url")) || "web page";
+  } else if (toolName === "http_request") {
+    label = "Request";
+    const method = normalizedParam(params, "method").toUpperCase();
+    const url = compactURL(normalizedParam(params, "url"));
+    target = [method, url].filter(Boolean).join(" ") || "URL";
+  } else {
+    label = "Read";
+    const read = fileReadTargetAndCount(params);
+    target = read.count === 1 ? baseName(read.target) : read.target;
+    count = read.count;
+  }
+
+  return {
+    toolCallId: entry.toolCallId || "",
+    toolName: entry.toolName || "",
+    command: entry.command || "",
+    kind,
+    label,
+    target,
+    status: (entry.status || "completed") as ToolCallStatus,
+    error: sanitizeLightweightError(toolName, entry.error || ""),
+    count,
+  };
+}
+
+export function buildLightweightToolGroupSummary(items: LightweightToolDisplay[]): string {
+  let searches = 0;
+  let webPages = 0;
+  let files = 0;
+  for (const item of items) {
+    if (item.kind === "search") searches += 1;
+    if (item.kind === "web") webPages += 1;
+    if (item.kind === "file_read") files += Math.max(1, item.count);
+  }
+  const parts: string[] = [];
+  if (searches > 0) parts.push(`${searches} ${searches === 1 ? "search" : "searches"}`);
+  if (webPages > 0) parts.push(`${webPages} web ${webPages === 1 ? "page" : "pages"}`);
+  if (files > 0) parts.push(`${files} ${files === 1 ? "file" : "files"} read`);
+  return parts.join(", ");
 }
 
 function decodeCommonEscapes(raw: string): string {
@@ -399,6 +558,41 @@ export function formatToolExecutionCompactOutput(toolName: string, command: stri
   }
 
   return formatToolExecutionOutput(toolName, command, raw);
+}
+
+export function parseWebExtractOutput(raw: string): WebExtractOutput | null {
+  const normalized = formatToolTextValue(raw);
+  const lines = normalized.replace(/\r\n/g, "\n").split("\n");
+  const urlLine = lines.find((line) => line.startsWith("URL:"));
+  const contentIndex = lines.findIndex((line) => line.startsWith("Content:"));
+  if (!urlLine || contentIndex < 0) return null;
+
+  const url = urlLine.slice("URL:".length).trim();
+  if (!url) return null;
+
+  const titleLine = lines.slice(0, contentIndex).find((line) => line.startsWith("Title:"));
+  const title = titleLine ? titleLine.slice("Title:".length).trim() : "";
+  const contentLine = lines[contentIndex] || "";
+  const inlineContent = contentLine.slice("Content:".length).trim();
+  const contentTail = lines.slice(contentIndex + 1).join("\n").trim();
+  const content = [inlineContent, contentTail].filter(Boolean).join("\n").trim();
+  return { url, title, content };
+}
+
+export function formatWebExtractCompactOutput(raw: string, maxContentLength = 220): string {
+  const parsed = parseWebExtractOutput(raw);
+  if (!parsed) {
+    const fallback = truncateText(formatToolTextValue(raw), maxContentLength);
+    return `${fallback}\n(ctrl+o to expand)`;
+  }
+
+  const lines = [`URL: ${parsed.url}`];
+  if (parsed.title) {
+    lines.push(`Title: ${parsed.title}`);
+  }
+  lines.push(`Content: ${truncateText(parsed.content, maxContentLength)}`);
+  lines.push("(ctrl+o to expand)");
+  return lines.join("\n");
 }
 
 /** Truncates multi-line text into a single-line preview. */

@@ -114,6 +114,30 @@ test("sandbox menu persists CLI-specific sandbox settings", () => {
   assert.doesNotMatch(source, /updateSettings\(\{ sandboxNetworkEnabled: action\.enabled \}\)/);
 });
 
+test("CLI entry lets the app handle Ctrl+C shortcuts", () => {
+  const source = readFileSync(new URL("./index.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /exitOnCtrlC:\s*false/);
+});
+
+test("session redraw uses Ink frame reset instead of raw terminal clearing", () => {
+  const source = readFileSync(new URL("./app.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /forceRedraw\(stdout,\s*\{\s*clearScrollback:\s*true\s*\}\)/);
+  assert.match(source, /forceRedraw\(stdout,\s*\{\s*clearScrollback:\s*true\s*\}\)[\s\S]*clearScreen\(\)/);
+  assert.doesNotMatch(source, /const clearScreenDeferred = useCallback/);
+});
+
+test("internal Ink forceRedraw keeps scrollback optional", () => {
+  const inkSource = readFileSync(new URL("../packages/ink/src/ink/ink.tsx", import.meta.url), "utf8");
+  const rootSource = readFileSync(new URL("../packages/ink/src/ink/root.ts", import.meta.url), "utf8");
+
+  assert.match(inkSource, /export type ForceRedrawOptions = \{\s*clearScrollback\?: boolean\s*\}/);
+  assert.match(inkSource, /options\.clearScrollback \? clearTerminal : ERASE_SCREEN \+ CURSOR_HOME/);
+  assert.match(rootSource, /options: ForceRedrawOptions = \{\}/);
+  assert.match(rootSource, /instance\.forceRedraw\(options\)/);
+});
+
 test("mapHistoryMessages preserves parentToolCallId for nested tool calls", () => {
   const messages: Message[] = [
     {

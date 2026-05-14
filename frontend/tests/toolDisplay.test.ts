@@ -4,8 +4,12 @@ import { resolve } from 'node:path'
 import test from 'node:test'
 import type { ToolCallItem } from '../src/api/chat'
 import {
+  buildLightweightToolGroupSummary,
+  buildLightweightToolTimelineRows,
+  buildLightweightToolDisplay,
   buildToolCallSummary,
   filterToolParamsForDetail,
+  isLightweightToolCall,
 } from '../src/utils/toolDisplay'
 import {
   buildFileToolDisplay,
@@ -41,6 +45,163 @@ test('buildToolCallSummary uses query and http request fields', () => {
     buildToolCallSummary(tool({ toolName: 'http_request', command: 'request', params: { method: 'post', url: 'https://example.test/api' } })),
     'POST https://example.test/api',
   )
+})
+
+test('buildLightweightToolDisplay summarizes activity without output body', () => {
+  const display = buildLightweightToolDisplay(tool({
+    toolName: 'web_search',
+    command: 'search',
+    params: { query: 'SlimeBot latest' },
+    status: 'completed',
+    output: '{"results":[{"title":"Hidden body","url":"https://example.test","content":"do not show"}]}',
+  }))
+
+  assert.equal(display?.kind, 'search')
+  assert.equal(display?.target, 'SlimeBot latest')
+  assert.equal(display?.status, 'completed')
+  assert.equal(display?.error, '')
+  assert.equal(JSON.stringify(display).includes('do not show'), false)
+})
+
+test('buildLightweightToolTimelineRows merges consecutive lightweight tools only', () => {
+  const calls = [
+    tool({ toolCallId: 'search-1', toolName: 'web_search', command: 'search', params: { query: 'SlimeBot latest' }, status: 'completed' }),
+    tool({ toolCallId: 'web-1', toolName: 'web_extract', command: 'extract', params: { url: 'https://example.test/docs' }, status: 'completed' }),
+    tool({ toolCallId: 'read-1', toolName: 'file_read', command: 'read', params: { file_path: 'frontend/src/App.vue' }, status: 'completed', output: 'secret file body' }),
+    tool({ toolCallId: 'edit-1', toolName: 'file_edit', command: 'edit', params: { file_path: 'frontend/src/App.vue', old_string: 'a', new_string: 'b' }, status: 'completed' }),
+    tool({ toolCallId: 'search-2', toolName: 'search_files', command: 'search', params: { query: 'ToolCall', path: 'frontend/src' }, status: 'error', error: 'permission denied', output: 'hidden search hits' }),
+  ]
+  const rows = buildLightweightToolTimelineRows(
+    [
+      { id: 's1', kind: 'tool_start' as const, toolCallId: 'search-1' },
+      { id: 'w1', kind: 'tool_start' as const, toolCallId: 'web-1' },
+      { id: 'r1', kind: 'tool_start' as const, toolCallId: 'read-1' },
+      { id: 'e1', kind: 'tool_start' as const, toolCallId: 'edit-1' },
+      { id: 's2', kind: 'tool_start' as const, toolCallId: 'search-2' },
+    ],
+    (id) => calls.find((item) => item.toolCallId === id),
+  )
+
+  assert.deepEqual(rows.map((row) => row.kind), ['lightweight_tool_group', 'timeline', 'lightweight_tool_group'])
+  assert.equal(rows[0]!.kind, 'lightweight_tool_group')
+  assert.equal(rows[0]!.kind === 'lightweight_tool_group' ? rows[0].items.length : 0, 3)
+  assert.equal(rows[0]!.kind === 'lightweight_tool_group' ? rows[0].trailing : true, false)
+  assert.equal(rows[1]!.kind === 'timeline' ? rows[1].entry.toolCallId : '', 'edit-1')
+  assert.equal(rows[2]!.kind, 'lightweight_tool_group')
+  assert.equal(rows[2]!.kind === 'lightweight_tool_group' ? rows[2].items[0]!.error : '', 'permission denied')
+  assert.equal(rows[2]!.kind === 'lightweight_tool_group' ? rows[2].trailing : false, true)
+  assert.equal(JSON.stringify(rows).includes('secret file body'), false)
+  assert.equal(JSON.stringify(rows).includes('hidden search hits'), false)
+})
+
+test('buildLightweightToolTimelineRows ignores lightweight results while grouping consecutive tools', () => {
+  const calls = [
+    tool({ toolCallId: 'search-1', toolName: 'web_search', command: 'search', params: { query: 'alpha' }, status: 'completed', output: 'hidden alpha body' }),
+    tool({ toolCallId: 'search-2', toolName: 'web_search', command: 'search', params: { query: 'beta' }, status: 'completed', output: 'hidden beta body' }),
+  ]
+  const rows = buildLightweightToolTimelineRows(
+    [
+      { id: 's1', kind: 'tool_start' as const, toolCallId: 'search-1' },
+      { id: 'r1', kind: 'tool_result' as const, toolCallId: 'search-1' },
+      { id: 's2', kind: 'tool_start' as const, toolCallId: 'search-2' },
+      { id: 'r2', kind: 'tool_result' as const, toolCallId: 'search-2' },
+    ],
+    (id) => calls.find((item) => item.toolCallId === id),
+  )
+
+  assert.deepEqual(rows.map((row) => row.kind), ['lightweight_tool_group'])
+  const group = rows[0]!
+  assert.equal(group.kind, 'lightweight_tool_group')
+  assert.equal(group.kind === 'lightweight_tool_group' ? group.items.length : 0, 2)
+  assert.equal(group.kind === 'lightweight_tool_group' ? buildLightweightToolGroupSummary(group.items, 'zh') : '', '搜索 2 次')
+  assert.equal(JSON.stringify(rows).includes('tool_result'), false)
+  assert.equal(JSON.stringify(rows).includes('hidden alpha body'), false)
+  assert.equal(JSON.stringify(rows).includes('hidden beta body'), false)
+})
+
+test('buildLightweightToolTimelineRows keeps non-lightweight results as group breakers', () => {
+  const calls = [
+    tool({ toolCallId: 'search-1', toolName: 'web_search', command: 'search', params: { query: 'alpha' }, status: 'completed' }),
+    tool({ toolCallId: 'exec-1', toolName: 'exec', command: 'run', params: { command: 'npm test' }, status: 'completed', output: 'ok' }),
+    tool({ toolCallId: 'search-2', toolName: 'web_search', command: 'search', params: { query: 'beta' }, status: 'completed' }),
+  ]
+  const rows = buildLightweightToolTimelineRows(
+    [
+      { id: 's1', kind: 'tool_start' as const, toolCallId: 'search-1' },
+      { id: 'r1', kind: 'tool_result' as const, toolCallId: 'search-1' },
+      { id: 'e1', kind: 'tool_start' as const, toolCallId: 'exec-1' },
+      { id: 'er1', kind: 'tool_result' as const, toolCallId: 'exec-1' },
+      { id: 's2', kind: 'tool_start' as const, toolCallId: 'search-2' },
+      { id: 'r2', kind: 'tool_result' as const, toolCallId: 'search-2' },
+    ],
+    (id) => calls.find((item) => item.toolCallId === id),
+  )
+
+  assert.deepEqual(rows.map((row) => row.kind), ['lightweight_tool_group', 'timeline', 'timeline', 'lightweight_tool_group'])
+  assert.equal(rows[1]!.kind === 'timeline' ? rows[1].entry.id : '', 'e1')
+  assert.equal(rows[2]!.kind === 'timeline' ? rows[2].entry.id : '', 'er1')
+  assert.equal(rows[0]!.kind === 'lightweight_tool_group' ? rows[0].trailing : true, false)
+  assert.equal(rows[3]!.kind === 'lightweight_tool_group' ? rows[3].trailing : false, true)
+})
+
+test('buildLightweightToolTimelineRows marks only the unbroken final group as trailing', () => {
+  const calls = [
+    tool({ toolCallId: 'search-1', toolName: 'web_search', command: 'search', params: { query: 'alpha' }, status: 'completed' }),
+    tool({ toolCallId: 'search-2', toolName: 'web_search', command: 'search', params: { query: 'beta' }, status: 'completed' }),
+  ]
+  const rows = buildLightweightToolTimelineRows(
+    [
+      { id: 's1', kind: 'tool_start' as const, toolCallId: 'search-1' },
+      { id: 'text-1', kind: 'text' as const, content: 'next content' },
+      { id: 's2', kind: 'tool_start' as const, toolCallId: 'search-2' },
+    ],
+    (id) => calls.find((item) => item.toolCallId === id),
+  )
+
+  assert.deepEqual(rows.map((row) => row.kind), ['lightweight_tool_group', 'timeline', 'lightweight_tool_group'])
+  assert.equal(rows[0]!.kind === 'lightweight_tool_group' ? rows[0].trailing : true, false)
+  assert.equal(rows[2]!.kind === 'lightweight_tool_group' ? rows[2].trailing : false, true)
+})
+
+test('buildLightweightToolGroupSummary counts activity categories', () => {
+  const items = [
+    buildLightweightToolDisplay(tool({ toolName: 'web_search', command: 'search', params: { query: 'a' } }))!,
+    buildLightweightToolDisplay(tool({ toolName: 'search_files', command: 'search', params: { query: 'b' } }))!,
+    buildLightweightToolDisplay(tool({ toolName: 'web_extract', command: 'extract', params: { url: 'https://example.test' } }))!,
+    buildLightweightToolDisplay(tool({ toolName: 'http_request', command: 'request', params: { method: 'GET', url: 'https://api.test' } }))!,
+    buildLightweightToolDisplay(tool({ toolName: 'file_read', command: 'read', params: { requests: [{ file_path: 'a.ts' }, { file_path: 'b.ts' }] } }))!,
+  ]
+
+  assert.equal(buildLightweightToolGroupSummary(items, 'zh'), '搜索 2 次，浏览 2 个网页，读取 2 个文件')
+  assert.equal(buildLightweightToolGroupSummary(items, 'en'), '2 searches, 2 web pages, 2 files read')
+})
+
+test('isLightweightToolCall excludes file edits and writes', () => {
+  assert.equal(isLightweightToolCall(tool({ toolName: 'file_read', command: 'read' })), true)
+  assert.equal(isLightweightToolCall(tool({ toolName: 'search_file', command: 'search' })), true)
+  assert.equal(isLightweightToolCall(tool({ toolName: 'file_edit', command: 'edit' })), false)
+  assert.equal(isLightweightToolCall(tool({ toolName: 'file_write', command: 'write' })), false)
+  assert.equal(isLightweightToolCall(tool({ toolName: 'exec', command: 'run' })), false)
+})
+
+test('buildToolCallSummary formats newly added tools compactly', () => {
+  assert.equal(
+    buildToolCallSummary(tool({ toolName: 'search_files', command: 'search', params: { query: 'BuildToolDefs', path: 'internal/tools', pattern: '*.go' } })),
+    'BuildToolDefs in internal/tools (*.go)',
+  )
+  assert.equal(
+    buildToolCallSummary(tool({ toolName: 'web_extract', command: 'extract', params: { url: 'https://example.test/docs/intro?utm=long' } })),
+    'example.test/docs/intro',
+  )
+  assert.equal(buildToolCallSummary(tool({ toolName: 'skills', command: 'list', params: {} })), 'List skills')
+  assert.equal(buildToolCallSummary(tool({ toolName: 'skills', command: 'view', params: { name: 'imagegen' } })), 'imagegen')
+  assert.equal(buildToolCallSummary(tool({ toolName: 'todo', command: 'list', params: {} })), 'List todos')
+  assert.equal(
+    buildToolCallSummary(tool({ toolName: 'todo', command: 'update', params: { items: [{ id: 'a' }, { id: 'b' }] } })),
+    'Update 2 todos',
+  )
+  assert.equal(buildToolCallSummary(tool({ toolName: 'process', command: 'list', params: {} })), 'List processes')
+  assert.equal(buildToolCallSummary(tool({ toolName: 'process', command: 'status', params: { process_id: 'proc-1' } })), 'proc-1')
 })
 
 test('buildToolCallSummary uses file tool paths and operations', () => {
@@ -118,6 +279,18 @@ test('filterToolParamsForDetail removes params already shown in summary', () => 
   assert.deepEqual(
     filterToolParamsForDetail(tool({ toolName: 'web_search', command: 'search', params: { query: 'SlimeBot latest' } })),
     {},
+  )
+  assert.deepEqual(
+    filterToolParamsForDetail(tool({ toolName: 'search_files', command: 'search', params: { query: 'BuildToolDefs', path: 'internal/tools', pattern: '*.go', max_matches: 20 } })),
+    { max_matches: 20 },
+  )
+  assert.deepEqual(
+    filterToolParamsForDetail(tool({ toolName: 'web_extract', command: 'extract', params: { url: 'https://example.test/docs/intro' } })),
+    {},
+  )
+  assert.deepEqual(
+    filterToolParamsForDetail(tool({ toolName: 'process', command: 'stop', params: { process_id: 'proc-1', reason: 'cleanup' } })),
+    { reason: 'cleanup' },
   )
   assert.deepEqual(
     filterToolParamsForDetail(tool({
@@ -261,4 +434,54 @@ test('ToolCallInline routes file tools through FileToolDisplay', () => {
   assert.match(source, /showResult && !isFileToolCall/)
   assert.doesNotMatch(readFileSync(resolve(import.meta.dirname, '../src/components/chat/FileToolDisplay.vue'), 'utf8'), /file-tool-diff-guide|├─|└─/)
   assert.doesNotMatch(readFileSync(resolve(import.meta.dirname, '../src/components/chat/FileToolDisplay.vue'), 'utf8'), /file-tool-diff-separator\">\\.\\.\\.</)
+})
+
+test('LightweightToolGroup left-aligns expanded items and uses status icons', () => {
+  const source = readFileSync(resolve(import.meta.dirname, '../src/components/chat/LightweightToolGroup.vue'), 'utf8')
+
+  assert.match(source, /import \{ mdiChevronDown, mdiFileSearchOutline \} from '@mdi\/js'/)
+  assert.match(source, /getToolCallLabel\(toolName === 'search_file' \? 'search_files' : toolName/)
+  assert.match(source, /\{\{ toolLabel\(item\.toolName\) \}\}/)
+  assert.doesNotMatch(source, /<span class="light-tool-item-label">\{\{ item\.label \}\}<\/span>/)
+  assert.match(source, /statusSymbol\(item\.status\)/)
+  assert.match(source, /return '\\u2713'/)
+  assert.match(source, /return '\\u2717'/)
+  assert.match(source, /var\(--tool-success-dot/)
+  assert.match(source, /var\(--tool-error-dot/)
+  assert.match(source, /padding: 0 10px 10px 10px;/)
+  assert.match(source, /grid-template-columns: 18px auto minmax\(0, 1fr\);/)
+  assert.match(source, /<Transition name="tool-subagent-expand">/)
+  assert.match(source, /runningOverride/)
+  assert.match(source, /transition: opacity 180ms ease, max-height 250ms ease;/)
+  assert.match(source, /transition: opacity 120ms ease, max-height 180ms ease;/)
+  assert.match(source, /\.tool-subagent-expand-enter-active,[\s\S]*\.tool-subagent-expand-leave-active\s*\{[\s\S]*overflow: hidden;/)
+  assert.match(source, /linear-gradient\(/)
+  assert.doesNotMatch(source, /background: var\(--card-bg\);/)
+  assert.match(source, /@media \(prefers-reduced-motion: reduce\)/)
+  assert.doesNotMatch(source, /padding: 0 10px 10px 36px;/)
+  assert.doesNotMatch(source, /grid-column: 2 \/ 4;/)
+})
+
+test('AssistantMessageBody passes streaming tail state to lightweight tool groups', () => {
+  const source = readFileSync(resolve(import.meta.dirname, '../src/components/chat/AssistantMessageBody.vue'), 'utf8')
+
+  assert.match(source, /:running-override="isStreaming && row\.trailing"/)
+})
+
+test('ToolExecutionDetailDialog does not force lightweight groups into running state', () => {
+  const source = readFileSync(resolve(import.meta.dirname, '../src/components/chat/ToolExecutionDetailDialog.vue'), 'utf8')
+
+  assert.doesNotMatch(source, /running-override/)
+})
+
+test('tool executing spinner uses a centered circular stroke instead of a wedge path', () => {
+  const headerSource = readFileSync(resolve(import.meta.dirname, '../src/components/chat/ToolCallHeader.vue'), 'utf8')
+  const inlineSource = readFileSync(resolve(import.meta.dirname, '../src/components/chat/ToolCallInline.vue'), 'utf8')
+
+  assert.match(headerSource, /tool-status-spinner-track/)
+  assert.match(headerSource, /tool-status-spinner-head/)
+  assert.match(headerSource, /stroke-dasharray="18 44"/)
+  assert.doesNotMatch(headerSource, /d="M4 12a8 8 0 018-8v8H4z"/)
+  assert.match(inlineSource, /inline-spinner-track/)
+  assert.match(inlineSource, /inline-spinner-head/)
 })

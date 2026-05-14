@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { mdiConsoleLine, mdiFileDocumentOutline, mdiFileEditOutline, mdiFilePlusOutline, mdiHelpCircleOutline, mdiSourceBranch, mdiWeb } from '@mdi/js'
 import MdiIcon from '@/components/ui/MdiIcon.vue'
 import FileToolDisplay from '@/components/chat/FileToolDisplay.vue'
 import ThinkingBlock from '@/components/chat/ThinkingBlock.vue'
 import type { ToolCallItem } from '@/api/chat'
 import { buildSubagentTimeline } from '@/utils/subagentTimeline'
-import { buildToolCallSummary, buildToolResultDisplay, filterToolParamsForDetail, formatDisplayText, formatToolParams, parseAskQuestionsReadableAnswers } from '@/utils/toolDisplay'
+import { buildLightweightToolDisplay, buildLightweightToolRows, buildToolResultDisplay, filterToolParamsForDetail, formatDisplayText, formatToolParams, parseAskQuestionsReadableAnswers } from '@/utils/toolDisplay'
 import { hasPendingNestedApproval, shouldAutoExpandToolCall } from '@/utils/toolApprovalExpansion'
 import { isFileTool } from '@/utils/fileToolDisplay'
+import { useToolCallDisplay } from '@/composables/chat/useToolCallDisplay'
+import LightweightToolGroup from '@/components/chat/LightweightToolGroup.vue'
 
 const props = withDefaults(defineProps<{
   item: ToolCallItem
@@ -26,32 +27,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const expanded = ref(false)
 const subagentTimelineExpanded = ref(false)
-
-const toolIcon = computed(() => {
-  if (props.item.toolName === 'exec') return mdiConsoleLine
-  if (props.item.toolName === 'http_request') return mdiWeb
-  if (props.item.toolName === 'web_search') return mdiWeb
-  if (props.item.toolName === 'ask_questions') return mdiHelpCircleOutline
-  if (props.item.toolName === 'run_subagent') return mdiSourceBranch
-  if (props.item.toolName === 'file_read') return mdiFileDocumentOutline
-  if (props.item.toolName === 'file_edit') return mdiFileEditOutline
-  if (props.item.toolName === 'file_write') return mdiFilePlusOutline
-  return mdiConsoleLine
-})
-
-const toolLabel = computed(() => {
-  if (props.item.toolName === 'exec') return t('toolExec')
-  if (props.item.toolName === 'http_request') return t('toolHttpRequest')
-  if (props.item.toolName === 'web_search') return t('toolWebSearch')
-  if (props.item.toolName === 'run_subagent') return t('toolRunSubagent')
-  if (props.item.toolName === 'ask_questions') return t('toolAskQuestions')
-  if (props.item.toolName === 'file_read') return 'file_read'
-  if (props.item.toolName === 'file_edit') return 'file_edit'
-  if (props.item.toolName === 'file_write') return 'file_write'
-  return props.item.toolName
-})
-
-const toolSummary = computed(() => buildToolCallSummary(props.item))
+const { toolIcon, toolLabel, toolSummary } = useToolCallDisplay(() => props.item, (key) => t(key))
 
 const statusIcon = computed(() => {
   switch (props.item.status) {
@@ -61,7 +37,7 @@ const statusIcon = computed(() => {
     case 'rejected':
       return { symbol: '\u2717', class: 'inline-status--error' }
     case 'executing':
-      return { symbol: '\u27F3', class: 'inline-status--executing' }
+      return { symbol: '', class: 'inline-status--executing' }
     case 'pending':
       return { symbol: '\u23F3', class: 'inline-status--pending' }
     default:
@@ -101,6 +77,7 @@ const subagentThinkingItems = computed(() => {
   return props.item.subagentThinkings ?? (props.item.subagentThinking ? [props.item.subagentThinking] : [])
 })
 const subagentTimelineItems = computed(() => buildSubagentTimeline(subagentThinkingItems.value, props.nestedTools))
+const subagentTimelineRows = computed(() => buildLightweightToolRows(subagentTimelineItems.value, (item) => item.kind === 'tool' ? item.tool : undefined))
 const showSubagentToolCallsThinking = computed(() => subagentTimelineItems.value.length > 0)
 const subagentContextSummary = computed(() => {
   if (!isRunSubagent.value) return ''
@@ -115,6 +92,7 @@ const showSubagentTask = computed(() => subagentTaskSummary.value !== '')
 const shouldAutoExpand = computed(() => shouldAutoExpandToolCall(props.item, props.nestedTools))
 const shouldAutoExpandSubagentTimeline = computed(() => hasPendingNestedApproval(props.item, props.nestedTools))
 const isAskQuestions = computed(() => props.item.toolName === 'ask_questions')
+const lightweightDisplay = computed(() => buildLightweightToolDisplay(props.item))
 
 const askQuestionsData = computed(() => {
   if (!isAskQuestions.value) return null
@@ -180,11 +158,16 @@ function toggleSubagentTimeline() {
       </span>
 
       <span class="inline-tool-status" :class="statusIcon.class">
-        <span
+        <svg
           v-if="item.status === 'executing'"
           class="inline-spinner"
+          fill="none"
+          viewBox="0 0 16 16"
           aria-hidden="true"
-        >{{ statusIcon.symbol }}</span>
+        >
+          <circle class="inline-spinner-track" cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" />
+          <circle class="inline-spinner-head" cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="12 28" />
+        </svg>
         <template v-else>{{ statusIcon.symbol }}</template>
       </span>
 
@@ -259,17 +242,22 @@ function toggleSubagentTimeline() {
           </button>
           <Transition name="inline-expand">
             <div v-if="subagentTimelineExpanded" class="inline-subagent-timeline-list">
-              <template v-for="timelineItem in subagentTimelineItems" :key="timelineItem.id">
+              <template v-for="timelineRow in subagentTimelineRows" :key="timelineRow.kind === 'lightweight_tool_group' ? timelineRow.id : timelineRow.item.id">
+                <LightweightToolGroup
+                  v-if="timelineRow.kind === 'lightweight_tool_group'"
+                  :items="timelineRow.items"
+                  :running-override="(item.status === 'pending' || item.status === 'reviewing' || item.status === 'executing') && timelineRow.trailing"
+                />
                 <ThinkingBlock
-                  v-if="timelineItem.kind === 'thinking'"
-                  :content="timelineItem.thinking.content"
-                  :done="timelineItem.thinking.done"
-                  :duration-ms="timelineItem.thinking.durationMs"
+                  v-else-if="timelineRow.item.kind === 'thinking'"
+                  :content="timelineRow.item.thinking.content"
+                  :done="timelineRow.item.thinking.done"
+                  :duration-ms="timelineRow.item.thinking.durationMs"
                   variant="subagent"
                 />
                 <ToolCallInline
                   v-else
-                  :item="timelineItem.tool"
+                  :item="timelineRow.item.tool"
                   @approve="emit('approve', $event)"
                   @reject="emit('reject', $event)"
                 />
@@ -286,6 +274,12 @@ function toggleSubagentTimeline() {
                 <div v-if="qa.answer" class="inline-qa-a">{{ qa.answer }}</div>
                 <div v-else class="inline-qa-a inline-qa-a--empty">{{ t('qaNotSelected') }}</div>
               </div>
+            </div>
+          </template>
+          <template v-else-if="lightweightDisplay">
+            <p class="inline-section-title">{{ t('toolCallResult') }}</p>
+            <div class="inline-kv-grid">
+              <div class="inline-kv-pill">{{ lightweightDisplay.label }}: {{ lightweightDisplay.target }}</div>
             </div>
           </template>
           <template v-else>
@@ -453,8 +447,19 @@ function toggleSubagentTimeline() {
 .inline-status--pending { color: var(--tool-pending-dot, #facc15); }
 
 .inline-spinner {
+  width: 14px;
+  height: 14px;
   display: inline-block;
   animation: inline-spin 1s linear infinite;
+  transform-origin: center;
+}
+
+.inline-spinner-track {
+  opacity: 0.22;
+}
+
+.inline-spinner-head {
+  opacity: 0.88;
 }
 
 @keyframes inline-spin {

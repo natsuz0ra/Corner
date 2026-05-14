@@ -11,6 +11,8 @@ import {
   parseExecOutputPayload,
   summarizeExecOutput,
   formatToolExecutionCompactOutput,
+  formatWebExtractCompactOutput,
+  parseWebExtractOutput,
   estimateTokens,
   formatCompactTokenCount,
   formatTurnDuration,
@@ -388,6 +390,57 @@ test("formatToolExecutionCompactOutput prints compact exec summary with expand h
 test("formatToolExecutionCompactOutput keeps expand hint for non-JSON exec failure text", () => {
   const text = formatToolExecutionCompactOutput("exec", "run", "permission denied");
   assert.match(text, /permission denied/);
+  assert.match(text, /\(ctrl\+o to expand\)/);
+});
+
+test("parseWebExtractOutput extracts url title and content", () => {
+  const parsed = parseWebExtractOutput([
+    "URL: https://example.test/article",
+    "Title: Example Article",
+    "Content:",
+    "First paragraph.",
+    "Second paragraph.",
+  ].join("\n"));
+
+  assert.deepEqual(parsed, {
+    url: "https://example.test/article",
+    title: "Example Article",
+    content: "First paragraph.\nSecond paragraph.",
+  });
+});
+
+test("formatWebExtractCompactOutput collapses content with expand hint", () => {
+  const content = Array.from({ length: 80 }, (_, index) => `word${index + 1}`).join(" ");
+  const text = formatWebExtractCompactOutput([
+    "URL: https://example.test/article",
+    "Title: Example Article",
+    "Content:",
+    content,
+  ].join("\n"));
+
+  assert.match(text, /URL: https:\/\/example\.test\/article/);
+  assert.match(text, /Title: Example Article/);
+  assert.match(text, /Content: word1 word2/);
+  assert.match(text, /\.\.\.\[truncated\]/);
+  assert.match(text, /\(ctrl\+o to expand\)/);
+});
+
+test("formatWebExtractCompactOutput omits missing title", () => {
+  const text = formatWebExtractCompactOutput([
+    "URL: https://example.test/plain",
+    "Content:",
+    "Plain content",
+  ].join("\n"));
+
+  assert.match(text, /URL: https:\/\/example\.test\/plain/);
+  assert.doesNotMatch(text, /Title:/);
+  assert.match(text, /Content: Plain content/);
+});
+
+test("formatWebExtractCompactOutput safely falls back for unknown output", () => {
+  const text = formatWebExtractCompactOutput("unexpected output");
+
+  assert.match(text, /unexpected output/);
   assert.match(text, /\(ctrl\+o to expand\)/);
 });
 

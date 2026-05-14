@@ -4,7 +4,7 @@
 
 import React from "react";
 import { Box, Text } from "ink";
-import { matchCommandHints } from "../utils/commands.js";
+import { getVisibleCommandHints, matchCommandHints } from "../utils/commands.js";
 
 interface CommandHintsProps {
   input: string;
@@ -16,11 +16,13 @@ export function CommandHints({ input, selectedIndex }: CommandHintsProps): React
 
   const hints = matchCommandHints(input);
   if (hints.length === 0) return null;
+  const visible = getVisibleCommandHints(hints, selectedIndex);
 
   return (
     <Box flexDirection="column">
-      {hints.map((h, index) => {
-        const selected = index === selectedIndex;
+      {visible.hints.map((h, index) => {
+        const absoluteIndex = visible.startIndex + index;
+        const selected = absoluteIndex === selectedIndex;
         return (
           <Text key={h.command}>
             <Text color={selected ? "cyan" : "gray"}>{selected ? "❯ " : "  "}</Text>
