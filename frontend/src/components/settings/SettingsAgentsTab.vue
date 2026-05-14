@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { EditorView, highlightActiveLine, lineNumbers } from '@codemirror/view'
 import CodeMirror from 'vue-codemirror6'
 import { useI18n } from 'vue-i18n'
 
@@ -14,6 +15,38 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+const agentsEditorExtensions = [
+  lineNumbers(),
+  highlightActiveLine(),
+  EditorView.theme({
+    '&': {
+      backgroundColor: 'var(--agents-editor-bg)',
+      color: 'var(--text-primary)',
+    },
+    '.cm-content': {
+      caretColor: 'var(--sb-brand)',
+    },
+    '.cm-cursor, .cm-dropCursor': {
+      borderLeftColor: 'var(--sb-brand)',
+    },
+    '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+      backgroundColor: 'var(--agents-editor-selection-bg)',
+    },
+    '.cm-activeLine': {
+      backgroundColor: 'var(--agents-editor-active-line-bg)',
+    },
+    '.cm-gutters': {
+      backgroundColor: 'var(--agents-editor-gutter-bg)',
+      color: 'var(--text-muted)',
+      borderRightColor: 'var(--agents-editor-divider)',
+    },
+    '.cm-activeLineGutter': {
+      backgroundColor: 'var(--agents-editor-active-line-bg)',
+      color: 'var(--text-secondary)',
+    },
+  }),
+]
 
 function onContentChange(value: unknown) {
   emit('update:content', typeof value === 'string' ? value : String(value ?? ''))
@@ -36,13 +69,13 @@ function onContentChange(value: unknown) {
         {{ saving ? t('saving') : t('save') }}
       </button>
     </div>
-    <div class="settings-card rounded-xl overflow-hidden">
+    <div class="settings-card agents-editor-card rounded-xl overflow-hidden">
       <CodeMirror
         :model-value="content"
         class="json-codemirror agents-codemirror"
+        :extensions="agentsEditorExtensions"
         :indent-with-tab="true"
         :tab-size="2"
-        :style="{ height: '520px' }"
         @update:model-value="onContentChange"
       />
     </div>

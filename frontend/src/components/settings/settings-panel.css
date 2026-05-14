@@ -210,6 +210,79 @@ button.account-edit-btn:hover {
   color: var(--text-primary);
 }
 
+.agents-editor-card {
+  --agents-editor-bg: color-mix(in srgb, var(--bg-main) 96%, var(--sb-brand) 4%);
+  --agents-editor-gutter-bg: color-mix(in srgb, var(--bg-main) 91%, var(--sb-brand) 9%);
+  --agents-editor-divider: color-mix(in srgb, var(--card-border) 72%, var(--sb-brand) 28%);
+  --agents-editor-active-line-bg: color-mix(in srgb, var(--sb-brand) 9%, transparent);
+  --agents-editor-selection-bg: color-mix(in srgb, var(--sb-brand) 24%, transparent);
+  background: var(--agents-editor-bg);
+  border-color: var(--agents-editor-divider);
+}
+
+.agents-editor-card:focus-within {
+  border-color: var(--sb-brand);
+  box-shadow: var(--focus-ring-shadow);
+}
+
+.agents-codemirror {
+  display: block;
+  height: min(520px, calc(80vh - 190px));
+  min-height: 320px;
+  background: var(--agents-editor-bg);
+}
+
+.agents-codemirror .cm-editor {
+  height: 100%;
+  background: var(--agents-editor-bg) !important;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.agents-codemirror .cm-scroller {
+  background: var(--agents-editor-bg);
+  color: var(--text-primary);
+}
+
+.agents-codemirror .cm-content {
+  color: var(--text-primary);
+  padding: 14px 0;
+}
+
+.agents-codemirror .cm-line {
+  padding: 0 16px;
+}
+
+.agents-codemirror .cm-gutters {
+  background: var(--agents-editor-gutter-bg) !important;
+  color: var(--text-muted);
+  border-right: 1px solid var(--agents-editor-divider) !important;
+}
+
+.agents-codemirror .cm-lineNumbers .cm-gutterElement {
+  min-width: 34px;
+  padding: 0 10px 0 8px;
+}
+
+.agents-codemirror .cm-activeLineGutter {
+  background: var(--agents-editor-active-line-bg) !important;
+  color: var(--text-secondary);
+}
+
+.agents-codemirror .cm-activeLine {
+  background: var(--agents-editor-active-line-bg);
+}
+
+.agents-codemirror .cm-cursor {
+  border-left-color: var(--sb-brand);
+}
+
+.agents-codemirror.cm-focused .cm-selectionBackground,
+.agents-codemirror .cm-focused .cm-selectionBackground,
+.agents-codemirror .cm-selectionBackground {
+  background: var(--agents-editor-selection-bg) !important;
+}
+
 @media (max-width: 640px) {
   .settings-body {
     flex-direction: column;
@@ -239,5 +312,10 @@ button.account-edit-btn:hover {
     min-height: 0;
     flex: 1 1 auto;
     padding: 12px 14px;
+  }
+
+  .agents-codemirror {
+    height: max(280px, calc(80vh - 230px));
+    min-height: 280px;
   }
 }
