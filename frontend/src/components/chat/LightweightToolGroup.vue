@@ -112,13 +112,13 @@ function toggleExpanded() {
 }
 
 .light-tool-group--completed {
-  border-color: color-mix(in srgb, var(--tool-card-border, rgba(100, 116, 139, 0.15)) 78%, var(--tool-success-border, rgba(16, 185, 129, 0.32)));
-  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--tool-success-dot, #10b981) 55%, transparent);
+  border-color: color-mix(in srgb, var(--tool-card-border, rgba(100, 116, 139, 0.15)) 78%, rgba(91, 33, 182, 0.42));
+  box-shadow: inset 3px 0 0 color-mix(in srgb, #5b21b6 58%, transparent);
 }
 
 .light-tool-group--completed:hover {
   box-shadow:
-    inset 3px 0 0 color-mix(in srgb, var(--tool-success-dot, #10b981) 68%, transparent),
+    inset 3px 0 0 color-mix(in srgb, #5b21b6 76%, transparent),
     var(--tool-card-shadow-hover, none);
 }
 

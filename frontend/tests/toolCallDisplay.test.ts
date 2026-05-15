@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mdiBookOpenOutline, mdiCogPlayOutline, mdiFileDocumentOutline, mdiFileEditOutline, mdiFilePlusOutline, mdiFileSearchOutline, mdiFormatListChecks, mdiHelpCircleOutline, mdiServerNetwork, mdiWeb, mdiWebBox } from '@mdi/js'
+import { mdiBookOpenOutline, mdiCogPlayOutline, mdiConsoleLine, mdiFileDocumentOutline, mdiFileEditOutline, mdiFilePlusOutline, mdiFileSearchOutline, mdiFormatListChecks, mdiHelpCircleOutline, mdiServerNetwork, mdiWeb, mdiWebBox } from '@mdi/js'
 import { getToolCallCommandLabel, getToolCallIcon, getToolCallLabel, getToolCallStatusLabel, getToolCallStatusTone } from '../src/composables/chat/useToolCallDisplay'
 
 const t = (key: string) => `t:${key}`
@@ -17,6 +17,7 @@ test('tool call display maps known tools to labels and icons', () => {
   assert.equal(getToolCallLabel('todo', t), 't:toolTodo')
   assert.equal(getToolCallLabel('process', t), 't:toolProcess')
   assert.equal(getToolCallLabel('custom_tool', t), 'custom_tool')
+  assert.equal(getToolCallIcon('exec'), mdiConsoleLine)
   assert.equal(getToolCallIcon('web_search'), mdiWeb)
   assert.equal(getToolCallIcon('search_files'), mdiFileSearchOutline)
   assert.equal(getToolCallIcon('web_extract'), mdiWebBox)
