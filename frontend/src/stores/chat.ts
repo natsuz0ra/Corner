@@ -17,6 +17,7 @@ import { hasContentMarkers, parseContentMarkers, stripContentMarkers } from '@/u
 import { appendPlanBodyToBatch, appendPlanChunkToBatch, appendSubagentThinkingChunk, appendTextChunkToBatch, finalizeOpenReplyRuntimeState, finalizeReplyBatchTiming, finishOpenThinkingEntries, finishSubagentThinking, markLastThinkingDone, markToolCallError, startSubagentThinking } from '@/utils/liveReplyTimeline'
 import { getBatchApprovalToolCallIds, markToolApprovalDecision } from '@/utils/toolApprovals'
 import { materializeStoppedMessages } from '@/utils/chatMessages'
+import { applyEditedUserMessage, findLatestEditableUserMessageId } from '@/utils/messageEditing'
 
 const HISTORY_PAGE_SIZE = 10
 const MAX_SESSION_PAGE_SIZE = 100
@@ -52,6 +53,7 @@ export const useChatStore = defineStore('chat', () => {
   const failedUserMessageIds = ref(new Set<string>())
   const pendingPlanConfirmation = ref<{ sessionId: string; planId: string; content: string } | null>(null)
   const pendingApprovalToolCallIds = computed(() => replyBatches.value.flatMap((batch) => getBatchApprovalToolCallIds(batch.toolCalls)))
+  const latestEditableUserMessageId = computed(() => findLatestEditableUserMessageId(messages.value, waiting.value, failedUserMessageIds.value))
 
   interface QuestionItem {
     id: string
@@ -837,6 +839,35 @@ export const useChatStore = defineStore('chat', () => {
     return true
   }
 
+  async function sendEditedMessage(messageId: string, content: string, modelId: string, thinkingLevel: string = 'off', subagentModelId: string = '') {
+    const trimmed = content.trim()
+    if (!trimmed || !messageId || messageId !== latestEditableUserMessageId.value) {
+      return false
+    }
+    if (!modelId) {
+      connectionError.value = 'modelId is required'
+      return false
+    }
+    const sessionId = currentSessionId.value
+    if (!sessionId || !isSocketReady.value) {
+      connectionError.value = 'socket is not connected'
+      return false
+    }
+    const sent = ws.sendEdit(messageId, trimmed, sessionId, modelId, thinkingLevel, planMode.value, subagentModelId)
+    if (!sent) {
+      connectionError.value = 'socket is not connected'
+      return false
+    }
+    const applied = applyEditedUserMessage(messages.value, replyBatches.value, messageId, trimmed)
+    messages.value = applied.messages
+    replyBatches.value = applied.replyBatches
+    currentBatchId.value = ''
+    pendingPlanConfirmation.value = null
+    clearContextUsage()
+    clearRuntimeTodos()
+    return true
+  }
+
   function stopCurrentResponse() {
     const sessionId = currentSessionId.value
     if (!sessionId || !waiting.value) return false
@@ -957,6 +988,7 @@ export const useChatStore = defineStore('chat', () => {
     isSocketReady,
     isAssistantErrorMessage,
     isStreamingMessage,
+    latestEditableUserMessageId,
     isFailedUserMessage,
     replyBatches,
     currentBatchId,
@@ -974,6 +1006,7 @@ export const useChatStore = defineStore('chat', () => {
     connectSocket,
     ensureSessionReady,
     sendMessage,
+    sendEditedMessage,
     stopCurrentResponse,
     approveToolCall,
     disconnectSocket,

@@ -30,6 +30,7 @@ type Controller struct {
 type chatIncoming struct {
 	Type            string   `json:"type"`            // Message type: chat, ping, tool_approve, etc.
 	SessionID       string   `json:"sessionId"`       // Session ID
+	MessageID       string   `json:"messageId"`       // Existing user message ID for edit-and-resend
 	Content         string   `json:"content"`         // User input text
 	DisplayContent  string   `json:"displayContent"`  // Optional user-visible text when content is an internal prompt
 	ModelID         string   `json:"modelId"`         // LLM config ID
@@ -296,6 +297,15 @@ func (w *Controller) startReadLoop(
 					return
 				case chatCh <- modifyIncoming:
 				}
+			case "chat_edit":
+				if strings.TrimSpace(incoming.Content) == "" || strings.TrimSpace(incoming.MessageID) == "" {
+					continue
+				}
+				select {
+				case <-sessionCtx.Done():
+					return
+				case chatCh <- incoming:
+				}
 			case "chat", "":
 				if strings.TrimSpace(incoming.Content) == "" && len(incoming.AttachmentIDs) == 0 {
 					continue
@@ -375,21 +385,38 @@ func (w *Controller) handleChatIncoming(
 	activeCancel.Set(cancel)
 	defer activeCancel.Clear(cancel)
 	callbacks := w.buildCallbacks(enqueue, broker, session.ID, &firstChunkSentAt)
-	streamResult, err := w.chatService.HandleChatStreamWithReceivedAt(
-		chatCtx,
-		session.ID,
-		requestID,
-		receivedAt,
-		incoming.Content,
-		incoming.DisplayContent,
-		incoming.ModelID,
-		incoming.AttachmentIDs,
-		incoming.ThinkingLevel,
-		incoming.PlanMode,
-		incoming.SubagentModelID,
-		"",
-		callbacks,
-	)
+	var streamResult *chatsvc.ChatStreamResult
+	if incoming.Type == "chat_edit" {
+		streamResult, err = w.chatService.HandleEditedChatStream(
+			chatCtx,
+			session.ID,
+			requestID,
+			incoming.MessageID,
+			incoming.Content,
+			incoming.ModelID,
+			incoming.ThinkingLevel,
+			incoming.PlanMode,
+			incoming.SubagentModelID,
+			"",
+			callbacks,
+		)
+	} else {
+		streamResult, err = w.chatService.HandleChatStreamWithReceivedAt(
+			chatCtx,
+			session.ID,
+			requestID,
+			receivedAt,
+			incoming.Content,
+			incoming.DisplayContent,
+			incoming.ModelID,
+			incoming.AttachmentIDs,
+			incoming.ThinkingLevel,
+			incoming.PlanMode,
+			incoming.SubagentModelID,
+			"",
+			callbacks,
+		)
+	}
 	cancel()
 
 	if err != nil {
