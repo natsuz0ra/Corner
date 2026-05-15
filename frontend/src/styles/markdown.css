@@ -35,6 +35,67 @@
   background: rgba(0, 0, 0, 0.4);
   border-color: var(--primary-alpha-15);
 }
+.assistant-reply-body .bubble-markdown pre {
+  background: #0f172a;
+  color: #e5e7eb;
+  border-color: rgba(129, 140, 248, 0.26);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-weight: 600;
+  line-height: 1.58;
+}
+.dark .assistant-reply-body .bubble-markdown pre {
+  background: #0f172a;
+  border-color: rgba(129, 140, 248, 0.3);
+}
+.assistant-reply-body .bubble-markdown .hljs {
+  color: #e5e7eb;
+  font-family: inherit;
+  font-weight: 600;
+}
+.assistant-reply-body .bubble-markdown pre > code {
+  font-family: inherit;
+}
+.assistant-reply-body .bubble-markdown pre .hljs * {
+  font-weight: 600;
+}
+.assistant-reply-body .bubble-markdown .hljs-keyword,
+.assistant-reply-body .bubble-markdown .hljs-selector-tag,
+.assistant-reply-body .bubble-markdown .hljs-subst {
+  color: #7dd3fc;
+}
+.assistant-reply-body .bubble-markdown .hljs-title,
+.assistant-reply-body .bubble-markdown .hljs-title.function_,
+.assistant-reply-body .bubble-markdown .hljs-function .hljs-title,
+.assistant-reply-body .bubble-markdown .hljs-built_in {
+  color: #bfdbfe;
+}
+.assistant-reply-body .bubble-markdown .hljs-string,
+.assistant-reply-body .bubble-markdown .hljs-template-string,
+.assistant-reply-body .bubble-markdown .hljs-regexp {
+  color: #86efac;
+}
+.assistant-reply-body .bubble-markdown .hljs-number,
+.assistant-reply-body .bubble-markdown .hljs-literal,
+.assistant-reply-body .bubble-markdown .hljs-symbol,
+.assistant-reply-body .bubble-markdown .hljs-variable.constant_ {
+  color: #fde68a;
+}
+.assistant-reply-body .bubble-markdown .hljs-comment,
+.assistant-reply-body .bubble-markdown .hljs-quote {
+  color: #94a3b8;
+  font-style: normal;
+}
+.assistant-reply-body .bubble-markdown .hljs-attr,
+.assistant-reply-body .bubble-markdown .hljs-attribute,
+.assistant-reply-body .bubble-markdown .hljs-property,
+.assistant-reply-body .bubble-markdown .hljs-params,
+.assistant-reply-body .bubble-markdown .hljs-variable {
+  color: #c7d2fe;
+}
+.assistant-reply-body .bubble-markdown .hljs-type,
+.assistant-reply-body .bubble-markdown .hljs-class .hljs-title {
+  color: #a7f3d0;
+}
 .bubble-markdown pre::-webkit-scrollbar {
   width: 4px;
   height: 4px;
@@ -68,6 +129,10 @@
   background: var(--primary-alpha-15);
   color: var(--sb-brand-soft);
   border-color: var(--primary-alpha-20);
+}
+.assistant-reply-body .bubble-markdown :not(pre) > code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-weight: 600;
 }
 .bubble-markdown a {
   color: var(--sb-brand);

@@ -1,11 +1,12 @@
 import { computed, type MaybeRefOrGetter, toValue } from 'vue'
-import { mdiBookOpenOutline, mdiCogPlayOutline, mdiFileDocumentOutline, mdiFileEditOutline, mdiFilePlusOutline, mdiFileSearchOutline, mdiFormatListChecks, mdiHelpCircleOutline, mdiServerNetwork, mdiSourceBranch, mdiWeb, mdiWebBox } from '@mdi/js'
+import { mdiBookOpenOutline, mdiCogPlayOutline, mdiConsoleLine, mdiFileDocumentOutline, mdiFileEditOutline, mdiFilePlusOutline, mdiFileSearchOutline, mdiFormatListChecks, mdiHelpCircleOutline, mdiServerNetwork, mdiSourceBranch, mdiWeb, mdiWebBox } from '@mdi/js'
 import type { ToolCallItem } from '../../api/chat'
 import { buildToolCallSummary } from '../../utils/toolDisplay'
 
 type Translate = (key: string) => string
 
 export function getToolCallIcon(toolName: string) {
+  if (toolName === 'exec') return mdiConsoleLine
   if (toolName === 'run_subagent') return mdiSourceBranch
   if (toolName === 'http_request' || toolName === 'web_search') return mdiWeb
   if (toolName === 'search_files') return mdiFileSearchOutline
