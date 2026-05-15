@@ -377,6 +377,15 @@ export class ChatSocket {
     return true
   }
 
+  sendEdit(messageId: string, content: string, sessionId: string, modelId: string, thinkingLevel?: string, planMode?: boolean, subagentModelId?: string) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this.handlers?.onSocketError?.('socket is not connected')
+      return false
+    }
+    this.ws.send(JSON.stringify({ type: 'chat_edit', messageId, content, sessionId, modelId, thinkingLevel: thinkingLevel || 'off', planMode: !!planMode, subagentModelId: subagentModelId || '' }))
+    return true
+  }
+
   sendStop(sessionId: string) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.handlers?.onSocketError?.('socket is not connected')

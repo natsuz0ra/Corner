@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"slimebot/internal/apperrors"
 	llmsvc "slimebot/internal/services/llm"
+	"strings"
 	"time"
 
 	"slimebot/internal/domain"
@@ -185,4 +188,86 @@ func (r *Repository) AddMessageWithInput(ctx context.Context, input domain.AddMe
 			Error
 	})
 	return message, err
+}
+
+func (r *Repository) UpdateUserMessageAndPruneAfter(ctx context.Context, sessionID, messageID, content string) (*domain.Message, error) {
+	trimmedSessionID := strings.TrimSpace(sessionID)
+	trimmedMessageID := strings.TrimSpace(messageID)
+	if trimmedSessionID == "" || trimmedMessageID == "" {
+		return nil, fmt.Errorf("message edit: %w", apperrors.ErrInvalidInput)
+	}
+	var updated domain.Message
+	err := r.dbWithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var target domain.Message
+		if err := tx.
+			Where("session_id = ? AND id = ?", trimmedSessionID, trimmedMessageID).
+			Take(&target).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("message %s: %w", trimmedMessageID, apperrors.ErrNotFound)
+			}
+			return err
+		}
+		if target.Role != "user" {
+			return fmt.Errorf("message %s is not editable: %w", trimmedMessageID, apperrors.ErrInvalidInput)
+		}
+
+		var latestUser domain.Message
+		if err := tx.
+			Where("session_id = ? AND role = ?", trimmedSessionID, "user").
+			Order("seq desc").
+			Limit(1).
+			Take(&latestUser).Error; err != nil {
+			return err
+		}
+		if latestUser.ID != target.ID {
+			return fmt.Errorf("message %s is not the latest user message: %w", trimmedMessageID, apperrors.ErrInvalidInput)
+		}
+
+		var prunedAssistantIDs []string
+		if err := tx.Model(&domain.Message{}).
+			Where("session_id = ? AND role = ? AND seq > ?", trimmedSessionID, "assistant", target.Seq).
+			Pluck("id", &prunedAssistantIDs).Error; err != nil {
+			return err
+		}
+		if len(prunedAssistantIDs) > 0 {
+			if err := tx.Where("session_id = ? AND assistant_message_id IN ?", trimmedSessionID, prunedAssistantIDs).
+				Delete(&domain.ToolCallRecord{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("session_id = ? AND assistant_message_id IN ?", trimmedSessionID, prunedAssistantIDs).
+				Delete(&domain.ThinkingRecord{}).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("session_id = ? AND seq > ?", trimmedSessionID, target.Seq).
+			Delete(&domain.Message{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("session_id = ?", trimmedSessionID).
+			Delete(&domain.SessionContextSummary{}).Error; err != nil {
+			return err
+		}
+
+		now := time.Now()
+		if err := tx.Model(&domain.Message{}).
+			Where("id = ?", target.ID).
+			Update("content", content).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&domain.Session{}).
+			Where("id = ?", trimmedSessionID).
+			Update("updated_at", now).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("id = ?", target.ID).Take(&updated).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	items := []domain.Message{updated}
+	normalizeMessages(items)
+	return &items[0], nil
 }

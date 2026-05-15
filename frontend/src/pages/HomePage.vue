@@ -58,6 +58,7 @@ const {
 provideChatContext({
   waiting: computed(() => store.waiting),
   planGenerating: computed(() => store.planGenerating),
+  latestEditableUserMessageId: computed(() => store.latestEditableUserMessageId),
   isStreamingMessage: store.isStreamingMessage,
   getReplyToolCount: tools.getReplyToolCount,
   getReplyToolSummary: tools.getReplyToolSummary,
@@ -75,6 +76,7 @@ provideChatContext({
   approveToolCall: store.approveToolCall,
   approveAllPendingToolCalls: store.approveAllPendingToolCalls,
   rejectAllPendingToolCalls: store.rejectAllPendingToolCalls,
+  sendEditedMessage: (messageId, content) => store.sendEditedMessage(messageId, content, models.selectedModelId, models.thinkingLevel, models.subagentModelId),
   isFailedUserMessage: store.isFailedUserMessage,
   isAssistantErrorMessage: store.isAssistantErrorMessage,
   isChatAssistantAvatarAnimated,

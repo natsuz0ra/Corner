@@ -91,6 +91,53 @@ func (s *ChatService) HandleChatStreamWithReceivedAt(
 	return s.handleChatStreamWithReceivedAt(ctx, sessionID, requestID, receivedAt, content, displayContent, modelID, attachmentIDs, thinkingLevel, planMode, subagentModelID, approvalModeOverride, callbacks)
 }
 
+func (s *ChatService) HandleEditedChatStream(
+	ctx context.Context,
+	sessionID string,
+	requestID string,
+	messageID string,
+	content string,
+	modelID string,
+	thinkingLevel string,
+	planMode bool,
+	subagentModelID string,
+	approvalModeOverride string,
+	callbacks AgentCallbacks,
+) (*ChatStreamResult, error) {
+	if strings.TrimSpace(content) == "" {
+		return nil, fmt.Errorf("Message cannot be empty.")
+	}
+	state, err := s.prepareEditedChatTurn(ctx, sessionID, messageID, content, modelID, thinkingLevel)
+	if err != nil {
+		return nil, err
+	}
+	if callbacks.OnContextUsage != nil {
+		if err := callbacks.OnContextUsage(state.contextUsage); err != nil {
+			return nil, err
+		}
+	}
+	if state.contextCompacted && callbacks.OnContextCompacted != nil {
+		if err := callbacks.OnContextCompacted(state.contextUsage); err != nil {
+			return nil, err
+		}
+	}
+	if planMode {
+		state.contextMessages = append(state.contextMessages, llmsvc.ChatMessage{
+			Role:    "system",
+			Content: planModeSystemMessage,
+		})
+	}
+	result, err := s.executeChatTurn(ctx, sessionID, requestID, state, callbacks, planMode, subagentModelID, approvalModeOverride)
+	if err != nil {
+		return nil, err
+	}
+	finalizeCtx := ctx
+	if result.interrupted {
+		finalizeCtx = context.Background()
+	}
+	return s.finalizeChatTurn(finalizeCtx, sessionID, requestID, state, result, planMode, callbacks)
+}
+
 func (s *ChatService) handleChatStreamWithReceivedAt(
 	ctx context.Context,
 	sessionID string,
@@ -256,6 +303,75 @@ func (s *ChatService) prepareChatTurn(
 		enabledMCPConfigs: enabledMCPConfigs,
 		attachments:       attachments,
 		userContent:       userContentForLLM,
+	}, nil
+}
+
+func (s *ChatService) prepareEditedChatTurn(
+	ctx context.Context,
+	sessionID string,
+	messageID string,
+	content string,
+	modelID string,
+	thinkingLevel string,
+) (*chatTurnState, error) {
+	llmConfig, err := s.ResolveLLMConfig(ctx, modelID)
+	if err != nil {
+		return nil, err
+	}
+	modelConfig := llmsvc.ModelRuntimeConfig{
+		ConfigID:      llmConfig.ID,
+		Provider:      llmConfig.Provider,
+		BaseURL:       llmConfig.BaseURL,
+		APIKey:        llmConfig.APIKey,
+		Model:         llmConfig.Model,
+		ContextSize:   llmConfig.ContextSize,
+		ThinkingLevel: thinkingLevel,
+	}
+
+	session, err := s.store.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			return nil, fmt.Errorf("Session not found: %s.", sessionID)
+		}
+		return nil, err
+	}
+	updatedUser, err := s.store.UpdateUserMessageAndPruneAfter(ctx, sessionID, messageID, content)
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		contextResult     contextBuildResult
+		enabledMCPConfigs []domain.MCPConfig
+		contextErr        error
+		mcpErr            error
+	)
+	var prepareWG sync.WaitGroup
+	prepareWG.Add(2)
+	go func() {
+		defer prepareWG.Done()
+		contextResult, contextErr = s.buildContextMessagesDetailed(ctx, sessionID, modelConfig)
+	}()
+	go func() {
+		defer prepareWG.Done()
+		enabledMCPConfigs, mcpErr = s.store.ListEnabledMCPConfigs(ctx)
+	}()
+	prepareWG.Wait()
+	if contextErr != nil {
+		return nil, contextErr
+	}
+	if mcpErr != nil {
+		return nil, mcpErr
+	}
+
+	return &chatTurnState{
+		session:           session,
+		modelConfig:       modelConfig,
+		contextMessages:   contextResult.messages,
+		contextUsage:      contextResult.usage,
+		contextCompacted:  contextResult.compactedNow,
+		enabledMCPConfigs: enabledMCPConfigs,
+		userContent:       strings.TrimSpace(updatedUser.Content),
 	}, nil
 }
 
