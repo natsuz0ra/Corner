@@ -33,6 +33,7 @@ const { t } = useI18n()
 const toast = useToast()
 type BubbleMode = 'view' | 'edit'
 type BubbleTransitionStage = 'idle' | 'fade-out' | 'morph' | 'fade-in'
+const bubbleContentFadeMs = 140
 
 const bubbleMode = ref<BubbleMode>('view')
 const bubbleTransitionStage = ref<BubbleTransitionStage>('idle')
@@ -90,7 +91,7 @@ async function switchBubbleMode(nextMode: BubbleMode, options: { clearDraftAfter
   const bubble = bubbleRef.value
   const messageItem = messageItemRef.value
   bubbleTransitionStage.value = 'fade-out'
-  await wait(220)
+  await wait(bubbleContentFadeMs)
 
   const fromItemRect = messageItem?.getBoundingClientRect()
   const fromRect = bubble?.getBoundingClientRect()
@@ -137,7 +138,7 @@ async function switchBubbleMode(nextMode: BubbleMode, options: { clearDraftAfter
   }
 
   bubbleTransitionStage.value = 'fade-in'
-  await wait(220)
+  await wait(bubbleContentFadeMs)
   bubbleTransitionStage.value = 'idle'
 
   if (options.clearDraftAfter) {
@@ -364,6 +365,11 @@ function handleEditKeydown(event: KeyboardEvent) {
   position: relative;
   overflow: hidden;
   transform-origin: top right;
+  border: 1px solid transparent;
+  transition:
+    color 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.36s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .user-bubble::before {
@@ -372,7 +378,7 @@ function handleEditKeydown(event: KeyboardEvent) {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background: linear-gradient(rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.28));
+  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
   opacity: 0;
   transition: opacity 0.36s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -389,7 +395,7 @@ function handleEditKeydown(event: KeyboardEvent) {
   position: relative;
   z-index: 1;
   opacity: 1;
-  transition: opacity 0.22s ease;
+  transition: opacity 0.14s ease;
 }
 
 .user-bubble-content--hidden {
@@ -470,7 +476,9 @@ function handleEditKeydown(event: KeyboardEvent) {
 }
 
 .user-bubble--editing {
-  box-shadow: 0 2px 10px var(--primary-alpha-20), inset 0 0 0 1px rgba(255, 255, 255, 0.24);
+  color: #312e81;
+  border-color: rgba(99, 102, 241, 0.26);
+  box-shadow: 0 2px 12px rgba(99, 102, 241, 0.14), inset 0 0 0 1px rgba(255, 255, 255, 0.55);
 }
 
 .message-edit-input {
@@ -480,7 +488,7 @@ function handleEditKeydown(event: KeyboardEvent) {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--user-bubble-text);
+  color: inherit;
   padding: 0;
   outline: none;
   line-height: 1.6;
@@ -508,13 +516,62 @@ function handleEditKeydown(event: KeyboardEvent) {
 }
 
 .message-action-btn--primary {
-  border-color: rgba(255, 255, 255, 0.45);
-  background: rgba(255, 255, 255, 0.22);
+  background: #6366f1;
+  color: #fff;
+}
+
+.user-bubble--editing .message-action-btn {
+  background: rgba(99, 102, 241, 0.09);
+  color: #4338ca;
+}
+
+.user-bubble--editing .message-action-btn:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.14);
+  color: #312e81;
+}
+
+.user-bubble--editing .message-action-btn--primary {
+  background: #6366f1;
+  color: #fff;
+}
+
+.user-bubble--editing .message-action-btn--primary:hover:not(:disabled) {
+  background: #4f46e5;
   color: #fff;
 }
 
 .message-action-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+:global(.dark) .user-bubble--editing {
+  color: #eef2ff;
+  border-color: rgba(165, 180, 252, 0.36);
+  box-shadow: 0 2px 14px rgba(99, 102, 241, 0.22), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+:global(.dark) .user-bubble::before {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.24), rgba(129, 140, 248, 0.18));
+}
+
+:global(.dark) .user-bubble--editing .message-action-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: #c7d2fe;
+}
+
+:global(.dark) .user-bubble--editing .message-action-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: #eef2ff;
+}
+
+:global(.dark) .user-bubble--editing .message-action-btn--primary {
+  background: #818cf8;
+  color: #111127;
+}
+
+:global(.dark) .user-bubble--editing .message-action-btn--primary:hover:not(:disabled) {
+  background: #a5b4fc;
+  color: #111127;
 }
 </style>
