@@ -31,6 +31,65 @@
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) transparent;
 }
+.assistant-reply-body .bubble-markdown .markdown-code-block,
+.plan-block-body.bubble-markdown .markdown-code-block {
+  position: relative;
+  max-width: 100%;
+  margin: 8px 0;
+}
+.assistant-reply-body .bubble-markdown .markdown-code-block pre,
+.plan-block-body.bubble-markdown .markdown-code-block pre {
+  margin: 0;
+}
+.assistant-reply-body .bubble-markdown .markdown-code-copy-btn,
+.plan-block-body.bubble-markdown .markdown-code-copy-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  opacity: 0.9;
+  touch-action: manipulation;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+.assistant-reply-body .bubble-markdown .markdown-code-block--single-line .markdown-code-copy-btn,
+.plan-block-body.bubble-markdown .markdown-code-block--single-line .markdown-code-copy-btn {
+  top: 50%;
+  transform: translateY(-50%);
+}
+.assistant-reply-body .bubble-markdown .markdown-code-copy-btn:hover,
+.assistant-reply-body .bubble-markdown .markdown-code-copy-btn:focus-visible,
+.plan-block-body.bubble-markdown .markdown-code-copy-btn:hover,
+.plan-block-body.bubble-markdown .markdown-code-copy-btn:focus-visible {
+  color: #fff;
+  opacity: 1;
+}
+.assistant-reply-body .bubble-markdown .markdown-code-copy-btn::before,
+.plan-block-body.bubble-markdown .markdown-code-copy-btn::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  display: block;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+@media (hover: none), (pointer: coarse) {
+  .assistant-reply-body .bubble-markdown pre,
+  .plan-block-body.bubble-markdown pre {
+    padding-right: 48px;
+  }
+}
 .dark .bubble-markdown pre {
   background: rgba(0, 0, 0, 0.4);
   border-color: var(--primary-alpha-15);
@@ -42,6 +101,10 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-weight: 600;
   line-height: 1.58;
+  padding: 14px 48px 14px 16px;
+}
+.plan-block-body.bubble-markdown pre {
+  padding: 14px 48px 14px 16px;
 }
 .dark .assistant-reply-body .bubble-markdown pre {
   background: #0f172a;
