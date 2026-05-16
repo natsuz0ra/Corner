@@ -40,3 +40,10 @@ test('assistant waiting placeholder centers typing dots with the avatar', () => 
   assert.doesNotMatch(assistantBodySource, /<TypingDots v-if="ctx\.isEmptyPlaceholder\(item\.id\) && ctx\.waiting" \/>/)
   assert.doesNotMatch(itemSource, /ctx\.isEmptyPlaceholder\(item\.id\) && ctx\.waiting[\s\S]*\?\s*'items-center'/)
 })
+
+test('mobile user message actions are visible without hover', () => {
+  const itemSource = readFileSync(resolve(projectRoot, 'src/components/chat/ChatMessageItem.vue'), 'utf8')
+
+  assert.match(itemSource, /@media\s*\(hover:\s*none\),\s*\(pointer:\s*coarse\)\s*\{[\s\S]*?\.user-message-actions\s*\{[\s\S]*?opacity:\s*1;[\s\S]*?pointer-events:\s*auto;/)
+  assert.match(itemSource, /@media\s*\(hover:\s*none\),\s*\(pointer:\s*coarse\)\s*\{[\s\S]*?\.user-message-actions--hidden\s*\{[\s\S]*?opacity:\s*0;[\s\S]*?pointer-events:\s*none;/)
+})

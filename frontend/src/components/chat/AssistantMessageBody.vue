@@ -12,6 +12,7 @@ import { useChatContext } from '@/composables/chat/useChatContext'
 import { getCollapsedReplyTimeline } from '@/utils/replyBatchBuilder'
 import { buildLightweightToolTimelineRows } from '@/utils/toolDisplay'
 import { useChatStore } from '@/stores/chat'
+import { useMarkdownCodeCopy } from '@/composables/chat/useMarkdownCodeCopy'
 
 const props = defineProps<{
   item: MessageItem
@@ -20,6 +21,7 @@ const props = defineProps<{
 const ctx = useChatContext()
 const store = useChatStore()
 const { t } = useI18n()
+const { handleMarkdownClick } = useMarkdownCodeCopy()
 const elapsedTick = ref(0)
 let elapsedTimer: ReturnType<typeof setInterval> | undefined
 
@@ -153,7 +155,12 @@ onUnmounted(() => {
             :duration-ms="row.entry.durationMs"
           />
 
-          <div v-else-if="row.entry.kind === 'text'" class="bubble-markdown sb-text-primary" v-html="renderMarkdown(row.entry.content)" />
+          <div
+            v-else-if="row.entry.kind === 'text'"
+            class="bubble-markdown sb-text-primary"
+            v-html="renderMarkdown(row.entry.content, { codeCopyButton: true })"
+            @click="handleMarkdownClick"
+          />
 
           <div v-else-if="row.entry.kind === 'notice'" class="assistant-context-notice">
             {{ row.entry.content }}

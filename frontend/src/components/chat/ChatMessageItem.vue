@@ -438,6 +438,18 @@ function handleEditKeydown(event: KeyboardEvent) {
   pointer-events: none;
 }
 
+@media (hover: none), (pointer: coarse) {
+  .user-message-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .user-message-actions--hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
 .message-action-icon,
 .message-action-btn {
   display: inline-flex;
