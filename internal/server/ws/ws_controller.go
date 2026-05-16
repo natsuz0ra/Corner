@@ -374,7 +374,7 @@ func (w *Controller) handleChatIncoming(
 	if !enqueue(map[string]any{"type": "session", "sessionId": session.ID}) {
 		return false
 	}
-	if !enqueue(buildChatStartPayload(session.ID, receivedAt)) {
+	if incoming.Type != "chat_edit" && !enqueue(buildChatStartPayload(session.ID, receivedAt)) {
 		return false
 	}
 
@@ -387,6 +387,18 @@ func (w *Controller) handleChatIncoming(
 	callbacks := w.buildCallbacks(enqueue, broker, session.ID, &firstChunkSentAt)
 	var streamResult *chatsvc.ChatStreamResult
 	if incoming.Type == "chat_edit" {
+		startEnqueued := false
+		callbacks.OnMessageEdited = func(messageID, content string) error {
+			if !enqueue(buildMessageEditedPayload(session.ID, messageID, content)) {
+				return context.Canceled
+			}
+			startSentAt = time.Now()
+			startEnqueued = true
+			if !enqueue(buildChatStartPayload(session.ID, startSentAt)) {
+				return context.Canceled
+			}
+			return nil
+		}
 		streamResult, err = w.chatService.HandleEditedChatStream(
 			chatCtx,
 			session.ID,
@@ -400,6 +412,12 @@ func (w *Controller) handleChatIncoming(
 			"",
 			callbacks,
 		)
+		if err == nil && !startEnqueued {
+			startSentAt = time.Now()
+			if !enqueue(buildChatStartPayload(session.ID, startSentAt)) {
+				return false
+			}
+		}
 	} else {
 		streamResult, err = w.chatService.HandleChatStreamWithReceivedAt(
 			chatCtx,
@@ -479,6 +497,15 @@ func buildChatStartPayload(sessionID string, startedAt time.Time) map[string]any
 		"type":      "start",
 		"sessionId": sessionID,
 		"startedAt": startedAt.Format(time.RFC3339Nano),
+	}
+}
+
+func buildMessageEditedPayload(sessionID, messageID, content string) map[string]any {
+	return map[string]any{
+		"type":      "message_edited",
+		"sessionId": sessionID,
+		"messageId": messageID,
+		"content":   content,
 	}
 }
 

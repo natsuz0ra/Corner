@@ -208,6 +208,18 @@ async function submitEdit() {
   }
   toast.error(t('messageEditFailed'))
 }
+
+function handleEditKeydown(event: KeyboardEvent) {
+  if (event.isComposing) return
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    void cancelEdit()
+    return
+  }
+  if (event.key !== 'Enter' || event.shiftKey) return
+  event.preventDefault()
+  void submitEdit()
+}
 </script>
 
 <template>
@@ -305,9 +317,7 @@ async function submitEdit() {
                 v-model="draftContent"
                 class="message-edit-input"
                 rows="4"
-                @keydown.meta.enter.prevent="submitEdit"
-                @keydown.ctrl.enter.prevent="submitEdit"
-                @keydown.esc.prevent="cancelEdit"
+                @keydown="handleEditKeydown"
               />
               <div class="message-edit-actions">
                 <button type="button" class="message-action-btn message-action-btn--text" :title="t('cancel')" @click="cancelEdit">

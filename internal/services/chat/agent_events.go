@@ -114,6 +114,7 @@ type AgentCallbacks struct {
 	OnChunk                func(chunk string) error
 	OnContextUsage         func(usage ContextUsage) error
 	OnContextCompacted     func(usage ContextUsage) error
+	OnMessageEdited        func(messageID, content string) error
 	OnToolCallStart        func(req ApprovalRequest) error
 	OnToolApprovalReview   func(event ApprovalReviewEvent) error
 	OnToolApprovalRequired func(req ApprovalRequest) error

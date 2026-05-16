@@ -219,15 +219,29 @@ func TestHandleEditedChatStream_UpdatesExistingUserAndPrunesOldAssistant(t *test
 	}
 	provider := &captureMessagesProvider{}
 	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
+	var events []string
 
 	result, err := svc.HandleEditedChatStream(ctx, session.ID, "request-edit", user.ID, "edited question", model.ID, "off", false, "", "", AgentCallbacks{
-		OnChunk: func(string) error { return nil },
+		OnMessageEdited: func(messageID, content string) error {
+			if messageID != user.ID || content != "edited question" {
+				t.Fatalf("unexpected edit confirmation: %s %q", messageID, content)
+			}
+			events = append(events, "message_edited")
+			return nil
+		},
+		OnChunk: func(string) error {
+			events = append(events, "chunk")
+			return nil
+		},
 	})
 	if err != nil {
 		t.Fatalf("HandleEditedChatStream failed: %v", err)
 	}
 	if result == nil || result.Answer != "answer" {
 		t.Fatalf("unexpected stream result: %+v", result)
+	}
+	if strings.Join(events, ",") != "message_edited,chunk" {
+		t.Fatalf("unexpected event order: %+v", events)
 	}
 	messages, _, err := repo.ListSessionMessagesPage(ctx, session.ID, 10, nil, nil, nil, nil)
 	if err != nil {
