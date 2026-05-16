@@ -8,6 +8,7 @@ export type ChatSocketHandlers = {
   onSessionTitle: (title: string, sessionId?: string) => void
   onDone: (sessionId?: string, answer?: string, meta?: { isInterrupted?: boolean; isStopPlaceholder?: boolean; planId?: string; planBody?: string; finishedAt?: string; durationMs?: number }) => void
   onError: (error: string, sessionId?: string) => void
+  onMessageEdited?: (data: MessageEditedData, sessionId?: string) => void
   onToolCallStart?: (data: ToolCallStartData, sessionId?: string) => void
   onToolCallReview?: (data: ToolCallReviewData, sessionId?: string) => void
   onToolApprovalRequired?: (data: ToolApprovalRequiredData, sessionId?: string) => void
@@ -31,6 +32,11 @@ export type ChatSocketHandlers = {
 }
 
 export type ConnectionStatus = 'connected' | 'reconnecting' | 'disconnected'
+
+export interface MessageEditedData {
+  messageId: string
+  content: string
+}
 
 export interface ToolCallStartData {
   toolCallId: string
@@ -132,6 +138,7 @@ export interface ContextUsageData {
 type WSIncoming = {
   type: string
   sessionId?: string
+  messageId?: string
   content?: string
   answer?: string
   title?: string
@@ -209,6 +216,12 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
   if (data.type === 'start') handlers?.onStart(data.sessionId, { startedAt: data.startedAt })
   if (data.type === 'chunk') handlers?.onChunk(data.content || '', data.sessionId)
   if (data.type === 'session_title') handlers?.onSessionTitle(data.title || '', data.sessionId)
+  if (data.type === 'message_edited') {
+    handlers?.onMessageEdited?.({
+      messageId: data.messageId || '',
+      content: data.content || '',
+    }, data.sessionId)
+  }
   if (data.type === 'done') {
     handlers?.onDone(data.sessionId, data.answer, {
       isInterrupted: data.isInterrupted,

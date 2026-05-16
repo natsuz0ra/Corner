@@ -53,7 +53,8 @@ export const useChatStore = defineStore('chat', () => {
   const failedUserMessageIds = ref(new Set<string>())
   const pendingPlanConfirmation = ref<{ sessionId: string; planId: string; content: string } | null>(null)
   const pendingApprovalToolCallIds = computed(() => replyBatches.value.flatMap((batch) => getBatchApprovalToolCallIds(batch.toolCalls)))
-  const latestEditableUserMessageId = computed(() => findLatestEditableUserMessageId(messages.value, waiting.value, failedUserMessageIds.value))
+  const pendingEditMessageId = ref('')
+  const latestEditableUserMessageId = computed(() => pendingEditMessageId.value ? '' : findLatestEditableUserMessageId(messages.value, waiting.value, failedUserMessageIds.value))
 
   interface QuestionItem {
     id: string
@@ -71,6 +72,7 @@ export const useChatStore = defineStore('chat', () => {
     assistantErrorIds.value.clear()
     failedUserMessageIds.value.clear()
     pendingQuestions.value = null
+    pendingEditMessageId.value = ''
     clearRuntimeTodos()
   }
 
@@ -473,6 +475,18 @@ export const useChatStore = defineStore('chat', () => {
           startedAt: parseSocketTimestamp(meta?.startedAt),
         })
       },
+      onMessageEdited: (data, sessionId) => {
+        if (!sessionId || sessionId !== currentSessionId.value) return
+        if (!data.messageId || (pendingEditMessageId.value && data.messageId !== pendingEditMessageId.value)) return
+        const applied = applyEditedUserMessage(messages.value, replyBatches.value, data.messageId, data.content)
+        messages.value = applied.messages
+        replyBatches.value = applied.replyBatches
+        currentBatchId.value = ''
+        pendingPlanConfirmation.value = null
+        clearContextUsage()
+        clearRuntimeTodos()
+        pendingEditMessageId.value = ''
+      },
       onChunk: (chunk, sessionId) => {
         if (!sessionId || sessionId !== currentSessionId.value) return
         const batch = getCurrentBatch()
@@ -533,6 +547,7 @@ export const useChatStore = defineStore('chat', () => {
         waiting.value = false
         streamingStarted.value = false
         connectionError.value = error
+        pendingEditMessageId.value = ''
         const batch = getCurrentBatch()
         if (batch) {
           finalizeOpenReplyRuntimeState(batch, error || 'Execution cancelled.')
@@ -745,6 +760,7 @@ export const useChatStore = defineStore('chat', () => {
       onSocketError: (error) => {
         waiting.value = false
         streamingStarted.value = false
+        pendingEditMessageId.value = ''
         connectionError.value = error
         const batch = getCurrentBatch()
         if (batch) {
@@ -755,6 +771,7 @@ export const useChatStore = defineStore('chat', () => {
       onClose: () => {
         waiting.value = false
         streamingStarted.value = false
+        pendingEditMessageId.value = ''
         const batch = getCurrentBatch()
         if (batch) {
           finalizeOpenReplyRuntimeState(batch)
@@ -858,13 +875,9 @@ export const useChatStore = defineStore('chat', () => {
       connectionError.value = 'socket is not connected'
       return false
     }
-    const applied = applyEditedUserMessage(messages.value, replyBatches.value, messageId, trimmed)
-    messages.value = applied.messages
-    replyBatches.value = applied.replyBatches
-    currentBatchId.value = ''
-    pendingPlanConfirmation.value = null
-    clearContextUsage()
-    clearRuntimeTodos()
+    pendingEditMessageId.value = messageId
+    waiting.value = true
+    streamingStarted.value = false
     return true
   }
 
@@ -922,6 +935,7 @@ export const useChatStore = defineStore('chat', () => {
     }
     waiting.value = false
     streamingStarted.value = false
+    pendingEditMessageId.value = ''
     clearRuntimeTodos()
     ws.close()
     currentBatchId.value = ''

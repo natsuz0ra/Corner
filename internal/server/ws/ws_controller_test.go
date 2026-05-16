@@ -26,6 +26,17 @@ func TestChatTimingPayloadsUseServerReceivedAndDoneTimes(t *testing.T) {
 	}
 }
 
+func TestBuildMessageEditedPayload(t *testing.T) {
+	payload := buildMessageEditedPayload("session-1", "message-1", "edited text")
+
+	if payload["type"] != "message_edited" {
+		t.Fatalf("unexpected type: %+v", payload)
+	}
+	if payload["sessionId"] != "session-1" || payload["messageId"] != "message-1" || payload["content"] != "edited text" {
+		t.Fatalf("unexpected edit payload: %+v", payload)
+	}
+}
+
 func TestApprovalBrokerDeliversResponseResolvedBeforeRegister(t *testing.T) {
 	broker := newApprovalBroker()
 	broker.Resolve("call-fast", chatsvc.ApprovalResponse{

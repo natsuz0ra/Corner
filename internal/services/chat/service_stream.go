@@ -111,6 +111,11 @@ func (s *ChatService) HandleEditedChatStream(
 	if err != nil {
 		return nil, err
 	}
+	if callbacks.OnMessageEdited != nil {
+		if err := callbacks.OnMessageEdited(messageID, state.userContent); err != nil {
+			return nil, err
+		}
+	}
 	if callbacks.OnContextUsage != nil {
 		if err := callbacks.OnContextUsage(state.contextUsage); err != nil {
 			return nil, err

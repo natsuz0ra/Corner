@@ -1,5 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 import type { MessageItem } from '../src/api/chat'
 import type { AssistantReplyBatch } from '../src/utils/replyBatchBuilder'
@@ -51,4 +53,22 @@ test('applyEditedUserMessage trims following messages and reply batches', () => 
   assert.deepEqual(result.messages.map((item) => item.id), ['u1', 'a1', 'u2'])
   assert.equal(result.messages[2].content, 'edited')
   assert.deepEqual(result.replyBatches.map((item) => item.id), ['b1'])
+})
+
+test('chat edit flow waits for backend confirmation before local prune', () => {
+  const chatStoreSource = readFileSync(resolve(import.meta.dirname, '../src/stores/chat.ts'), 'utf8')
+  const sendEditedBody = chatStoreSource.match(/async function sendEditedMessage[\s\S]*?return true\n  \}/)?.[0] || ''
+  const messageEditedHandler = chatStoreSource.match(/onMessageEdited: \(data, sessionId\) => \{[\s\S]*?\n      \},\n      onChunk:/)?.[0] || ''
+
+  assert.doesNotMatch(sendEditedBody, /applyEditedUserMessage/)
+  assert.match(sendEditedBody, /pendingEditMessageId\.value = messageId/)
+  assert.match(messageEditedHandler, /applyEditedUserMessage/)
+})
+
+test('message edit textarea uses Enter to send and Shift Enter to keep newline', () => {
+  const messageItemSource = readFileSync(resolve(import.meta.dirname, '../src/components/chat/ChatMessageItem.vue'), 'utf8')
+
+  assert.match(messageItemSource, /function handleEditKeydown\(event: KeyboardEvent\)/)
+  assert.match(messageItemSource, /event\.key !== 'Enter' \|\| event\.shiftKey/)
+  assert.match(messageItemSource, /@keydown="handleEditKeydown"/)
 })
