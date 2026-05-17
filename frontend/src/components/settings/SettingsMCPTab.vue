@@ -23,7 +23,7 @@ const { t } = useI18n()
   <div>
     <div class="flex items-center justify-between mb-4">
       <p class="section-label mb-0">{{ t('mcpSettings') }}</p>
-      <button type="button" class="btn-primary action-btn flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl cursor-pointer" @click="emit('add')">
+      <button type="button" class="btn-primary action-btn flex items-center gap-1.5 px-3 py-1.5 rounded-xl cursor-pointer settings-action-text" @click="emit('add')">
         <MdiIcon :path="mdiPlus" :size="13" />
         {{ t('add') }}
       </button>
@@ -31,8 +31,8 @@ const { t } = useI18n()
     <div class="flex flex-col gap-2">
       <div v-for="item in mcpRows" :key="item.id" class="settings-card flex items-center gap-3 px-4 py-3.5 rounded-xl">
         <div class="flex-1 min-w-0">
-          <div class="text-sm font-medium settings-item-name">{{ item.name }}</div>
-          <div class="text-xs settings-item-sub mt-0.5">{{ mcpPreview(item) }}</div>
+          <div class="settings-item-name">{{ item.name }}</div>
+          <div class="settings-item-sub mt-0.5">{{ mcpPreview(item) }}</div>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
           <ToggleSwitch
@@ -52,7 +52,7 @@ const { t } = useI18n()
           </button>
         </div>
       </div>
-      <div v-if="mcpRows.length === 0" class="empty-state text-center py-10 text-sm rounded-xl">{{ t('add') }} MCP</div>
+      <div v-if="mcpRows.length === 0" class="empty-state text-center py-10 rounded-xl">{{ t('add') }} MCP</div>
     </div>
   </div>
 </template>
