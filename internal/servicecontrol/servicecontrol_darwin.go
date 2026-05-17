@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"html/template"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -14,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"text/template"
 	"time"
 
 	kservice "github.com/kardianos/service"
@@ -99,6 +99,9 @@ func newDarwinLaunchAgentService(opts darwinLaunchAgentOptions) *darwinLaunchAge
 }
 
 func (s *darwinLaunchAgentService) Install() error {
+	if err := s.rejectRoot("install"); err != nil {
+		return err
+	}
 	if strings.TrimSpace(s.executable) == "" {
 		return errors.New("service executable is not configured")
 	}
@@ -121,10 +124,16 @@ func (s *darwinLaunchAgentService) Install() error {
 	if err := os.WriteFile(s.plistPath(), []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write service plist failed: %w", err)
 	}
+	if err := s.validateInstalledPlist(); err != nil {
+		return err
+	}
 	return nil
 }
 
 func (s *darwinLaunchAgentService) Start() error {
+	if err := s.rejectRoot("start"); err != nil {
+		return err
+	}
 	if err := s.legacyLoadedError(); err != nil {
 		return err
 	}
@@ -136,11 +145,11 @@ func (s *darwinLaunchAgentService) Start() error {
 	}
 	if _, err := s.runCommand("launchctl", "print", s.serviceTarget()); err != nil {
 		if _, err := s.runCommand("launchctl", "bootstrap", s.domain(), s.plistPath()); err != nil {
-			return fmt.Errorf("launchctl bootstrap failed for %s: %w", s.plistPath(), err)
+			return fmt.Errorf("launchctl bootstrap failed for %s: %w\n%s", s.plistPath(), err, s.diagnosticSummary())
 		}
 	}
 	if _, err := s.runCommand("launchctl", "kickstart", "-k", s.serviceTarget()); err != nil {
-		return fmt.Errorf("launchctl kickstart failed for %s: %w", s.serviceTarget(), err)
+		return fmt.Errorf("launchctl kickstart failed for %s: %w\n%s", s.serviceTarget(), err, s.diagnosticSummary())
 	}
 	return nil
 }
@@ -161,6 +170,9 @@ func (s *darwinLaunchAgentService) Restart() error {
 }
 
 func (s *darwinLaunchAgentService) Status() (string, error) {
+	if err := s.rejectRoot("status"); err != nil {
+		return "", err
+	}
 	if err := s.legacyLoadedError(); err != nil {
 		return "", err
 	}
@@ -178,6 +190,9 @@ func (s *darwinLaunchAgentService) Status() (string, error) {
 }
 
 func (s *darwinLaunchAgentService) Uninstall() error {
+	if err := s.rejectRoot("uninstall"); err != nil {
+		return err
+	}
 	_ = s.Stop()
 	if err := os.Remove(s.plistPath()); err != nil {
 		if os.IsNotExist(err) {
@@ -258,6 +273,61 @@ func (s *darwinLaunchAgentService) legacyLoadedError() error {
 		return nil
 	}
 	return fmt.Errorf("旧版 slimebot 服务仍在 launchd 中，可能会阻止新版用户服务启动。\n检测输出：%s\n请先清理旧服务：\n  launchctl bootout %s\n如果旧服务来自系统级 LaunchDaemon，请运行：\n  sudo launchctl bootout system /Library/LaunchDaemons/slimebot.plist\n然后重新执行：slimebot service start", strings.TrimSpace(out), s.legacyTarget())
+}
+
+func (s *darwinLaunchAgentService) rejectRoot(action string) error {
+	if strings.TrimSpace(s.uid) != "0" && strings.TrimSpace(s.userName) != "root" {
+		return nil
+	}
+	return fmt.Errorf("检测到正在以 root/sudo 运行 SlimeBot 用户服务命令。macOS LaunchAgent 必须安装到当前登录用户的 gui 会话中，请不要使用 sudo，改用：slimebot service %s", action)
+}
+
+func (s *darwinLaunchAgentService) validateInstalledPlist() error {
+	if out, err := s.runCommand("plutil", "-lint", s.plistPath()); err != nil {
+		return fmt.Errorf("validate service plist failed for %s: plutil -lint failed: %w\n%s", s.plistPath(), err, strings.TrimSpace(out))
+	}
+
+	info, err := os.Stat(s.executable)
+	if err != nil {
+		return fmt.Errorf("validate service plist failed for %s: executable %s is not accessible: %w", s.plistPath(), s.executable, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("validate service plist failed for %s: executable %s is a directory", s.plistPath(), s.executable)
+	}
+	if info.Mode()&0o111 == 0 {
+		return fmt.Errorf("validate service plist failed for %s: executable %s is not executable", s.plistPath(), s.executable)
+	}
+
+	logInfo, err := os.Stat(s.logDir())
+	if err != nil {
+		return fmt.Errorf("validate service plist failed for %s: log directory %s is not accessible: %w", s.plistPath(), s.logDir(), err)
+	}
+	if !logInfo.IsDir() {
+		return fmt.Errorf("validate service plist failed for %s: log path %s is not a directory", s.plistPath(), s.logDir())
+	}
+	return nil
+}
+
+func (s *darwinLaunchAgentService) diagnosticSummary() string {
+	plutilSummary := "not run"
+	if out, err := s.runCommand("plutil", "-lint", s.plistPath()); err != nil {
+		plutilSummary = strings.TrimSpace(fmt.Sprintf("%v\n%s", err, strings.TrimSpace(out)))
+	} else {
+		plutilSummary = strings.TrimSpace(out)
+	}
+	if plutilSummary == "" {
+		plutilSummary = "no output"
+	}
+
+	return fmt.Sprintf("macOS 服务诊断：\n  domain: %s\n  target: %s\n  plist: %s\n  executable: %s\n  stdout log: %s\n  stderr log: %s\n  plutil -lint: %s",
+		s.domain(),
+		s.serviceTarget(),
+		s.plistPath(),
+		s.executable,
+		filepath.Join(s.logDir(), "service.out.log"),
+		filepath.Join(s.logDir(), "service.err.log"),
+		plutilSummary,
+	)
 }
 
 func runCommand(name string, args ...string) (string, error) {
