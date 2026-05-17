@@ -2,7 +2,7 @@
  * SlimeBot CLI — Ink-based terminal UI entry point.
  *
  * Usage:
- *   slimebot cli          (started automatically by the Go backend)
+ *   slimebot              (starts the Go backend and this terminal UI)
  *   node cli/dist/index.js --api-url http://... --cli-token xxx
  *
  * Environment variables:

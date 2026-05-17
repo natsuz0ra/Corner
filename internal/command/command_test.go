@@ -31,38 +31,25 @@ func TestExecuteDefaultsToCLI(t *testing.T) {
 	}
 }
 
-func TestExecuteRoutesCLIAndServer(t *testing.T) {
-	tests := []struct {
-		name string
-		args []string
-		want string
-	}{
-		{name: "explicit cli", args: []string{"cli"}, want: "cli"},
-		{name: "server", args: []string{"server"}, want: "server"},
+func TestExecuteRoutesServer(t *testing.T) {
+	var called []string
+	err := Execute(Options{
+		Args: []string{"server"},
+		RunCLI: func() error {
+			called = append(called, "cli")
+			return nil
+		},
+		RunServer: func() error {
+			called = append(called, "server")
+			return nil
+		},
+		Service: &fakeServiceController{},
+	})
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var called []string
-			err := Execute(Options{
-				Args: tt.args,
-				RunCLI: func() error {
-					called = append(called, "cli")
-					return nil
-				},
-				RunServer: func() error {
-					called = append(called, "server")
-					return nil
-				},
-				Service: &fakeServiceController{},
-			})
-			if err != nil {
-				t.Fatalf("Execute failed: %v", err)
-			}
-			if got := strings.Join(called, ","); got != tt.want {
-				t.Fatalf("expected %q, got %q", tt.want, got)
-			}
-		})
+	if got := strings.Join(called, ","); got != "server" {
+		t.Fatalf("expected server, got %q", got)
 	}
 }
 
@@ -139,6 +126,16 @@ func TestHelpOmitsUpdateYesFlag(t *testing.T) {
 	}
 }
 
+func TestHelpOmitsExplicitCLICommandAndDescribesVersionUpdate(t *testing.T) {
+	help := HelpText()
+	if strings.Contains(help, "slimebot cli") {
+		t.Fatalf("help should not mention explicit cli command:\n%s", help)
+	}
+	if !strings.Contains(help, "slimebot update --version vX.Y.Z  Update to a specific release") {
+		t.Fatalf("help should describe version update command:\n%s", help)
+	}
+}
+
 func TestExecuteRoutesUpdateCommand(t *testing.T) {
 	var calledArgs []string
 	var stdout bytes.Buffer
@@ -166,17 +163,22 @@ func TestExecuteRoutesUpdateCommand(t *testing.T) {
 }
 
 func TestExecuteRejectsUnknownCommand(t *testing.T) {
-	err := Execute(Options{
-		Args:      []string{"wat"},
-		RunCLI:    func() error { return nil },
-		RunServer: func() error { return nil },
-		Service:   &fakeServiceController{},
-	})
-	if err == nil {
-		t.Fatal("expected unknown command to fail")
-	}
-	if !strings.Contains(err.Error(), "unknown command") {
-		t.Fatalf("expected unknown command error, got %v", err)
+	tests := []string{"wat", "cli"}
+	for _, command := range tests {
+		t.Run(command, func(t *testing.T) {
+			err := Execute(Options{
+				Args:      []string{command},
+				RunCLI:    func() error { return nil },
+				RunServer: func() error { return nil },
+				Service:   &fakeServiceController{},
+			})
+			if err == nil {
+				t.Fatal("expected unknown command to fail")
+			}
+			if !strings.Contains(err.Error(), "unknown command") {
+				t.Fatalf("expected unknown command error, got %v", err)
+			}
+		})
 	}
 }
 
