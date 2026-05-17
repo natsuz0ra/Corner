@@ -170,6 +170,10 @@ export function createInitialState(
     runtimeTodos: [],
     runtimeTodosNote: "",
     runtimeTodosUpdatedAt: undefined,
+    updateCheck: null,
+    updateJob: null,
+    updateLoading: false,
+    updateApplying: false,
     thinkingDetailContent: "",
     inputValue: "",
     inputKey: 0,
@@ -442,6 +446,8 @@ export function reducer(state: AppState, action: AppAction): AppState {
         planReceived: false,
         ...clearTurnStats(),
         ...clearRuntimeTodos(),
+        updateLoading: false,
+        updateApplying: false,
         contextUsage: null,
         thinkingDetailContent: "",
         view: "chat",
@@ -904,6 +910,15 @@ export function reducer(state: AppState, action: AppAction): AppState {
         runtimeTodos: action.items.map((item) => ({ ...item })),
         runtimeTodosNote: action.note || "",
         runtimeTodosUpdatedAt: action.updatedAt,
+      };
+
+    case "SET_UPDATE_STATE":
+      return {
+        ...state,
+        updateCheck: action.check !== undefined ? action.check : state.updateCheck,
+        updateJob: action.job !== undefined ? action.job : state.updateJob,
+        updateLoading: action.loading !== undefined ? action.loading : state.updateLoading,
+        updateApplying: action.applying !== undefined ? action.applying : state.updateApplying,
       };
 
     case "PLAN_CHUNK": {

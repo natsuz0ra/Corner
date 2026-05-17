@@ -11,6 +11,7 @@ import (
 
 	"slimebot/internal/app"
 	"slimebot/internal/logging"
+	buildversion "slimebot/internal/version"
 )
 
 type ExitError struct {
@@ -52,6 +53,7 @@ func Run() error {
 	cmd.Env = append(os.Environ(),
 		"SLIMEBOT_API_URL="+apiURL,
 		"SLIMEBOT_CLI_TOKEN="+cliToken,
+		"SLIMEBOT_VERSION="+buildversion.Info().Version,
 	)
 
 	if err := cmd.Run(); err != nil {

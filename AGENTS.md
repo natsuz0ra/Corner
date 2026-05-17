@@ -59,7 +59,9 @@ internal/
 │  ├─ session/               # Session lifecycle/state
 │  ├─ settings/              # User/system settings
 │  └─ skill/                 # Skill loading/execution
-└─ tools/                    # Tool implementations
+├─ tools/                    # Tool implementations
+├─ updater/                  # Release update checking/apply helper
+└─ version/                  # Build/version metadata
 ```
 
 Frontend structure (`frontend/src`):
@@ -106,8 +108,12 @@ Quick index (feature -> first place to inspect):
 - Sandbox policy and command isolation: `internal/sandbox/`
 - LLM abstraction/provider wiring: `internal/services/llm/`, `internal/services/openai/`, `internal/services/anthropic/`
 - Tool implementations: `internal/tools/`
+- Update checking/apply flow: `internal/updater/`, `internal/server/controller/update.go`
+- Build/version metadata: `internal/version/`
 - Web settings page UI: `frontend/src/components/settings/`, `frontend/src/composables/settings/`, `frontend/src/pages/`
+- Web update center: `frontend/src/components/settings/SettingsAboutTab.vue`, `frontend/src/api/update.ts`
 - CLI interaction flow: `cmd/cli/`, `cli/src/controllers/`, `cli/src/components/`, `cli/src/ws/`
+- CLI update view: `cli/src/components/UpdateView.tsx`, `/update` command routing in `cli/src/controllers/commands.ts`
 - Prompt templates: `prompts/`
 - Release/install packaging: `scripts/`
 - Manual deployment docs: `docs/`

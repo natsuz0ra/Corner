@@ -12,6 +12,8 @@ import type {
   Skill,
   Settings,
   ContextUsage,
+  UpdateCheckResult,
+  UpdateJobStatus,
 } from "../types.js";
 
 export class APIClient {
@@ -95,6 +97,24 @@ export class APIClient {
       method: "PUT",
       body: JSON.stringify(data),
     }).then(() => {});
+  }
+
+  // ===== Updates =====
+
+  getUpdateCheck(force = false): Promise<UpdateCheckResult> {
+    const params = force ? "?force=1" : "";
+    return this.request(`/api/update/check${params}`);
+  }
+
+  getUpdateJob(): Promise<UpdateJobStatus> {
+    return this.request("/api/update/job");
+  }
+
+  applyUpdate(targetVersion?: string): Promise<UpdateJobStatus> {
+    return this.request("/api/update/apply", {
+      method: "POST",
+      body: JSON.stringify({ targetVersion: targetVersion || "" }),
+    });
   }
 
   // ===== LLM Configs =====

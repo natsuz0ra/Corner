@@ -3,6 +3,7 @@ package command
 import (
 	"bytes"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 )
@@ -125,6 +126,32 @@ func TestExecuteVersionAndHelp(t *testing.T) {
 				t.Fatalf("expected output to contain %q, got %q", tt.want, stdout.String())
 			}
 		})
+	}
+}
+
+func TestExecuteRoutesUpdateCommand(t *testing.T) {
+	var calledArgs []string
+	var stdout bytes.Buffer
+	err := Execute(Options{
+		Args:      []string{"update", "--check"},
+		RunCLI:    func() error { return errors.New("cli should not run") },
+		RunServer: func() error { return errors.New("server should not run") },
+		Service:   &fakeServiceController{},
+		Stdout:    &stdout,
+		Update: func(args []string, w io.Writer) error {
+			calledArgs = append(calledArgs, args...)
+			_, _ = w.Write([]byte("update ok\n"))
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if got := strings.Join(calledArgs, ","); got != "--check" {
+		t.Fatalf("update args = %q, want --check", got)
+	}
+	if !strings.Contains(stdout.String(), "update ok") {
+		t.Fatalf("stdout = %q", stdout.String())
 	}
 }
 

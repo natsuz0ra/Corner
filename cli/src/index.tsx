@@ -19,6 +19,8 @@ import { ArgumentParser } from "argparse";
 import { App } from "./app.js";
 
 function readPackageVersion(): string {
+  const envVersion = process.env.SLIMEBOT_VERSION?.trim();
+  if (envVersion) return envVersion;
   const packagePath = resolve(dirname(fileURLToPath(import.meta.url)), "../package.json");
   const packageJson = JSON.parse(readFileSync(packagePath, "utf-8")) as { version?: string };
   return packageJson.version || "0.0.0";

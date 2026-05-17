@@ -12,6 +12,7 @@ import (
 	configsvc "slimebot/internal/services/config"
 	sessionsvc "slimebot/internal/services/session"
 	settingssvc "slimebot/internal/services/settings"
+	"slimebot/internal/updater"
 )
 
 type authService interface {
@@ -78,6 +79,12 @@ type chatContextUsageService interface {
 	GetContextUsage(ctx context.Context, sessionID string, modelID string) (chatsvc.ContextUsage, error)
 }
 
+type updateService interface {
+	Check(ctx context.Context, force bool) (updater.CheckResult, error)
+	Status(ctx context.Context) (updater.JobStatus, error)
+	Apply(ctx context.Context, req updater.ApplyRequest) (updater.JobStatus, error)
+}
+
 // HTTPController wires REST handlers and request/response shaping.
 type HTTPController struct {
 	skillPackage skillPackageService
@@ -92,6 +99,7 @@ type HTTPController struct {
 	platforms    messagePlatformConfigService
 	plans        planService
 	chatUsage    chatContextUsageService
+	update       updateService
 	tokenManager *auth.TokenManager
 }
 
@@ -130,4 +138,8 @@ func (h *HTTPController) SetChatContextUsageService(service chatContextUsageServ
 
 func (h *HTTPController) SetAgentsInstructionsService(service agentsInstructionsService) {
 	h.agents = service
+}
+
+func (h *HTTPController) SetUpdateService(service updateService) {
+	h.update = service
 }
