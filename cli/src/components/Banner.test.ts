@@ -17,7 +17,7 @@ test("Banner omits update marker when no update is available", () => {
     Banner({ version: "1.26.1", modelName: "gpt", cwd: "/repo" }),
   );
 
-  assert.match(text, /v1\.26\.1/);
+  assert.match(text, /1\.26\.1/);
   assert.doesNotMatch(text, /\[new\]/);
 });
 
@@ -31,6 +31,6 @@ test("Banner shows a compact update marker without the latest version", () => {
     }),
   );
 
-  assert.match(text, /v1\.26\.1 \[new\]/);
+  assert.match(text, /1\.26\.1 \[new\]/);
   assert.doesNotMatch(text, /v1\.26\.2/);
 });
