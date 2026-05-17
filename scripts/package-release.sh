@@ -22,6 +22,8 @@ npm --prefix cli run build
 
 rm -rf "${DIST_DIR}"
 mkdir -p "${DIST_DIR}"
+cp scripts/install.sh scripts/install.ps1 scripts/uninstall.sh scripts/uninstall.ps1 "${DIST_DIR}/"
+chmod +x "${DIST_DIR}/install.sh" "${DIST_DIR}/uninstall.sh"
 
 for target in "${TARGETS[@]}"; do
   goos="${target%%/*}"

@@ -17,21 +17,23 @@
 
 ## 从 Release 安装
 
-从项目 Release 下载适合当前系统的压缩包，解压后在解压目录执行安装脚本。
+用一条命令安装最新 Release：
 
 macOS / Linux：
 
 ```bash
-./install.sh
+curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/install.sh | sh
 ```
 
 Windows PowerShell：
 
 ```powershell
-.\install.ps1
+irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/install.ps1 | iex
 ```
 
-安装脚本会把 SlimeBot 放到用户本地目录，并创建命令入口。如果终端找不到 `slimebot`，请把安装脚本输出的 shim 目录加入 `PATH`。
+也可以从项目 Release 下载适合当前系统的压缩包，解压后在解压目录执行 `./install.sh` 或 `.\install.ps1`。
+
+安装脚本会在需要时自动下载匹配的压缩包，把 SlimeBot 放到用户本地目录，并创建命令入口。如果终端找不到 `slimebot`，请把安装脚本输出的 shim 目录加入 `PATH`。
 
 启动 Web 服务前，请编辑 `~/.slimebot/config.cfg`，设置一个强随机的 `JWT_SECRET`。
 

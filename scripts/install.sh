@@ -4,6 +4,74 @@ set -eu
 SOURCE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 INSTALL_DIR="${SLIMEBOT_INSTALL_DIR:-"$HOME/.local/share/slimebot"}"
 SHIM_DIR="${SLIMEBOT_BIN_DIR:-"$HOME/.local/bin"}"
+REPO="${SLIMEBOT_REPO:-natsuz0ra/SlimeBot}"
+VERSION="${SLIMEBOT_VERSION:-latest}"
+
+download_file() {
+  url="$1"
+  output="$2"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$url" -o "$output"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q "$url" -O "$output"
+  else
+    echo "curl or wget is required to download SlimeBot." >&2
+    exit 1
+  fi
+}
+
+latest_version() {
+  tmp_json="$1"
+  download_file "https://api.github.com/repos/$REPO/releases/latest" "$tmp_json"
+  sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$tmp_json" | head -n 1
+}
+
+bootstrap_from_release() {
+  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  arch="$(uname -m)"
+  case "$os" in
+    darwin) goos="darwin" ;;
+    linux) goos="linux" ;;
+    *)
+      echo "Unsupported OS for install.sh: $os" >&2
+      echo "Use install.ps1 on Windows." >&2
+      exit 1
+      ;;
+  esac
+  case "$arch" in
+    x86_64|amd64) goarch="amd64" ;;
+    arm64|aarch64) goarch="arm64" ;;
+    *)
+      echo "Unsupported architecture: $arch" >&2
+      exit 1
+      ;;
+  esac
+
+  tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "$tmp_dir"' EXIT HUP INT TERM
+
+  resolved_version="$VERSION"
+  if [ "$resolved_version" = "latest" ]; then
+    resolved_version="$(latest_version "$tmp_dir/latest.json")"
+  fi
+  if [ -z "$resolved_version" ]; then
+    echo "Unable to resolve SlimeBot release version." >&2
+    exit 1
+  fi
+
+  package_name="slimebot-$resolved_version-$goos-$goarch"
+  archive="$tmp_dir/$package_name.tar.gz"
+  url="https://github.com/$REPO/releases/download/$resolved_version/$package_name.tar.gz"
+
+  echo "Downloading SlimeBot $resolved_version for $goos/$goarch..."
+  download_file "$url" "$archive"
+  tar -xzf "$archive" -C "$tmp_dir"
+  exec sh "$tmp_dir/$package_name/install.sh" "$@"
+}
+
+if [ ! -x "$SOURCE_DIR/bin/slimebot" ] || [ ! -f "$SOURCE_DIR/cli/cli.cjs" ]; then
+  bootstrap_from_release "$@"
+fi
 
 mkdir -p "$INSTALL_DIR" "$SHIM_DIR"
 

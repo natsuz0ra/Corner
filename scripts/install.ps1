@@ -1,8 +1,56 @@
+param(
+  [string]$Version = $env:SLIMEBOT_VERSION,
+  [string]$Repo = $env:SLIMEBOT_REPO
+)
+
 $ErrorActionPreference = "Stop"
 
-$sourceDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $Repo) {
+  $Repo = "natsuz0ra/SlimeBot"
+}
+
+$sourceDir = if ($MyInvocation.MyCommand.Path) { Split-Path -Parent $MyInvocation.MyCommand.Path } else { (Get-Location).Path }
 $installDir = if ($env:SLIMEBOT_INSTALL_DIR) { $env:SLIMEBOT_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "SlimeBot" }
 $shimDir = if ($env:SLIMEBOT_BIN_DIR) { $env:SLIMEBOT_BIN_DIR } else { Join-Path $installDir "bin" }
+
+function Install-FromRelease {
+  $goos = "windows"
+  switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture) {
+    "X64" { $goarch = "amd64" }
+    "Arm64" { $goarch = "arm64" }
+    default { throw "Unsupported architecture: $([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)" }
+  }
+
+  $resolvedVersion = if ($Version) { $Version } else { "latest" }
+  if ($resolvedVersion -eq "latest") {
+    $latest = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest"
+    $resolvedVersion = $latest.tag_name
+  }
+  if (-not $resolvedVersion) {
+    throw "Unable to resolve SlimeBot release version."
+  }
+
+  $packageName = "slimebot-$resolvedVersion-$goos-$goarch"
+  $archive = Join-Path ([System.IO.Path]::GetTempPath()) "$packageName.zip"
+  $extractDir = Join-Path ([System.IO.Path]::GetTempPath()) "$packageName-install"
+  $url = "https://github.com/$Repo/releases/download/$resolvedVersion/$packageName.zip"
+
+  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $extractDir
+  New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+
+  Write-Host "Downloading SlimeBot $resolvedVersion for $goos/$goarch..."
+  Invoke-WebRequest -Uri $url -OutFile $archive
+  Expand-Archive -Force -Path $archive -DestinationPath $extractDir
+  & (Join-Path $extractDir "$packageName\install.ps1")
+  if ($LASTEXITCODE) {
+    exit $LASTEXITCODE
+  }
+  exit 0
+}
+
+if (-not (Test-Path (Join-Path $sourceDir "bin\slimebot.exe")) -or -not (Test-Path (Join-Path $sourceDir "cli\cli.cjs"))) {
+  Install-FromRelease
+}
 
 New-Item -ItemType Directory -Force -Path $installDir, $shimDir | Out-Null
 
