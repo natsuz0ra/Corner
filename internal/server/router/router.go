@@ -69,6 +69,9 @@ func New(cfg config.Config, tokenManager *auth.TokenManager, httpController *con
 
 			api.Get("/settings", adapt(httpController.GetSettings))
 			api.Put("/settings", adapt(httpController.UpdateSettings))
+			api.Get("/update/check", adapt(httpController.GetUpdateCheck))
+			api.Get("/update/job", adapt(httpController.GetUpdateJob))
+			api.Post("/update/apply", adapt(httpController.ApplyUpdate))
 			api.Get("/agents-instructions", adapt(httpController.GetAgentsInstructions))
 			api.Put("/agents-instructions", adapt(httpController.UpdateAgentsInstructions))
 

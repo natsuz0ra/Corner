@@ -2,6 +2,8 @@ package chat
 
 import (
 	"context"
+	"time"
+
 	sandboxpolicy "slimebot/internal/sandbox"
 	llmsvc "slimebot/internal/services/llm"
 )
@@ -114,7 +116,7 @@ type AgentCallbacks struct {
 	OnChunk                func(chunk string) error
 	OnContextUsage         func(usage ContextUsage) error
 	OnContextCompacted     func(usage ContextUsage) error
-	OnMessageEdited        func(messageID, content string) error
+	OnMessageEdited        func(messageID, content string, createdAt time.Time) error
 	OnToolCallStart        func(req ApprovalRequest) error
 	OnToolApprovalReview   func(event ApprovalReviewEvent) error
 	OnToolApprovalRequired func(req ApprovalRequest) error

@@ -42,6 +42,7 @@ type chatTurnState struct {
 	enabledMCPConfigs []domain.MCPConfig
 	attachments       []UploadedAttachment
 	userContent       string
+	userCreatedAt     time.Time
 }
 
 // chatTurnResult holds intermediate results after the agent runs.
@@ -112,7 +113,7 @@ func (s *ChatService) HandleEditedChatStream(
 		return nil, err
 	}
 	if callbacks.OnMessageEdited != nil {
-		if err := callbacks.OnMessageEdited(messageID, state.userContent); err != nil {
+		if err := callbacks.OnMessageEdited(messageID, state.userContent, state.userCreatedAt); err != nil {
 			return nil, err
 		}
 	}
@@ -308,6 +309,7 @@ func (s *ChatService) prepareChatTurn(
 		enabledMCPConfigs: enabledMCPConfigs,
 		attachments:       attachments,
 		userContent:       userContentForLLM,
+		userCreatedAt:     receivedAt,
 	}, nil
 }
 
@@ -377,6 +379,7 @@ func (s *ChatService) prepareEditedChatTurn(
 		contextCompacted:  contextResult.compactedNow,
 		enabledMCPConfigs: enabledMCPConfigs,
 		userContent:       strings.TrimSpace(updatedUser.Content),
+		userCreatedAt:     updatedUser.CreatedAt,
 	}, nil
 }
 

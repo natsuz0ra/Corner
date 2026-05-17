@@ -36,6 +36,7 @@ export type ConnectionStatus = 'connected' | 'reconnecting' | 'disconnected'
 export interface MessageEditedData {
   messageId: string
   content: string
+  createdAt?: string
 }
 
 export interface ToolCallStartData {
@@ -155,6 +156,7 @@ type WSIncoming = {
   preamble?: string
   output?: string
   metadata?: unknown
+  createdAt?: string
   startedAt?: string
   finishedAt?: string
   updatedAt?: string
@@ -220,6 +222,7 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
     handlers?.onMessageEdited?.({
       messageId: data.messageId || '',
       content: data.content || '',
+      createdAt: data.createdAt,
     }, data.sessionId)
   }
   if (data.type === 'done') {

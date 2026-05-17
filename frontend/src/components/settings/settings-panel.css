@@ -10,6 +10,9 @@
 
 .settings-title {
   color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
 }
 
 .settings-close-btn {
@@ -25,6 +28,19 @@
   background: var(--sidebar-bg);
 }
 
+.settings-tab {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.settings-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .settings-sidebar button.settings-tab.settings-tab-active {
   background: var(--primary-alpha-12);
   color: var(--sb-brand);
@@ -38,15 +54,25 @@
   color: var(--text-primary);
 }
 
+.settings-sidebar .update-notice-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #ef4444;
+  box-shadow: 0 0 0 2px var(--sidebar-bg);
+}
+
 .settings-content {
   background: var(--bg-main);
 }
 
 .section-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
+  line-height: 18px;
   color: var(--text-muted);
   margin-bottom: 12px;
 }
@@ -58,6 +84,9 @@
 
 .settings-field-label {
   color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
 }
 
 .settings-select {
@@ -73,12 +102,51 @@
 
 .settings-item-name {
   color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
 }
 .settings-item-meta {
   color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
 }
 .settings-item-sub {
   color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+}
+
+.settings-dialog-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.settings-action-text {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.settings-radio-label {
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.settings-provider-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 14px;
+  vertical-align: 1px;
 }
 
 button.action-btn.btn-primary {
@@ -120,6 +188,9 @@ button.account-edit-btn {
   border: 1px solid var(--input-border);
   background: var(--input-bg);
   color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
 }
 
 button.account-edit-btn:hover {
@@ -141,11 +212,15 @@ button.account-edit-btn:hover {
 .empty-state {
   border: 1px dashed var(--card-border);
   color: var(--text-muted);
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .drop-zone {
   border: 1.5px dashed var(--card-border);
   color: var(--text-muted);
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .context-size-slider {
@@ -283,7 +358,7 @@ button.account-edit-btn:hover {
   background: var(--agents-editor-selection-bg) !important;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 720px) {
   .settings-body {
     flex-direction: column;
     min-height: 0;
@@ -294,17 +369,31 @@ button.account-edit-btn:hover {
     flex-direction: row !important;
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 8px 10px;
+    padding: 8px 10px 9px;
     gap: 6px;
     border-right: none !important;
     border-bottom: 1px solid var(--card-border);
+    scrollbar-width: none;
+  }
+
+  .settings-sidebar::-webkit-scrollbar {
+    display: none;
   }
 
   .settings-tab {
     width: auto;
-    min-width: max-content;
+    min-width: fit-content;
     flex: 0 0 auto;
+    height: 34px;
+    padding-inline: 12px;
+    font-size: 13px;
+    line-height: 18px;
     white-space: nowrap;
+  }
+
+  .settings-tab-label {
+    overflow: visible;
+    text-overflow: clip;
   }
 
   .settings-content {

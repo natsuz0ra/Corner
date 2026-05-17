@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"errors"
+	"io"
 	"os"
 
 	"slimebot/internal/app"
@@ -10,26 +12,24 @@ import (
 	"slimebot/internal/logging"
 	"slimebot/internal/runtime"
 	"slimebot/internal/servicecontrol"
+	"slimebot/internal/updater"
+	buildversion "slimebot/internal/version"
 
 	_ "slimebot/internal/tools"
 )
 
-var (
-	version = "dev"
-	commit  = "unknown"
-	date    = "unknown"
-)
-
 func main() {
+	info := buildversion.Info()
 	if err := command.Execute(command.Options{
 		Args:      os.Args[1:],
 		RunCLI:    runCLI,
 		RunServer: runServer,
+		Update:    runUpdate,
 		Service:   mustServiceController(),
 		Version: command.VersionInfo{
-			Version: version,
-			Commit:  commit,
-			Date:    date,
+			Version: info.Version,
+			Commit:  info.Commit,
+			Date:    info.Date,
 		},
 	}); err != nil {
 		var exitErr cliapp.ExitError
@@ -39,6 +39,12 @@ func main() {
 		_, _ = os.Stderr.WriteString(err.Error() + "\n")
 		os.Exit(1)
 	}
+}
+
+func runUpdate(args []string, stdout io.Writer) error {
+	info := buildversion.Info()
+	service := updater.NewService(updater.ServiceOptions{CurrentVersion: info.Version})
+	return updater.RunCommand(context.Background(), args, stdout, service)
 }
 
 func runCLI() error {

@@ -21,6 +21,7 @@ const props = defineProps<{
   sessions: SessionItem[]
   currentSessionId?: string
   isDark: boolean
+  hasUpdateNotice: boolean
   setSidebarListRef: (el: unknown) => void
 }>()
 
@@ -189,6 +190,7 @@ onUnmounted(() => {
         >
           <MdiIcon :path="mdiCogOutline" :size="19" />
           <span class="font-medium">{{ t('settings') }}</span>
+          <span v-if="hasUpdateNotice" class="update-notice-dot" aria-hidden="true" />
         </button>
       </div>
     </div>
@@ -207,5 +209,14 @@ onUnmounted(() => {
 .sidebar-search-input:focus {
   border-color: var(--sb-brand);
   box-shadow: 0 0 0 2px var(--primary-alpha-12);
+}
+
+.update-notice-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #ef4444;
+  box-shadow: 0 0 0 2px var(--sidebar-bg);
 }
 </style>

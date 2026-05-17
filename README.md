@@ -37,23 +37,51 @@ The installer downloads the matching package when needed, places SlimeBot under 
 
 Before running the Web service, edit `~/.slimebot/config.cfg` and set a strong `JWT_SECRET`.
 
+## Update
+
+SlimeBot can check GitHub Releases and apply updates from the installed command:
+
+```bash
+slimebot update --check          # check latest stable Release
+slimebot update --yes            # update to latest stable Release
+slimebot update --version v1.26.1 --yes
+```
+
+The update source follows the installer: `SLIMEBOT_REPO` first, otherwise `natsuz0ra/SlimeBot`. Web users can open **Settings -> About** for the update center, and CLI TUI users can run `/update`.
+
+If the running build is `dev`, empty, or cannot be parsed as a version, automatic latest updates are disabled by default. Use `slimebot update --version vX.Y.Z --yes` when you intentionally want to install a specific Release.
+
 ## Uninstall
 
-Run the uninstaller from the extracted Release directory or from the installed copy.
+Run the uninstaller from the latest Release with one command, or run it from the extracted Release directory or installed copy.
 
 macOS / Linux:
 
 ```bash
+curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.sh | sh
 ./uninstall.sh
 ```
 
 Windows PowerShell:
 
 ```powershell
+irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.ps1 | iex
 .\uninstall.ps1
 ```
 
 The uninstaller stops and removes the system service, deletes the installed program files, and removes command shims. It asks before deleting `~/.slimebot` user data. Use `--purge` / `-Purge` to delete user data non-interactively, or `--yes` / `-Yes` to uninstall non-interactively while keeping user data.
+
+Pass options to the remote script:
+
+```bash
+curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.sh | sh -s -- --yes
+curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.sh | sh -s -- --purge
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.ps1))) -Yes
+& ([scriptblock]::Create((irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.ps1))) -Purge
+```
 
 ## Commands
 
@@ -67,6 +95,8 @@ slimebot service stop            # stop the Web service
 slimebot service restart         # restart the Web service
 slimebot service status          # show Web service status
 slimebot service uninstall       # uninstall the Web service
+slimebot update --check          # check for updates
+slimebot update --yes            # apply latest stable update
 slimebot version                 # show version information
 slimebot help                    # show command help
 ```
