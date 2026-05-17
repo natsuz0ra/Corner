@@ -87,7 +87,6 @@ curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninst
 
 ```bash
 slimebot                         # start the CLI TUI
-slimebot cli                     # start the CLI TUI explicitly
 slimebot server                  # start the Web service in the foreground
 slimebot service install         # install the Web service
 slimebot service start           # start the Web service
@@ -97,6 +96,7 @@ slimebot service status          # show Web service status
 slimebot service uninstall       # uninstall the Web service
 slimebot update --check          # check for updates
 slimebot update                  # apply latest stable update
+slimebot update --version vX.Y.Z # apply a specific Release tag
 slimebot version                 # show version information
 slimebot help                    # show command help
 ```
@@ -104,6 +104,8 @@ slimebot help                    # show command help
 Default Web port: **6247**. After the service starts, open `http://localhost:6247`.
 
 Service commands install a current-user service by default. On macOS this uses `~/Library/LaunchAgents`; on Linux with systemd this uses `systemctl --user`, which requires a working user service session.
+
+On macOS the service label is `com.natsuzora.slimebot`, the plist is `~/Library/LaunchAgents/com.natsuzora.slimebot.plist`, and logs are written to `~/.slimebot/log/service.out.log` and `~/.slimebot/log/service.err.log`. If `slimebot service start` reports that the legacy `slimebot` job is still loaded in launchd, run `launchctl bootout gui/$(id -u)/slimebot` first. If the legacy job came from a system LaunchDaemon, run `sudo launchctl bootout system /Library/LaunchDaemons/slimebot.plist`, then retry `slimebot service start`.
 
 First-time Web login seeds a default account if no user exists yet: username **`admin`**, password **`admin`**. Change it immediately.
 

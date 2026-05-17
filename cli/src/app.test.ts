@@ -120,6 +120,25 @@ test("CLI entry lets the app handle Ctrl+C shortcuts", () => {
   assert.match(source, /exitOnCtrlC:\s*false/);
 });
 
+test("CLI release bundle opts runtime dependencies back into tsup bundling", () => {
+  const source = readFileSync(new URL("../tsup.config.ts", import.meta.url), "utf8");
+
+  assert.match(source, /noExternal:\s*\[/);
+  assert.match(source, /shims:\s*true/);
+  assert.match(source, /__slimebotCreateRequire\(import\.meta\.url\)/);
+  assert.match(source, /@slimebot\\\/color-diff-native/);
+  assert.match(source, /external:\s*\[\s*["']@slimebot\/color-diff-native["']\s*\]/);
+});
+
+test("release packaging fails when CLI bundle still imports runtime packages", () => {
+  const source = readFileSync(new URL("../../scripts/package-release.sh", import.meta.url), "utf8");
+
+  assert.match(source, /assert_cli_bundle_self_contained/);
+  assert.match(source, /grep -Fq/);
+  assert.match(source, /react\/jsx-runtime/);
+  assert.match(source, /assert_cli_bundle_self_contained "cli\/dist\/index\.js"/);
+});
+
 test("session redraw uses Ink frame reset instead of raw terminal clearing", () => {
   const source = readFileSync(new URL("./app.tsx", import.meta.url), "utf8");
 
