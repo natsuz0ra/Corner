@@ -12,6 +12,54 @@ if (-not $Repo) {
 $sourceDir = if ($MyInvocation.MyCommand.Path) { Split-Path -Parent $MyInvocation.MyCommand.Path } else { (Get-Location).Path }
 $installDir = if ($env:SLIMEBOT_INSTALL_DIR) { $env:SLIMEBOT_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "SlimeBot" }
 $shimDir = if ($env:SLIMEBOT_BIN_DIR) { $env:SLIMEBOT_BIN_DIR } else { Join-Path $installDir "bin" }
+$pathWasConfigured = $false
+
+function Split-PathEntries {
+  param([string]$Value)
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return @()
+  }
+  return @($Value -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
+function Normalize-PathEntry {
+  param([string]$Value)
+  return $Value.Trim().TrimEnd('\', '/')
+}
+
+function Test-PathEntriesContain {
+  param(
+    [string[]]$Entries,
+    [string]$Target
+  )
+  $normalizedTarget = Normalize-PathEntry $Target
+  foreach ($entry in $Entries) {
+    if ([string]::Equals((Normalize-PathEntry $entry), $normalizedTarget, [System.StringComparison]::OrdinalIgnoreCase)) {
+      return $true
+    }
+  }
+  return $false
+}
+
+function Add-UserPathEntry {
+  param([string]$Directory)
+
+  $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  $userEntries = @(Split-PathEntries $userPath)
+  if (-not (Test-PathEntriesContain $userEntries $Directory)) {
+    $userEntries += $Directory
+    [Environment]::SetEnvironmentVariable("Path", ($userEntries -join ';'), "User")
+    $script:pathWasConfigured = $true
+    Write-Host "Added command shim directory to user PATH: $Directory"
+  } else {
+    Write-Host "Command shim directory is already on user PATH: $Directory"
+  }
+
+  $processEntries = @(Split-PathEntries $env:Path)
+  if (-not (Test-PathEntriesContain $processEntries $Directory)) {
+    $env:Path = (($processEntries + $Directory) -join ';')
+  }
+}
 
 function Install-FromRelease {
   $goos = "windows"
@@ -66,6 +114,7 @@ $slimebotCmd = Join-Path $shimDir "slimebot.cmd"
 $slimebotCliCmd = Join-Path $shimDir "slimebot-cli.cmd"
 Set-Content -Path $slimebotCmd -Encoding ASCII -Value "@echo off`r`n`"$installDir\bin\slimebot.exe`" %*`r`n"
 Set-Content -Path $slimebotCliCmd -Encoding ASCII -Value "@echo off`r`n`"$installDir\bin\slimebot.exe`" cli %*`r`n"
+Add-UserPathEntry $shimDir
 
 $homeDir = Join-Path $env:USERPROFILE ".slimebot"
 New-Item -ItemType Directory -Force -Path $homeDir | Out-Null
@@ -86,5 +135,9 @@ JWT_EXPIRE=21600
 Write-Host "SlimeBot installed to $installDir"
 Write-Host "Command shims installed to $shimDir"
 Write-Host "Run: slimebot"
-Write-Host "If your shell cannot find slimebot, add this directory to PATH: $shimDir"
+if ($pathWasConfigured) {
+  Write-Host "Open a new terminal to use slimebot directly."
+} elseif (-not (Get-Command slimebot -ErrorAction SilentlyContinue)) {
+  Write-Host "If your shell cannot find slimebot, add this directory to PATH: $shimDir"
+}
 Write-Host "Before starting the web service, set JWT_SECRET in $configPath"

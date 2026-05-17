@@ -46,6 +46,49 @@ $installDir = if ($env:SLIMEBOT_INSTALL_DIR) { $env:SLIMEBOT_INSTALL_DIR } else 
 $shimDir = if ($env:SLIMEBOT_BIN_DIR) { $env:SLIMEBOT_BIN_DIR } else { Join-Path $installDir "bin" }
 $dataDir = if ($env:SLIMEBOT_HOME) { $env:SLIMEBOT_HOME } else { Join-Path $env:USERPROFILE ".slimebot" }
 
+function Split-PathEntries {
+  param([string]$Value)
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return @()
+  }
+  return @($Value -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
+function Normalize-PathEntry {
+  param([string]$Value)
+  return $Value.Trim().TrimEnd('\', '/')
+}
+
+function Remove-PathEntry {
+  param(
+    [string]$Value,
+    [string]$Target
+  )
+
+  $normalizedTarget = Normalize-PathEntry $Target
+  $entries = @(Split-PathEntries $Value)
+  $kept = @()
+  foreach ($entry in $entries) {
+    if (-not [string]::Equals((Normalize-PathEntry $entry), $normalizedTarget, [System.StringComparison]::OrdinalIgnoreCase)) {
+      $kept += $entry
+    }
+  }
+  return ($kept -join ';')
+}
+
+function Remove-UserPathEntry {
+  param([string]$Directory)
+
+  $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  $updatedUserPath = Remove-PathEntry $userPath $Directory
+  if ($updatedUserPath -ne $userPath) {
+    [Environment]::SetEnvironmentVariable("Path", $updatedUserPath, "User")
+    Write-Host "Removed command shim directory from user PATH: $Directory"
+  }
+
+  $env:Path = Remove-PathEntry $env:Path $Directory
+}
+
 $slimebotPath = Join-Path $installDir "bin\slimebot.exe"
 if (-not (Test-Path $slimebotPath)) {
   $command = Get-Command slimebot -ErrorAction SilentlyContinue
@@ -81,6 +124,7 @@ Invoke-ServiceAction "uninstall"
 
 Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $shimDir "slimebot.cmd"), (Join-Path $shimDir "slimebot-cli.cmd")
 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $installDir
+Remove-UserPathEntry $shimDir
 
 $deleteData = $false
 if ($Purge) {
@@ -103,4 +147,5 @@ if ($deleteData) {
 
 Write-Host "Removed install directory: $installDir"
 Write-Host "Removed command shims from: $shimDir"
+Write-Host "Open a new terminal to refresh PATH."
 Write-Host "SlimeBot uninstall complete"
