@@ -21,12 +21,12 @@ const (
 )
 
 type Controller struct {
-	service kservice.Service
+	service serviceBackend
 }
 
 func NewController() (*Controller, error) {
 	prg := &program{}
-	svc, err := kservice.New(prg, serviceConfig())
+	svc, err := newServiceBackend(prg, serviceConfig())
 	if err != nil {
 		return nil, err
 	}
@@ -50,18 +50,7 @@ func (c *Controller) Restart() error {
 }
 
 func (c *Controller) Status() (string, error) {
-	status, err := c.service.Status()
-	if err != nil {
-		return "", err
-	}
-	switch status {
-	case kservice.StatusRunning:
-		return "running", nil
-	case kservice.StatusStopped:
-		return "stopped", nil
-	default:
-		return "unknown", nil
-	}
+	return c.service.Status()
 }
 
 func (c *Controller) Uninstall() error {
@@ -73,6 +62,16 @@ func (c *Controller) Run() error {
 		return err
 	}
 	return c.service.Run()
+}
+
+type serviceBackend interface {
+	Install() error
+	Start() error
+	Stop() error
+	Restart() error
+	Status() (string, error)
+	Uninstall() error
+	Run() error
 }
 
 type program struct {
