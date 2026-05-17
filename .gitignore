@@ -18,6 +18,7 @@ skills
 onnx
 cmd/test
 web/dist/
+dist/
 *.exe
 slimebot
 __pycache__/
