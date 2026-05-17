@@ -156,6 +156,7 @@ type WSIncoming = {
   preamble?: string
   output?: string
   metadata?: unknown
+  createdAt?: string
   startedAt?: string
   finishedAt?: string
   updatedAt?: string

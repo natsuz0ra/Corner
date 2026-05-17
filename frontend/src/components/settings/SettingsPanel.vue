@@ -307,7 +307,7 @@ watch(tab, (nextTab) => {
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </div>
-        <span class="text-sm font-semibold settings-title">{{ t('settings') }}</span>
+        <span class="settings-title">{{ t('settings') }}</span>
       </div>
       <button
         type="button"
@@ -324,7 +324,7 @@ watch(tab, (nextTab) => {
           v-for="item in settingsTabs"
           :key="item.key"
           type="button"
-          class="relative w-full text-left px-3.5 h-9 rounded-xl text-sm transition-all duration-150 cursor-pointer settings-tab flex items-center gap-2"
+          class="relative w-full text-left px-3.5 h-9 rounded-xl transition-all duration-150 cursor-pointer settings-tab flex items-center gap-2"
           :class="tab === item.key ? 'settings-tab-active' : 'settings-tab-inactive'"
           @click="tab = item.key"
         >
@@ -333,7 +333,7 @@ watch(tab, (nextTab) => {
             class="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
             style="background: #6366f1"
           />
-          <span>{{ t(item.labelKey) }}</span>
+          <span class="settings-tab-label">{{ t(item.labelKey) }}</span>
           <span v-if="item.key === 'about' && hasUpdateNotice" class="update-notice-dot" aria-hidden="true" />
         </button>
       </aside>
@@ -436,42 +436,42 @@ watch(tab, (nextTab) => {
   >
     <div class="flex flex-col gap-4">
       <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-medium sb-text-muted">{{ t('provider') }}</label>
+        <label class="settings-dialog-label">{{ t('provider') }}</label>
         <div class="flex gap-3">
-          <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+          <label class="flex items-center gap-1.5 cursor-pointer settings-radio-label">
             <input type="radio" v-model="llmForm.provider" value="openai" class="accent-[#6366f1]" />
             {{ t('providerOpenAI') }}
           </label>
-          <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+          <label class="flex items-center gap-1.5 cursor-pointer settings-radio-label">
             <input type="radio" v-model="llmForm.provider" value="anthropic" class="accent-[#6366f1]" />
             {{ t('providerAnthropic') }}
           </label>
-          <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+          <label class="flex items-center gap-1.5 cursor-pointer settings-radio-label">
             <input type="radio" v-model="llmForm.provider" value="deepseek" class="accent-[#6366f1]" />
             {{ t('providerDeepSeek') }}
           </label>
         </div>
       </div>
       <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-medium sb-text-muted">{{ t('name') }}</label>
+        <label class="settings-dialog-label">{{ t('name') }}</label>
         <AppTextInput v-model="llmForm.name" />
       </div>
       <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-medium sb-text-muted">{{ t('model') }}</label>
+        <label class="settings-dialog-label">{{ t('model') }}</label>
         <AppTextInput v-model="llmForm.model" />
       </div>
       <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-medium sb-text-muted">{{ t('baseUrl') }}</label>
+        <label class="settings-dialog-label">{{ t('baseUrl') }}</label>
         <AppTextInput v-model="llmForm.baseUrl" />
       </div>
       <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-medium sb-text-muted">{{ t('apiKey') }}</label>
+        <label class="settings-dialog-label">{{ t('apiKey') }}</label>
         <AppPasswordInput v-model="llmForm.apiKey" />
       </div>
       <div class="flex flex-col gap-2">
         <div class="flex items-center justify-between gap-3">
-          <label class="text-xs font-medium sb-text-muted">{{ t('contextSize') }}</label>
-          <span class="text-xs settings-item-meta">{{ llmContextSizeDisplay }}</span>
+          <label class="settings-dialog-label">{{ t('contextSize') }}</label>
+          <span class="settings-item-meta">{{ llmContextSizeDisplay }}</span>
         </div>
         <input
           v-model.number="llmContextSizeSlider"
@@ -490,7 +490,7 @@ watch(tab, (nextTab) => {
             step="1000"
             class="context-size-input"
           />
-          <span class="text-xs sb-text-muted">{{ t('contextSizeHint') }}</span>
+          <span class="settings-item-meta">{{ t('contextSizeHint') }}</span>
         </div>
       </div>
     </div>
@@ -505,7 +505,7 @@ watch(tab, (nextTab) => {
     width="360px"
     @confirm="runConfirmDialog"
   >
-    <p class="text-sm sb-text-secondary">{{ t('confirmDeleteItem') }}</p>
+    <p class="settings-item-sub">{{ t('confirmDeleteItem') }}</p>
   </AppDialog>
 
   <AppDialog
@@ -519,19 +519,19 @@ watch(tab, (nextTab) => {
   >
     <div class="flex flex-col gap-4">
       <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-medium sb-text-muted">{{ t('name') }}</label>
+        <label class="settings-dialog-label">{{ t('name') }}</label>
         <AppTextInput v-model="mcpForm.name" />
       </div>
 
       <div class="flex flex-col gap-1.5">
         <div class="flex items-center justify-between">
-          <label class="text-xs font-medium sb-text-muted">{{ t('mcpConfigJson') }}</label>
+          <label class="settings-dialog-label">{{ t('mcpConfigJson') }}</label>
           <div class="flex items-center gap-1">
             <button
               v-for="tpl in ['stdio', 'sse', 'streamable_http'] as const"
               :key="tpl"
               type="button"
-              class="px-2.5 py-1 text-xs rounded-lg transition-all duration-150 cursor-pointer"
+              class="px-2.5 py-1 rounded-lg transition-all duration-150 cursor-pointer settings-action-text"
               :class="mcpTemplateType === tpl ? 'tpl-btn-active' : 'tpl-btn-inactive'"
               @click="applyTemplate(tpl)"
             >
@@ -569,7 +569,7 @@ watch(tab, (nextTab) => {
     @cancel="closeWebSearchDialog"
   >
     <div class="flex flex-col gap-1.5">
-      <label class="text-xs font-medium sb-text-muted">{{ t('apiKey') }}</label>
+      <label class="settings-dialog-label">{{ t('apiKey') }}</label>
       <AppPasswordInput
         v-model="webSearchKey"
       />
@@ -586,9 +586,9 @@ watch(tab, (nextTab) => {
     @confirm="saveMessagePlatformConfig"
   >
     <div class="flex flex-col gap-3">
-      <p class="text-xs settings-item-sub">{{ t('messagePlatformBindDesc') }}</p>
+      <p class="settings-item-sub">{{ t('messagePlatformBindDesc') }}</p>
       <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-medium sb-text-muted">{{ t('botToken') }}</label>
+        <label class="settings-dialog-label">{{ t('botToken') }}</label>
         <AppPasswordInput v-model="messagePlatformForm.botToken" />
       </div>
     </div>

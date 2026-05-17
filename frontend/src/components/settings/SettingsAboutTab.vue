@@ -125,12 +125,12 @@ onUnmounted(stopPolling)
 
       <div class="about-info">
         <div class="about-row">
-          <span class="text-sm settings-field-label">{{ t('appVersion') }}</span>
-          <span class="text-sm settings-item-sub">{{ version }}</span>
+          <span class="settings-field-label">{{ t('appVersion') }}</span>
+          <span class="settings-item-sub">{{ version }}</span>
         </div>
 
         <div class="about-row">
-          <span class="text-sm settings-field-label">{{ t('githubRepository') }}</span>
+          <span class="settings-field-label">{{ t('githubRepository') }}</span>
           <a
             class="about-link"
             :href="githubUrl"
@@ -158,11 +158,11 @@ onUnmounted(stopPolling)
 
       <div v-if="checkResult" class="update-meta">
         <div class="about-row">
-          <span class="text-sm settings-field-label">{{ t('updateLatestVersion') }}</span>
-          <span class="text-sm settings-item-sub">{{ checkResult.latest || '-' }}</span>
+          <span class="settings-field-label">{{ t('updateLatestVersion') }}</span>
+          <span class="settings-item-sub">{{ checkResult.latest || '-' }}</span>
         </div>
         <div v-if="checkResult.releaseUrl" class="about-row">
-          <span class="text-sm settings-field-label">{{ t('updateReleasePage') }}</span>
+          <span class="settings-field-label">{{ t('updateReleasePage') }}</span>
           <a class="about-link" :href="checkResult.releaseUrl" target="_blank" rel="noreferrer">
             <MdiIcon :path="mdiOpenInNew" :size="15" />
             <span>{{ t('open') }}</span>
