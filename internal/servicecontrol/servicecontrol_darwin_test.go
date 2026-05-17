@@ -26,6 +26,12 @@ func TestDarwinLaunchAgentPlistUsesModernLabelAndUserEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("plistContent failed: %v", err)
 	}
+	if !strings.HasPrefix(plist, `<?xml version="1.0" encoding="UTF-8"?>`) {
+		t.Fatalf("plist should start with raw XML declaration:\n%s", plist)
+	}
+	if strings.Contains(plist, "&lt;?xml") {
+		t.Fatalf("plist XML declaration should not be HTML-escaped:\n%s", plist)
+	}
 
 	for _, want := range []string{
 		"<string>com.natsuzora.slimebot</string>",
@@ -90,6 +96,118 @@ func TestDarwinStartUsesBootstrapAndKickstart(t *testing.T) {
 	}
 	if strings.Join(calls, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("launchctl calls:\n%s\nwant:\n%s", strings.Join(calls, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestDarwinRootCommandsReturnSudoGuidance(t *testing.T) {
+	home := t.TempDir()
+	svc := newDarwinLaunchAgentService(darwinLaunchAgentOptions{
+		Executable: "/opt/slimebot/bin/slimebot",
+		HomeDir:    home,
+		UserName:   "root",
+		UID:        "0",
+		RunCommand: func(string, ...string) (string, error) {
+			t.Fatal("root guard should run before launchctl")
+			return "", nil
+		},
+	})
+
+	for name, run := range map[string]func() error{
+		"install":   svc.Install,
+		"start":     svc.Start,
+		"uninstall": svc.Uninstall,
+		"status": func() error {
+			_, err := svc.Status()
+			return err
+		},
+	} {
+		err := run()
+		if err == nil {
+			t.Fatalf("%s should reject root user", name)
+		}
+		for _, want := range []string{"不要使用 sudo", "slimebot service " + name} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("%s error missing %q: %v", name, want, err)
+			}
+		}
+	}
+}
+
+func TestDarwinInstallValidatesGeneratedPlistAndExecutable(t *testing.T) {
+	home := t.TempDir()
+	missingExe := filepath.Join(home, "missing-slimebot")
+	var svc *darwinLaunchAgentService
+	svc = newDarwinLaunchAgentService(darwinLaunchAgentOptions{
+		Executable: missingExe,
+		HomeDir:    home,
+		UserName:   "alice",
+		UID:        "501",
+		RunCommand: func(name string, args ...string) (string, error) {
+			if name == "plutil" && strings.Join(args, " ") == "-lint "+svc.plistPath() {
+				return svc.plistPath() + ": OK", nil
+			}
+			return "", nil
+		},
+	})
+
+	err := svc.Install()
+	if err == nil {
+		t.Fatal("Install should fail when executable is missing")
+	}
+	for _, want := range []string{svc.plistPath(), "executable", missingExe} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Install error missing %q: %v", want, err)
+		}
+	}
+}
+
+func TestDarwinStartBootstrapFailureIncludesDiagnostics(t *testing.T) {
+	home := t.TempDir()
+	var svc *darwinLaunchAgentService
+	svc = newDarwinLaunchAgentService(darwinLaunchAgentOptions{
+		Executable: "/opt/slimebot/bin/slimebot",
+		HomeDir:    home,
+		UserName:   "alice",
+		UID:        "501",
+		RunCommand: func(name string, args ...string) (string, error) {
+			joined := strings.Join(args, " ")
+			switch {
+			case name == "launchctl" && joined == "print gui/501/slimebot":
+				return "", errLaunchctlNotFound
+			case name == "launchctl" && joined == "print gui/501/com.natsuzora.slimebot":
+				return "", errLaunchctlNotFound
+			case name == "launchctl" && strings.HasPrefix(joined, "bootstrap gui/501 "):
+				return "Bootstrap failed: 5: Input/output error", errors.New("exit status 5")
+			case name == "plutil" && joined == "-lint "+svc.plistPath():
+				return svc.plistPath() + ": OK", nil
+			default:
+				return "", nil
+			}
+		},
+	})
+	if err := os.MkdirAll(filepath.Dir(svc.plistPath()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(svc.plistPath(), []byte("plist"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := svc.Start()
+	if err == nil {
+		t.Fatal("Start should fail when bootstrap fails")
+	}
+	for _, want := range []string{
+		"launchctl bootstrap",
+		"gui/501",
+		svc.plistPath(),
+		"/opt/slimebot/bin/slimebot",
+		filepath.Join(home, ".slimebot", "log", "service.out.log"),
+		filepath.Join(home, ".slimebot", "log", "service.err.log"),
+		"plutil",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Start error missing %q: %v", want, err)
+		}
 	}
 }
 
@@ -172,6 +290,35 @@ func TestDarwinStopUsesBootoutDomainLabel(t *testing.T) {
 	}
 	if got, want := strings.Join(calls, "\n"), "launchctl bootout gui/501/com.natsuzora.slimebot"; got != want {
 		t.Fatalf("launchctl call = %q, want %q", got, want)
+	}
+}
+
+func TestDarwinUninstallRemovesPlistWhenJobIsNotLoaded(t *testing.T) {
+	home := t.TempDir()
+	svc := newDarwinLaunchAgentService(darwinLaunchAgentOptions{
+		Executable: "/opt/slimebot/bin/slimebot",
+		HomeDir:    home,
+		UserName:   "alice",
+		UID:        "501",
+		RunCommand: func(name string, args ...string) (string, error) {
+			if name == "launchctl" && strings.Join(args, " ") == "bootout gui/501/com.natsuzora.slimebot" {
+				return "Could not find service", errLaunchctlNotFound
+			}
+			return "", nil
+		},
+	})
+	if err := os.MkdirAll(filepath.Dir(svc.plistPath()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(svc.plistPath(), []byte("plist"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.Uninstall(); err != nil {
+		t.Fatalf("Uninstall should remove plist when launchctl bootout misses job: %v", err)
+	}
+	if _, err := os.Stat(svc.plistPath()); !os.IsNotExist(err) {
+		t.Fatalf("plist should be removed, stat err = %v", err)
 	}
 }
 
