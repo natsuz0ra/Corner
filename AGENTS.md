@@ -59,7 +59,9 @@ internal/
 │  ├─ session/               # Session lifecycle/state
 │  ├─ settings/              # User/system settings
 │  └─ skill/                 # Skill loading/execution
-└─ tools/                    # Tool implementations
+├─ tools/                    # Tool implementations
+├─ updater/                  # Release update checking/apply helper
+└─ version/                  # Build/version metadata
 ```
 
 Frontend structure (`frontend/src`):
@@ -106,8 +108,12 @@ Quick index (feature -> first place to inspect):
 - Sandbox policy and command isolation: `internal/sandbox/`
 - LLM abstraction/provider wiring: `internal/services/llm/`, `internal/services/openai/`, `internal/services/anthropic/`
 - Tool implementations: `internal/tools/`
+- Update checking/apply flow: `internal/updater/`, `internal/server/controller/update.go`
+- Build/version metadata: `internal/version/`
 - Web settings page UI: `frontend/src/components/settings/`, `frontend/src/composables/settings/`, `frontend/src/pages/`
+- Web update center: `frontend/src/components/settings/SettingsAboutTab.vue`, `frontend/src/api/update.ts`
 - CLI interaction flow: `cmd/cli/`, `cli/src/controllers/`, `cli/src/components/`, `cli/src/ws/`
+- CLI update view: `cli/src/components/UpdateView.tsx`, `/update` command routing in `cli/src/controllers/commands.ts`
 - Prompt templates: `prompts/`
 - Release/install packaging: `scripts/`
 - Manual deployment docs: `docs/`
@@ -154,7 +160,11 @@ Directory-aware test targeting hints:
 
 ## Commit & Pull Request Guidelines
 
-Recent history uses concise messages like `update: cli ui优化` and `update: 支持工具的并行执行与批量审批`; follow `type: short summary`, usually `update:` for incremental changes. Pull requests should include a clear summary, test commands run, linked issues when available, and screenshots or short recordings for visible Web/CLI UI changes.
+Recent history uses concise messages like `update: 更新版本号`, `update: 支持一条命令安装`, and `update: 前端ai消息中的代码块新增复制按钮`; follow `type: short summary`, usually `update:` for incremental changes. Keep summaries short, imperative or noun-phrase style, and prefer Chinese descriptions consistent with the existing history. Merge commits may keep the hosting platform's default format, for example `Merge branch 'dev/1.26.0'` or `Merge pull request #29 from natsuz0ra/dev/1.25.0`.
+
+Use release branch names in the `dev/x.y.z` format, matching existing branches such as `dev/1.24.0`, `dev/1.25.0`, and `dev/1.26.0`. For patch releases, continue the same pattern, for example `dev/1.26.1`. Use other prefixes only when the branch is not a release/version branch and the purpose is clear.
+
+Pull requests should include a clear summary, test commands run, linked issues when available, and screenshots or short recordings for visible Web/CLI UI changes.
 
 ## Security & Configuration Tips
 

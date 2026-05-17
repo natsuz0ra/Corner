@@ -25,6 +25,13 @@ test("matchCommandHints includes sandbox command", () => {
   );
 });
 
+test("matchCommandHints includes update command", () => {
+  assert.deepEqual(
+    matchCommandHints("/u").map((hint) => hint.command),
+    ["/update"],
+  );
+});
+
 test("matchCommandHints ignores completed commands with trailing content", () => {
   assert.deepEqual(matchCommandHints("/model "), []);
   assert.deepEqual(matchCommandHints("/model abc"), []);

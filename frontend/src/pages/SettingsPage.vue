@@ -3,12 +3,20 @@ import { useRouter } from 'vue-router'
 import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 
 const router = useRouter()
+
+function ignoreUpdateNoticeRead() {}
+function ignoreUpdateCheckResult() {}
 </script>
 
 <template>
   <div class="h-screen flex items-center justify-center p-4 sm:p-6 settings-page">
     <div class="w-full rounded-xl overflow-hidden settings-shell" style="max-width: min(90vw, 1080px); height: min(86vh, 760px)">
-      <SettingsPanel @close="router.push('/')" />
+      <SettingsPanel
+        :has-update-notice="false"
+        :mark-update-notice-read="ignoreUpdateNoticeRead"
+        :set-update-check-result="ignoreUpdateCheckResult"
+        @close="router.push('/')"
+      />
     </div>
   </div>
 </template>

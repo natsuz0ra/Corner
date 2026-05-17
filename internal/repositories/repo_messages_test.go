@@ -306,12 +306,18 @@ func TestUpdateUserMessageAndPruneAfter_UpdatesLatestUserAndDeletesTail(t *testi
 	if updated.Content != "edited" || updated.ID != user.ID {
 		t.Fatalf("unexpected updated message: %+v", updated)
 	}
+	if !updated.CreatedAt.After(user.CreatedAt) {
+		t.Fatalf("expected edited user createdAt to advance from %s, got %s", user.CreatedAt, updated.CreatedAt)
+	}
 	messages, _, err := repo.ListSessionMessagesPage(ctx, session.ID, 10, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("list messages failed: %v", err)
 	}
 	if len(messages) != 1 || messages[0].ID != user.ID || messages[0].Content != "edited" {
 		t.Fatalf("expected only edited user message, got %+v", messages)
+	}
+	if !messages[0].CreatedAt.Equal(updated.CreatedAt) {
+		t.Fatalf("expected listed message createdAt %s, got %s", updated.CreatedAt, messages[0].CreatedAt)
 	}
 	toolRecords, err := repo.ListSessionToolCallRecordsByAssistantMessageIDs(ctx, session.ID, []string{assistant.ID})
 	if err != nil {

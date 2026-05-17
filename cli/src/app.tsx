@@ -17,6 +17,7 @@ import { CLI_HINT_COLOR, MenuView } from "./components/MenuView.js";
 import { ModelEditor } from "./components/ModelEditor.js";
 import { TextInput } from "./components/TextInput.js";
 import { Timeline } from "./components/Timeline.js";
+import { UpdateView, isUpdateActive } from "./components/UpdateView.js";
 import { getChatFooterHint, handleChatShortcut, runCliCommand } from "./controllers/commands.js";
 import { useCliKeyboard } from "./hooks/useCliKeyboard.js";
 import { clampContextSize, formatContextSize, formatContextUsageStatus } from "./utils/contextSize.js";
@@ -367,6 +368,48 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     }
   }, [appendSystem]);
 
+  const loadUpdate = useCallback(async () => {
+    dispatch({ type: "SET_VIEW", view: "update" } as AppAction);
+    dispatch({ type: "SET_UPDATE_STATE", loading: true } as AppAction);
+    try {
+      const check = await apiRef.current.getUpdateCheck(true);
+      const job = await apiRef.current.getUpdateJob();
+      dispatch({ type: "SET_UPDATE_STATE", check, job, loading: false, applying: isUpdateActive(job) } as AppAction);
+    } catch (error) {
+      dispatch({ type: "SET_UPDATE_STATE", loading: false, applying: false } as AppAction);
+      appendSystem(`Failed to load update status: ${(error as Error).message}`);
+    }
+  }, [appendSystem]);
+
+  const checkForUpdatesSilently = useCallback(async () => {
+    try {
+      const check = await apiRef.current.getUpdateCheck(false);
+      dispatch({ type: "SET_UPDATE_STATE", check } as AppAction);
+    } catch {
+      // Update checks are informational; keep startup quiet.
+    }
+  }, []);
+
+  const applyUpdate = useCallback(async () => {
+    if (!state.updateCheck?.canApply || !state.updateCheck.latest || state.updateApplying) {
+      appendSystem("No applicable update is available.");
+      return;
+    }
+    dispatch({ type: "SET_UPDATE_STATE", applying: true } as AppAction);
+    try {
+      const job = await apiRef.current.applyUpdate(state.updateCheck.latest);
+      dispatch({ type: "SET_UPDATE_STATE", job, applying: true } as AppAction);
+      appendSystem(`Update started for ${state.updateCheck.latest}. Restart slimebot after the helper finishes.`);
+      setTimeout(() => {
+        socketRef.current?.close();
+        exit();
+      }, 800);
+    } catch (error) {
+      dispatch({ type: "SET_UPDATE_STATE", applying: false } as AppAction);
+      appendSystem(`Failed to start update: ${(error as Error).message}`);
+    }
+  }, [appendSystem, exit, state.updateApplying, state.updateCheck]);
+
   const showHelp = useCallback(() => {
     const items: MenuItem[] = [
       { title: "/new", desc: "Create a new chat (lazy session creation)", data: null },
@@ -375,6 +418,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       { title: "/approval", desc: "Toggle approval mode (standard/auto review/auto)", data: null },
       { title: "/effort", desc: "Toggle thinking level (off/low/medium/high)", data: null },
       { title: "/sandbox", desc: "Configure sandbox mode and network access", data: null },
+      { title: "/update", desc: "Check and apply SlimeBot updates", data: null },
       { title: "/skills", desc: "Browse and delete installed skills", data: null },
       { title: "/mcp", desc: "Manage MCP configs", data: null },
       { title: "/help", desc: "Show available commands", data: null },
@@ -688,6 +732,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       toggleThinkingLevel,
       setThinkingLevel,
       loadSkills,
+      loadUpdate,
       loadMCPConfigs,
       loadSandboxSettings,
       showHelp,
@@ -703,6 +748,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     loadSandboxSettings,
     loadSessions,
     loadSkills,
+    loadUpdate,
     loadSubagentModels,
     setThinkingLevel,
     showHelp,
@@ -719,7 +765,8 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     void loadDefaultModel();
     void loadApprovalMode();
     void loadThinkingLevel();
-  }, [applyTerminalTitle, loadDefaultModel, loadApprovalMode, stdout]);
+    void checkForUpdatesSilently();
+  }, [applyTerminalTitle, loadDefaultModel, loadApprovalMode, loadThinkingLevel, checkForUpdatesSilently, stdout]);
 
   // Terminal resize.
   useEffect(() => {
@@ -777,6 +824,8 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     handleMenuAdd,
     handleMenuEdit,
     handleMenuToggle,
+    loadUpdate,
+    applyUpdate,
     loadMCPConfigs,
     loadModels,
     saveMCPConfig,
@@ -791,7 +840,14 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
   return (
     <Box flexDirection="column">
-      <Banner version={state.version} modelName={state.modelName} cwd={state.cwd} approvalMode={state.approvalMode} thinkingLevel={state.thinkingLevel} />
+      <Banner
+        version={state.version}
+        modelName={state.modelName}
+        cwd={state.cwd}
+        approvalMode={state.approvalMode}
+        thinkingLevel={state.thinkingLevel}
+        updateAvailable={Boolean(state.updateCheck?.updateAvailable)}
+      />
       <Text> </Text>
       {(state.timeline.length > 0 || state.streaming) && (
         <>
@@ -987,6 +1043,16 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
             ))}
           </Box>
         </Box>
+      )}
+
+      {state.view === "update" && (
+        <UpdateView
+          check={state.updateCheck}
+          job={state.updateJob}
+          loading={state.updateLoading}
+          applying={state.updateApplying}
+          columns={width}
+        />
       )}
 
       {state.view === "mcp-editor" && (

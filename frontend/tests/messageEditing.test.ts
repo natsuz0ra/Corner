@@ -36,7 +36,7 @@ test('findLatestEditableUserMessageId blocks while waiting and failed local mess
   assert.equal(findLatestEditableUserMessageId(messages, false, new Set(['failed'])), '')
 })
 
-test('applyEditedUserMessage trims following messages and reply batches', () => {
+test('applyEditedUserMessage trims following messages and updates edited createdAt', () => {
   const messages = [
     message('u1', 'user', 1),
     message('a1', 'assistant', 2),
@@ -47,11 +47,13 @@ test('applyEditedUserMessage trims following messages and reply batches', () => 
     { id: 'b1', sessionId: 's1', assistantMessageId: 'a1', toolCalls: [], timeline: [], collapsed: false },
     { id: 'b2', sessionId: 's1', assistantMessageId: 'a2', toolCalls: [], timeline: [], collapsed: false },
   ] as AssistantReplyBatch[]
+  const editedAt = new Date(12345).toISOString()
 
-  const result = applyEditedUserMessage(messages, replyBatches, 'u2', 'edited')
+  const result = applyEditedUserMessage(messages, replyBatches, 'u2', 'edited', editedAt)
 
   assert.deepEqual(result.messages.map((item) => item.id), ['u1', 'a1', 'u2'])
   assert.equal(result.messages[2].content, 'edited')
+  assert.equal(result.messages[2].createdAt, editedAt)
   assert.deepEqual(result.replyBatches.map((item) => item.id), ['b1'])
 })
 

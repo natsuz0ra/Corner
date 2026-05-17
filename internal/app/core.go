@@ -24,6 +24,8 @@ import (
 	sessionsvc "slimebot/internal/services/session"
 	settingssvc "slimebot/internal/services/settings"
 	skillsvc "slimebot/internal/services/skill"
+	"slimebot/internal/updater"
+	buildversion "slimebot/internal/version"
 )
 
 // Core holds shared dependencies for server and CLI entrypoints.
@@ -45,6 +47,7 @@ type Core struct {
 	ChatUpload       *chatsvc.ChatUploadService
 	MCPManager       *mcp.Manager
 	PlanService      *plansvc.PlanService
+	UpdateService    *updater.Service
 
 	warmupOnce    sync.Once
 	warmupDone    chan struct{}
@@ -102,6 +105,8 @@ func NewCore(cfg config.Config) (*Core, error) {
 		return nil, err
 	}
 	chatService.SetPlanService(planService)
+	info := buildversion.Info()
+	updateService := updater.NewService(updater.ServiceOptions{CurrentVersion: info.Version})
 
 	return &Core{
 		Config:           cfg,
@@ -120,6 +125,7 @@ func NewCore(cfg config.Config) (*Core, error) {
 		ChatUpload:       chatUpload,
 		MCPManager:       mcpManager,
 		PlanService:      planService,
+		UpdateService:    updateService,
 		warmupDone:       make(chan struct{}),
 	}, nil
 }

@@ -28,6 +28,7 @@ type Options struct {
 	Stdout    io.Writer
 	RunCLI    func() error
 	RunServer func() error
+	Update    func(args []string, stdout io.Writer) error
 	Service   ServiceController
 	Version   VersionInfo
 }
@@ -50,6 +51,8 @@ func Execute(opts Options) error {
 		return call("server", opts.RunServer)
 	case "service":
 		return executeService(args[1:], stdout, opts.Service)
+	case "update":
+		return executeUpdate(args[1:], stdout, opts.Update)
 	case "version":
 		printVersion(stdout, opts.Version)
 		return nil
@@ -59,6 +62,13 @@ func Execute(opts Options) error {
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], HelpText())
 	}
+}
+
+func executeUpdate(args []string, stdout io.Writer, update func([]string, io.Writer) error) error {
+	if update == nil {
+		return fmt.Errorf("update controller is not configured")
+	}
+	return update(args, stdout)
 }
 
 func executeService(args []string, stdout io.Writer, svc ServiceController) error {
@@ -132,6 +142,9 @@ func HelpText() string {
   slimebot service restart         Restart the web service
   slimebot service status          Show web service status
   slimebot service uninstall       Uninstall the web service
+  slimebot update --check          Check for updates
+  slimebot update --yes            Update to the latest release
+  slimebot update --version vX.Y.Z --yes
   slimebot version                 Show version information
   slimebot help                    Show this help
 `

@@ -388,8 +388,8 @@ func (w *Controller) handleChatIncoming(
 	var streamResult *chatsvc.ChatStreamResult
 	if incoming.Type == "chat_edit" {
 		startEnqueued := false
-		callbacks.OnMessageEdited = func(messageID, content string) error {
-			if !enqueue(buildMessageEditedPayload(session.ID, messageID, content)) {
+		callbacks.OnMessageEdited = func(messageID, content string, createdAt time.Time) error {
+			if !enqueue(buildMessageEditedPayload(session.ID, messageID, content, createdAt)) {
 				return context.Canceled
 			}
 			startSentAt = time.Now()
@@ -500,12 +500,13 @@ func buildChatStartPayload(sessionID string, startedAt time.Time) map[string]any
 	}
 }
 
-func buildMessageEditedPayload(sessionID, messageID, content string) map[string]any {
+func buildMessageEditedPayload(sessionID, messageID, content string, createdAt time.Time) map[string]any {
 	return map[string]any{
 		"type":      "message_edited",
 		"sessionId": sessionID,
 		"messageId": messageID,
 		"content":   content,
+		"createdAt": createdAt.Format(time.RFC3339Nano),
 	}
 }
 

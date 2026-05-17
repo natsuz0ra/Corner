@@ -22,6 +22,8 @@ interface UseCliKeyboardProps {
   handleMenuAdd: () => void;
   handleMenuEdit: (item: MenuItem | undefined) => void;
   handleMenuToggle: (item: MenuItem | undefined) => Promise<void>;
+  loadUpdate: () => Promise<void>;
+  applyUpdate: () => Promise<void>;
   loadMCPConfigs: () => Promise<void>;
   loadModels: () => Promise<void>;
   saveMCPConfig: () => Promise<void>;
@@ -177,6 +179,8 @@ export function useCliKeyboard({
   handleMenuAdd,
   handleMenuEdit,
   handleMenuToggle,
+  loadUpdate,
+  applyUpdate,
   loadMCPConfigs,
   loadModels,
   saveMCPConfig,
@@ -333,6 +337,21 @@ export function useCliKeyboard({
     if (state.view === "thinking-detail") {
       if (key.escape) {
         dispatch({ type: "SET_VIEW", view: "chat" });
+      }
+      return;
+    }
+
+    if (state.view === "update") {
+      if (key.escape) {
+        dispatch({ type: "SET_VIEW", view: "chat" });
+        return;
+      }
+      if (input === "c" || input === "C") {
+        void loadUpdate();
+        return;
+      }
+      if (input === "u" || input === "U") {
+        void applyUpdate();
       }
       return;
     }

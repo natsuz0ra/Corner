@@ -36,6 +36,7 @@ export interface CliCommandHandlers {
   toggleThinkingLevel: () => void;
   setThinkingLevel: (level: string) => void;
   loadSandboxSettings: () => Promise<void>;
+  loadUpdate: () => Promise<void>;
   loadSkills: () => Promise<void>;
   loadMCPConfigs: () => Promise<void>;
   showHelp: () => void;
@@ -75,6 +76,10 @@ export async function runCliCommand(raw: string, handlers: CliCommandHandlers): 
   }
   if (cmd === "/sandbox") {
     await handlers.loadSandboxSettings();
+    return;
+  }
+  if (cmd === "/update") {
+    await handlers.loadUpdate();
     return;
   }
   if (cmd === "/skills") {

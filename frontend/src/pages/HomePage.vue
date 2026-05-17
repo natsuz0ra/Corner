@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, toRef } from 'vue'
+import { computed, onMounted, toRef } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   mdiDeleteOutline,
@@ -18,6 +18,7 @@ import AppLogo from '@/components/ui/AppLogo.vue'
 import { provideChatContext } from '@/composables/chat/useChatContext'
 import { useHomeChatPage } from '@/composables/home/useHomeChatPage'
 import { useHomeTransitions } from '@/composables/home/useHomeTransitions'
+import { useUpdateNotice } from '@/composables/useUpdateNotice'
 import { useTheme } from '@/composables/useTheme'
 import { useAuthStore } from '@/stores/auth'
 
@@ -34,6 +35,12 @@ const {
 } = useHomeChatPage()
 
 const { isDark, toggleTheme } = useTheme()
+const {
+  hasUnreadUpdate,
+  checkForUpdate,
+  setUpdateCheckResult,
+  markUpdateNoticeRead,
+} = useUpdateNotice()
 const authStore = useAuthStore()
 const route = useRoute()
 const {
@@ -83,6 +90,10 @@ provideChatContext({
   sendBlockedOfflineText: computed(() => t('sendBlockedOffline')),
   toolExecutionDetailTitle: computed(() => t('toolExecutionDetailTitle')),
 })
+
+onMounted(() => {
+  void checkForUpdate()
+})
 </script>
 
 <template>
@@ -102,6 +113,7 @@ provideChatContext({
           :sessions="store.sessions"
           :current-session-id="store.currentSessionId"
           :is-dark="isDark"
+          :has-update-notice="hasUnreadUpdate"
           :set-sidebar-list-ref="sessions.setSidebarListRef"
           @create-session="sessions.createSession"
           @pick-session="sessions.pickSession"
@@ -319,6 +331,9 @@ provideChatContext({
       :tool-detail-dialog-width="tools.toolDetailDialogWidth"
       :tool-detail-items="tools.toolDetailItems"
       :tool-detail-tool-timeline="tools.toolDetailToolTimeline"
+      :has-update-notice="hasUnreadUpdate"
+      :mark-update-notice-read="markUpdateNoticeRead"
+      :set-update-check-result="setUpdateCheckResult"
       @confirm-rename="sessions.confirmRename"
       @confirm-delete-session="sessions.confirmDeleteSession"
       @approve-tool-call="store.approveToolCall($event, true)"

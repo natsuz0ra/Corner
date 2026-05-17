@@ -58,10 +58,19 @@ make package
 
 Release archives include `install.sh` / `install.ps1` and `uninstall.sh` / `uninstall.ps1`. The install scripts honor `SLIMEBOT_INSTALL_DIR` and `SLIMEBOT_BIN_DIR`; the uninstall scripts use the same variables plus `SLIMEBOT_HOME` for the user data directory.
 
-The packaging script also writes standalone `dist/install.sh` and `dist/install.ps1` assets. When those scripts are run outside an extracted Release archive, they resolve the latest GitHub Release, download the matching platform archive, and then run the installer inside that archive. Set `SLIMEBOT_VERSION=v1.26.0` to install a specific release tag, or `SLIMEBOT_REPO=owner/repo` for forks.
+The packaging script also writes standalone `dist/install.sh`, `dist/install.ps1`, `dist/uninstall.sh`, and `dist/uninstall.ps1` assets. When the install scripts are run outside an extracted Release archive, they resolve the latest GitHub Release, download the matching platform archive, and then run the installer inside that archive. Set `SLIMEBOT_VERSION=v1.26.1` to install a specific release tag, or `SLIMEBOT_REPO=owner/repo` for forks. The uninstall scripts can be run remotely without downloading a Release archive; they remove the local install using the configured install paths.
+
+Update behavior:
+
+- `slimebot update --check` checks the latest stable GitHub Release. The repository source follows the installer: `SLIMEBOT_REPO` first, otherwise `natsuz0ra/SlimeBot`.
+- `slimebot update --yes` starts a detached helper process that downloads the matching Release archive, extracts it, runs the packaged installer, and writes progress to `~/.slimebot/storage/update-status.json`.
+- `slimebot update --version vX.Y.Z --yes` installs a specific Release tag. This is also the recovery command shown when the current build is `dev`, empty, or not parseable as a version.
+- In Web service mode, the helper attempts `slimebot service stop`, installs the update, then attempts `slimebot service start`. If SlimeBot is running as a foreground `slimebot server` process without a service, restart that process manually after the helper finishes.
+- Web users can use the update center in **Settings -> About**. CLI TUI users can run `/update`; applying an update exits the current TUI so the helper can replace the installed files safely.
 
 Uninstall behavior:
 
+- Can be run remotely with `curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.sh | sh` or `irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.ps1 | iex`.
 - Stops and uninstalls the system service when possible.
 - Removes the install directory and `slimebot` / `slimebot-cli` command shims.
 - Prompts before deleting `~/.slimebot`.
@@ -108,6 +117,7 @@ make compose-down
 - `/approval` — toggle approval mode
 - `/effort` — set thinking level
 - `/plan` — toggle plan mode
+- `/update` — check and apply Release updates
 - `/help` — help
 
 ## Tool Sandbox
@@ -132,12 +142,14 @@ SlimeBot applies one sandbox policy across command execution, file tools, and bu
   storage/
     data.db
     chat_uploads/
+    update-status.json
 ```
 
 - `config.cfg` — runtime configuration
 - `AGENTS.md` — global Agent instructions
 - `storage/data.db` — SQLite database
 - `storage/chat_uploads` — chat attachments
+- `storage/update-status.json` — latest update helper status
 - `skills/` — installed skills
 
 ## Configuration
@@ -155,6 +167,7 @@ Variables read by SlimeBot components:
 - `WEB_SEARCH_API_KEY` — Tavily API key for web search
 - `JWT_SECRET` — required in Web server mode
 - `JWT_EXPIRE` — JWT lifetime in minutes, default `21600`
+- `SLIMEBOT_REPO` — Release repository for installer/updater overrides, default `natsuz0ra/SlimeBot`
 
 Example:
 
