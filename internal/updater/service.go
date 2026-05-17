@@ -93,7 +93,7 @@ func ManualUpdateHint(version string) string {
 	if trimmed == "" {
 		trimmed = "latest"
 	}
-	return fmt.Sprintf("slimebot update --version %s --yes", trimmed)
+	return fmt.Sprintf("slimebot update --version %s", trimmed)
 }
 
 func (s *Service) Check(ctx context.Context, _ bool) (CheckResult, error) {

@@ -63,8 +63,8 @@ The packaging script also writes standalone `dist/install.sh`, `dist/install.ps1
 Update behavior:
 
 - `slimebot update --check` checks the latest stable GitHub Release. The repository source follows the installer: `SLIMEBOT_REPO` first, otherwise `natsuz0ra/SlimeBot`.
-- `slimebot update --yes` starts a detached helper process that downloads the matching Release archive, extracts it, runs the packaged installer, and writes progress to `~/.slimebot/storage/update-status.json`.
-- `slimebot update --version vX.Y.Z --yes` installs a specific Release tag. This is also the recovery command shown when the current build is `dev`, empty, or not parseable as a version.
+- `slimebot update` starts a detached helper process that downloads the matching Release archive, extracts it, runs the packaged installer, and writes progress to `~/.slimebot/storage/update-status.json`.
+- `slimebot update --version vX.Y.Z` installs a specific Release tag. This is also the recovery command shown when the current build is `dev`, empty, or not parseable as a version.
 - In Web user-service mode, the helper attempts `slimebot service stop`, installs the update, then attempts `slimebot service start`. If SlimeBot is running as a foreground `slimebot server` process without a service, restart that process manually after the helper finishes. On Linux with systemd, service commands use `systemctl --user` and require a working user service session.
 - Web users can use the update center in **Settings -> About**. CLI TUI users can run `/update`; applying an update exits the current TUI so the helper can replace the installed files safely.
 

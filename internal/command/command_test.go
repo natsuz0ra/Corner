@@ -129,6 +129,16 @@ func TestExecuteVersionAndHelp(t *testing.T) {
 	}
 }
 
+func TestHelpOmitsUpdateYesFlag(t *testing.T) {
+	help := HelpText()
+	if strings.Contains(help, "update --yes") {
+		t.Fatalf("help should not mention update --yes:\n%s", help)
+	}
+	if !strings.Contains(help, "slimebot update") || !strings.Contains(help, "Update to the latest release") {
+		t.Fatalf("help should show bare update command:\n%s", help)
+	}
+}
+
 func TestExecuteRoutesUpdateCommand(t *testing.T) {
 	var calledArgs []string
 	var stdout bytes.Buffer

@@ -143,8 +143,8 @@ func HelpText() string {
   slimebot service status          Show web service status
   slimebot service uninstall       Uninstall the web service
   slimebot update --check          Check for updates
-  slimebot update --yes            Update to the latest release
-  slimebot update --version vX.Y.Z --yes
+  slimebot update                  Update to the latest release
+  slimebot update --version vX.Y.Z
   slimebot version                 Show version information
   slimebot help                    Show this help
 `
