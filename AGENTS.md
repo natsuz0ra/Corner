@@ -154,7 +154,11 @@ Directory-aware test targeting hints:
 
 ## Commit & Pull Request Guidelines
 
-Recent history uses concise messages like `update: cli ui优化` and `update: 支持工具的并行执行与批量审批`; follow `type: short summary`, usually `update:` for incremental changes. Pull requests should include a clear summary, test commands run, linked issues when available, and screenshots or short recordings for visible Web/CLI UI changes.
+Recent history uses concise messages like `update: 更新版本号`, `update: 支持一条命令安装`, and `update: 前端ai消息中的代码块新增复制按钮`; follow `type: short summary`, usually `update:` for incremental changes. Keep summaries short, imperative or noun-phrase style, and prefer Chinese descriptions consistent with the existing history. Merge commits may keep the hosting platform's default format, for example `Merge branch 'dev/1.26.0'` or `Merge pull request #29 from natsuz0ra/dev/1.25.0`.
+
+Use release branch names in the `dev/x.y.z` format, matching existing branches such as `dev/1.24.0`, `dev/1.25.0`, and `dev/1.26.0`. For patch releases, continue the same pattern, for example `dev/1.26.1`. Use other prefixes only when the branch is not a release/version branch and the purpose is clear.
+
+Pull requests should include a clear summary, test commands run, linked issues when available, and screenshots or short recordings for visible Web/CLI UI changes.
 
 ## Security & Configuration Tips
 
