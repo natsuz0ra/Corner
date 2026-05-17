@@ -19,6 +19,7 @@ export function applyEditedUserMessage(
   replyBatches: AssistantReplyBatch[],
   messageId: string,
   content: string,
+  createdAt?: string,
 ) {
   const targetIndex = messages.findIndex((item) => item.id === messageId)
   if (targetIndex < 0) {
@@ -29,7 +30,7 @@ export function applyEditedUserMessage(
   if (!target) {
     return { messages, replyBatches }
   }
-  keptMessages[targetIndex] = { ...target, content }
+  keptMessages[targetIndex] = { ...target, content, createdAt: createdAt || target.createdAt }
   const keptMessageIds = new Set(keptMessages.map((item) => item.id))
   return {
     messages: keptMessages,

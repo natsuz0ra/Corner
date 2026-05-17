@@ -125,7 +125,7 @@ test('dispatchChatSocketMessage routes auto approval review events', () => {
 })
 
 test('dispatchChatSocketMessage routes message_edited payloads', () => {
-  const calls: Array<{ sessionId?: string; messageId: string; content: string }> = []
+  const calls: Array<{ sessionId?: string; messageId: string; content: string; createdAt?: string }> = []
   const handlers: ChatSocketHandlers = {
     onSession: () => {},
     onStart: () => {},
@@ -134,16 +134,18 @@ test('dispatchChatSocketMessage routes message_edited payloads', () => {
     onDone: () => {},
     onError: () => {},
     onMessageEdited: (data, sessionId) => {
-      calls.push({ sessionId, messageId: data.messageId, content: data.content })
+      calls.push({ sessionId, messageId: data.messageId, content: data.content, createdAt: data.createdAt })
     },
   }
+  const createdAt = '2026-04-29T01:02:03Z'
 
   dispatchChatSocketMessage(JSON.stringify({
     type: 'message_edited',
     sessionId: 'sid-1',
     messageId: 'msg-1',
     content: 'edited',
+    createdAt,
   }), handlers)
 
-  assert.deepEqual(calls, [{ sessionId: 'sid-1', messageId: 'msg-1', content: 'edited' }])
+  assert.deepEqual(calls, [{ sessionId: 'sid-1', messageId: 'msg-1', content: 'edited', createdAt }])
 })
