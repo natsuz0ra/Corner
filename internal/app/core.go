@@ -13,6 +13,7 @@ import (
 	"slimebot/internal/mcp"
 	"slimebot/internal/repositories"
 	sbruntime "slimebot/internal/runtime"
+	agentssvc "slimebot/internal/services/agents"
 	antsvc "slimebot/internal/services/anthropic"
 	authsvc "slimebot/internal/services/auth"
 	chatsvc "slimebot/internal/services/chat"
@@ -34,6 +35,7 @@ type Core struct {
 	ChatService      *chatsvc.ChatService
 	SessionService   *sessionsvc.SessionService
 	SettingsService  *settingssvc.SettingsService
+	AgentsService    *agentssvc.Service
 	LLMConfigService *configsvc.LLMConfigService
 	MCPConfigService *configsvc.MCPConfigService
 	PlatformService  *configsvc.MessagePlatformConfigService
@@ -76,6 +78,7 @@ func NewCore(cfg config.Config) (*Core, error) {
 	providerFactory.Register(llmsvc.ProviderAnthropic, anthropicClient)
 	mcpManager := mcp.NewManager()
 	settingsService := settingssvc.NewSettingsService(repo)
+	agentsService := agentssvc.NewService(sbruntime.GlobalAgentsPath())
 	sessionService := sessionsvc.NewSessionService(repo)
 	llmConfigService := configsvc.NewLLMConfigService(repo, cfg.DefaultContextSize)
 	mcpConfigService := configsvc.NewMCPConfigService(repo)
@@ -90,6 +93,7 @@ func NewCore(cfg config.Config) (*Core, error) {
 
 	chatUpload := chatsvc.NewChatUploadService(cfg.ChatUploadRoot)
 	chatService := chatsvc.NewChatService(repo, repo, providerFactory, mcpManager, skillRuntime)
+	chatService.SetAgentsInstructions(agentsService)
 	chatService.SetUploadService(chatUpload)
 	chatService.SetContextHistoryRounds(cfg.ContextHistoryRounds)
 
@@ -106,6 +110,7 @@ func NewCore(cfg config.Config) (*Core, error) {
 		ChatService:      chatService,
 		SessionService:   sessionService,
 		SettingsService:  settingsService,
+		AgentsService:    agentsService,
 		LLMConfigService: llmConfigService,
 		MCPConfigService: mcpConfigService,
 		PlatformService:  platformService,

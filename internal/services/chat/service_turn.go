@@ -173,6 +173,7 @@ func (s *ChatService) recordToolCallStart(
 		ToolCallID:       req.ToolCallID,
 		ToolName:         req.ToolName,
 		Command:          req.Command,
+		ModelFuncName:    req.ModelFuncName,
 		Params:           req.Params,
 		Status:           startStatus,
 		RequiresApproval: req.RequiresApproval,

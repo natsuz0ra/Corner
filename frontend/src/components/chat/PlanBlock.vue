@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { renderMarkdown } from '@/utils/markdown'
+import { useMarkdownCodeCopy } from '@/composables/chat/useMarkdownCodeCopy'
 
 const props = withDefaults(defineProps<{
   content?: string
@@ -14,6 +15,7 @@ const props = withDefaults(defineProps<{
 })
 
 const { t } = useI18n()
+const { handleMarkdownClick } = useMarkdownCodeCopy()
 const hasBody = computed(() => props.content.trim().length > 0)
 const expanded = ref(false)
 
@@ -62,7 +64,12 @@ function toggleExpand() {
       </svg>
     </header>
     <Transition name="plan-expand">
-      <div v-if="showBody" class="plan-block-body bubble-markdown" v-html="renderMarkdown(content)" />
+      <div
+        v-if="showBody"
+        class="plan-block-body bubble-markdown"
+        v-html="renderMarkdown(content, { codeCopyButton: true })"
+        @click="handleMarkdownClick"
+      />
     </Transition>
   </section>
 </template>

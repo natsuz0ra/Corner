@@ -31,9 +31,133 @@
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) transparent;
 }
+.assistant-reply-body .bubble-markdown .markdown-code-block,
+.plan-block-body.bubble-markdown .markdown-code-block {
+  position: relative;
+  max-width: 100%;
+  margin: 8px 0;
+}
+.assistant-reply-body .bubble-markdown .markdown-code-block pre,
+.plan-block-body.bubble-markdown .markdown-code-block pre {
+  margin: 0;
+}
+.assistant-reply-body .bubble-markdown .markdown-code-copy-btn,
+.plan-block-body.bubble-markdown .markdown-code-copy-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  opacity: 0.9;
+  touch-action: manipulation;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+.assistant-reply-body .bubble-markdown .markdown-code-block--single-line .markdown-code-copy-btn,
+.plan-block-body.bubble-markdown .markdown-code-block--single-line .markdown-code-copy-btn {
+  top: 50%;
+  transform: translateY(-50%);
+}
+.assistant-reply-body .bubble-markdown .markdown-code-copy-btn:hover,
+.assistant-reply-body .bubble-markdown .markdown-code-copy-btn:focus-visible,
+.plan-block-body.bubble-markdown .markdown-code-copy-btn:hover,
+.plan-block-body.bubble-markdown .markdown-code-copy-btn:focus-visible {
+  color: #fff;
+  opacity: 1;
+}
+.assistant-reply-body .bubble-markdown .markdown-code-copy-btn::before,
+.plan-block-body.bubble-markdown .markdown-code-copy-btn::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  display: block;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+@media (hover: none), (pointer: coarse) {
+  .assistant-reply-body .bubble-markdown pre,
+  .plan-block-body.bubble-markdown pre {
+    padding-right: 48px;
+  }
+}
 .dark .bubble-markdown pre {
   background: rgba(0, 0, 0, 0.4);
   border-color: var(--primary-alpha-15);
+}
+.assistant-reply-body .bubble-markdown pre {
+  background: #0f172a;
+  color: #e5e7eb;
+  border-color: rgba(129, 140, 248, 0.26);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-weight: 600;
+  line-height: 1.58;
+  padding: 14px 48px 14px 16px;
+}
+.plan-block-body.bubble-markdown pre {
+  padding: 14px 48px 14px 16px;
+}
+.dark .assistant-reply-body .bubble-markdown pre {
+  background: #0f172a;
+  border-color: rgba(129, 140, 248, 0.3);
+}
+.assistant-reply-body .bubble-markdown .hljs {
+  color: #e5e7eb;
+  font-family: inherit;
+  font-weight: 600;
+}
+.assistant-reply-body .bubble-markdown pre > code {
+  font-family: inherit;
+}
+.assistant-reply-body .bubble-markdown pre .hljs * {
+  font-weight: 600;
+}
+.assistant-reply-body .bubble-markdown .hljs-keyword,
+.assistant-reply-body .bubble-markdown .hljs-selector-tag,
+.assistant-reply-body .bubble-markdown .hljs-subst {
+  color: #7dd3fc;
+}
+.assistant-reply-body .bubble-markdown .hljs-title,
+.assistant-reply-body .bubble-markdown .hljs-title.function_,
+.assistant-reply-body .bubble-markdown .hljs-function .hljs-title,
+.assistant-reply-body .bubble-markdown .hljs-built_in {
+  color: #bfdbfe;
+}
+.assistant-reply-body .bubble-markdown .hljs-string,
+.assistant-reply-body .bubble-markdown .hljs-template-string,
+.assistant-reply-body .bubble-markdown .hljs-regexp {
+  color: #86efac;
+}
+.assistant-reply-body .bubble-markdown .hljs-number,
+.assistant-reply-body .bubble-markdown .hljs-literal,
+.assistant-reply-body .bubble-markdown .hljs-symbol,
+.assistant-reply-body .bubble-markdown .hljs-variable.constant_ {
+  color: #fde68a;
+}
+.assistant-reply-body .bubble-markdown .hljs-comment,
+.assistant-reply-body .bubble-markdown .hljs-quote {
+  color: #94a3b8;
+  font-style: normal;
+}
+.assistant-reply-body .bubble-markdown .hljs-attr,
+.assistant-reply-body .bubble-markdown .hljs-attribute,
+.assistant-reply-body .bubble-markdown .hljs-property,
+.assistant-reply-body .bubble-markdown .hljs-params,
+.assistant-reply-body .bubble-markdown .hljs-variable {
+  color: #c7d2fe;
+}
+.assistant-reply-body .bubble-markdown .hljs-type,
+.assistant-reply-body .bubble-markdown .hljs-class .hljs-title {
+  color: #a7f3d0;
 }
 .bubble-markdown pre::-webkit-scrollbar {
   width: 4px;
@@ -68,6 +192,10 @@
   background: var(--primary-alpha-15);
   color: var(--sb-brand-soft);
   border-color: var(--primary-alpha-20);
+}
+.assistant-reply-body .bubble-markdown :not(pre) > code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-weight: 600;
 }
 .bubble-markdown a {
   color: var(--sb-brand);

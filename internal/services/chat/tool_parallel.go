@@ -24,6 +24,7 @@ type parallelToolJob struct {
 	toolCallID       string
 	toolName         string
 	command          string
+	modelFuncName    string
 	requiresApproval bool
 	awaitApproval    func(context.Context) approvalDecision
 	execute          func(context.Context) *tools.ExecuteResult
@@ -73,6 +74,7 @@ func runParallelToolJobs(
 							ToolCallID:       job.toolCallID,
 							ToolName:         job.toolName,
 							Command:          job.command,
+							ModelFuncName:    job.modelFuncName,
 							RequiresApproval: job.requiresApproval,
 							Status:           status,
 							Error:            errText,
@@ -113,6 +115,7 @@ func runParallelToolJobs(
 				ToolCallID:       job.toolCallID,
 				ToolName:         job.toolName,
 				Command:          job.command,
+				ModelFuncName:    job.modelFuncName,
 				RequiresApproval: job.requiresApproval,
 				Status:           status,
 			}

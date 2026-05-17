@@ -77,6 +77,7 @@ function toggleExpanded() {
 
 <style scoped>
 .light-tool-group {
+  position: relative;
   width: min(100%, 760px);
   border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--tool-card-border, rgba(100, 116, 139, 0.15)) 78%, var(--tool-running-border, rgba(99, 102, 241, 0.26)));
@@ -95,14 +96,29 @@ function toggleExpanded() {
     var(--tool-card-shadow-hover, none);
 }
 
+.light-tool-group--running {
+  animation: light-tool-running-breathe 2.3s ease-in-out infinite;
+}
+
+.light-tool-group--running::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--tool-running-dot, #6366f1) 12%, transparent) 38%, transparent 72%);
+  opacity: 0;
+  transform: translateX(-110%);
+  animation: light-tool-sweep-breathe 2.7s ease-in-out infinite;
+}
+
 .light-tool-group--completed {
-  border-color: color-mix(in srgb, var(--tool-card-border, rgba(100, 116, 139, 0.15)) 78%, var(--tool-success-border, rgba(16, 185, 129, 0.32)));
-  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--tool-success-dot, #10b981) 55%, transparent);
+  border-color: color-mix(in srgb, var(--tool-card-border, rgba(100, 116, 139, 0.15)) 78%, rgba(91, 33, 182, 0.42));
+  box-shadow: inset 3px 0 0 color-mix(in srgb, #5b21b6 58%, transparent);
 }
 
 .light-tool-group--completed:hover {
   box-shadow:
-    inset 3px 0 0 color-mix(in srgb, var(--tool-success-dot, #10b981) 68%, transparent),
+    inset 3px 0 0 color-mix(in srgb, #5b21b6 76%, transparent),
     var(--tool-card-shadow-hover, none);
 }
 
@@ -239,6 +255,11 @@ function toggleExpanded() {
   color: var(--tool-pending-dot, #facc15);
 }
 
+.light-tool-group--running .light-tool-status--pending,
+.light-tool-group--running .light-tool-status--executing {
+  animation: light-tool-status-breathe 1.35s ease-in-out infinite;
+}
+
 .light-tool-error {
   color: var(--tool-error-text);
   overflow-wrap: anywhere;
@@ -270,11 +291,68 @@ function toggleExpanded() {
   max-height: 500px;
 }
 
+@keyframes light-tool-running-breathe {
+  0%,
+  100% {
+    border-color: color-mix(in srgb, var(--tool-card-border, rgba(100, 116, 139, 0.15)) 78%, var(--tool-running-border, rgba(99, 102, 241, 0.26)));
+    box-shadow: inset 3px 0 0 color-mix(in srgb, var(--tool-running-dot, #6366f1) 60%, transparent);
+  }
+
+  50% {
+    border-color: color-mix(in srgb, var(--tool-card-border, rgba(100, 116, 139, 0.15)) 34%, var(--tool-running-border, rgba(99, 102, 241, 0.26)));
+    box-shadow:
+      inset 3px 0 0 color-mix(in srgb, var(--tool-running-dot, #6366f1) 86%, transparent),
+      0 0 0 4px color-mix(in srgb, var(--tool-running-dot, #6366f1) 8%, transparent);
+  }
+}
+
+@keyframes light-tool-status-breathe {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: scale(0.94);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes light-tool-sweep-breathe {
+  0%,
+  42% {
+    opacity: 0;
+    transform: translateX(-110%);
+  }
+
+  58% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(110%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .light-tool-chevron,
   .tool-subagent-expand-enter-active,
   .tool-subagent-expand-leave-active {
     transition: none;
+  }
+
+  .light-tool-group--running,
+  .light-tool-group--running .light-tool-status--pending,
+  .light-tool-group--running .light-tool-status--executing,
+  .light-tool-group--running::before {
+    animation: none;
+  }
+
+  .light-tool-group--running::before {
+    opacity: 0;
+    transform: none;
   }
 }
 </style>

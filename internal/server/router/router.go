@@ -69,6 +69,8 @@ func New(cfg config.Config, tokenManager *auth.TokenManager, httpController *con
 
 			api.Get("/settings", adapt(httpController.GetSettings))
 			api.Put("/settings", adapt(httpController.UpdateSettings))
+			api.Get("/agents-instructions", adapt(httpController.GetAgentsInstructions))
+			api.Put("/agents-instructions", adapt(httpController.UpdateAgentsInstructions))
 
 			api.Get("/llm-configs", adapt(httpController.ListLLMConfigs))
 			api.Post("/llm-configs", adapt(httpController.CreateLLMConfig))

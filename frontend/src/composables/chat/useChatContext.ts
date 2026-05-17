@@ -5,6 +5,7 @@ import type { ReplyTimelineEntry } from '@/types/chat'
 export interface ChatMessageContext {
   waiting: ComputedRef<boolean>
   planGenerating: ComputedRef<boolean>
+  latestEditableUserMessageId: ComputedRef<string>
   isStreamingMessage: (messageId: string) => boolean
   getReplyToolCount: (messageId: string) => number
   getReplyToolSummary: (messageId: string) => string
@@ -22,6 +23,7 @@ export interface ChatMessageContext {
   approveToolCall: (toolCallId: string, approved: boolean) => void
   approveAllPendingToolCalls: () => void
   rejectAllPendingToolCalls: () => void
+  sendEditedMessage: (messageId: string, content: string) => Promise<boolean>
   isFailedUserMessage: (messageId: string) => boolean
   isAssistantErrorMessage: (messageId: string) => boolean
   isChatAssistantAvatarAnimated: (messageId: string) => boolean

@@ -1,11 +1,12 @@
 import { computed, type MaybeRefOrGetter, toValue } from 'vue'
-import { mdiBookOpenOutline, mdiCogPlayOutline, mdiConsoleLine, mdiFileDocumentOutline, mdiFileEditOutline, mdiFilePlusOutline, mdiFileSearchOutline, mdiFormatListChecks, mdiHelpCircleOutline, mdiSourceBranch, mdiWeb, mdiWebBox } from '@mdi/js'
+import { mdiBookOpenOutline, mdiCogPlayOutline, mdiConsoleLine, mdiFileDocumentOutline, mdiFileEditOutline, mdiFilePlusOutline, mdiFileSearchOutline, mdiFormatListChecks, mdiHelpCircleOutline, mdiServerNetwork, mdiSourceBranch, mdiWeb, mdiWebBox } from '@mdi/js'
 import type { ToolCallItem } from '../../api/chat'
 import { buildToolCallSummary } from '../../utils/toolDisplay'
 
 type Translate = (key: string) => string
 
 export function getToolCallIcon(toolName: string) {
+  if (toolName === 'exec') return mdiConsoleLine
   if (toolName === 'run_subagent') return mdiSourceBranch
   if (toolName === 'http_request' || toolName === 'web_search') return mdiWeb
   if (toolName === 'search_files') return mdiFileSearchOutline
@@ -17,7 +18,7 @@ export function getToolCallIcon(toolName: string) {
   if (toolName === 'file_read') return mdiFileDocumentOutline
   if (toolName === 'file_edit') return mdiFileEditOutline
   if (toolName === 'file_write') return mdiFilePlusOutline
-  return mdiConsoleLine
+  return mdiServerNetwork
 }
 
 export function getToolCallLabel(toolName: string, t: Translate) {
@@ -35,6 +36,12 @@ export function getToolCallLabel(toolName: string, t: Translate) {
   if (toolName === 'file_edit') return t('toolFileEdit')
   if (toolName === 'file_write') return t('toolFileWrite')
   return toolName
+}
+
+export function getToolCallCommandLabel(toolName: string, command: string, t: Translate) {
+  const label = getToolCallLabel(toolName, t)
+  if (label !== toolName) return ''
+  return command.trim()
 }
 
 export function getToolCallStatusLabel(status: ToolCallItem['status'], t: Translate) {
@@ -64,6 +71,7 @@ export function getToolCallStatusTone(status: ToolCallItem['status']) {
 export function useToolCallDisplay(item: MaybeRefOrGetter<ToolCallItem>, t: Translate) {
   const toolIcon = computed(() => getToolCallIcon(toValue(item).toolName))
   const toolLabel = computed(() => getToolCallLabel(toValue(item).toolName, t))
+  const toolCommandLabel = computed(() => getToolCallCommandLabel(toValue(item).toolName, toValue(item).command, t))
   const statusLabel = computed(() => getToolCallStatusLabel(toValue(item).status, t))
   const statusTone = computed(() => getToolCallStatusTone(toValue(item).status))
   const toolSummary = computed(() => buildToolCallSummary(toValue(item)))
@@ -74,6 +82,7 @@ export function useToolCallDisplay(item: MaybeRefOrGetter<ToolCallItem>, t: Tran
   return {
     toolIcon,
     toolLabel,
+    toolCommandLabel,
     toolSummary,
     statusLabel,
     statusDotClass,

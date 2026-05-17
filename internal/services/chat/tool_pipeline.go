@@ -17,6 +17,8 @@ type resolvedToolInvocation struct {
 	toolName         string
 	command          string
 	isMCP            bool
+	serverAlias      string
+	modelFuncName    string
 	requiresApproval bool
 	approvalPolicy   toolApprovalPolicy
 }
@@ -37,6 +39,7 @@ func resolveToolInvocation(tc llmsvc.ToolCallInfo, mcpToolMeta map[string]mcp.To
 			toolName:         meta.Name,
 			command:          meta.DefaultCommand,
 			isMCP:            false,
+			modelFuncName:    tc.Name,
 			requiresApproval: policy != toolApprovalPolicyNone,
 			approvalPolicy:   policy,
 		}, nil
@@ -44,10 +47,20 @@ func resolveToolInvocation(tc llmsvc.ToolCallInfo, mcpToolMeta map[string]mcp.To
 	toolName, command, err := parseToolCallName(tc.Name)
 	if mcpMeta, ok := mcpToolMeta[tc.Name]; ok {
 		policy := determineToolApprovalPolicy(mcpMeta.ServerAlias, true, approvalMode)
+		serverName := strings.TrimSpace(mcpMeta.ServerName)
+		if serverName == "" {
+			serverName = mcpMeta.ServerAlias
+		}
+		modelFuncName := strings.TrimSpace(mcpMeta.FuncName)
+		if modelFuncName == "" {
+			modelFuncName = tc.Name
+		}
 		return resolvedToolInvocation{
-			toolName:         mcpMeta.ServerAlias,
+			toolName:         serverName,
 			command:          mcpMeta.ToolName,
 			isMCP:            true,
+			serverAlias:      mcpMeta.ServerAlias,
+			modelFuncName:    modelFuncName,
 			requiresApproval: policy != toolApprovalPolicyNone,
 			approvalPolicy:   policy,
 		}, nil
@@ -60,6 +73,7 @@ func resolveToolInvocation(tc llmsvc.ToolCallInfo, mcpToolMeta map[string]mcp.To
 		toolName:         toolName,
 		command:          command,
 		isMCP:            false,
+		modelFuncName:    tc.Name,
 		requiresApproval: policy != toolApprovalPolicyNone,
 		approvalPolicy:   policy,
 	}, nil
@@ -106,6 +120,7 @@ func waitApprovalIfNeeded(
 				ToolCallID:       tc.ID,
 				ToolName:         invocation.toolName,
 				Command:          invocation.command,
+				ModelFuncName:    invocation.modelFuncName,
 				Params:           params,
 				RequiresApproval: true,
 				ReviewStatus:     string(ApprovalReviewStatusNeedsUser),
@@ -114,8 +129,13 @@ func waitApprovalIfNeeded(
 				Preamble:         preamble,
 			}); err != nil {
 				notifyToolResult(callbacks, ToolCallResult{
-					ToolCallID: tc.ID, ToolName: invocation.toolName, Command: invocation.command,
-					RequiresApproval: invocation.requiresApproval, Status: constants.ToolCallStatusError, Error: "Approval review failed to request user approval.",
+					ToolCallID:       tc.ID,
+					ToolName:         invocation.toolName,
+					Command:          invocation.command,
+					ModelFuncName:    invocation.modelFuncName,
+					RequiresApproval: invocation.requiresApproval,
+					Status:           constants.ToolCallStatusError,
+					Error:            "Approval review failed to request user approval.",
 				})
 				return false, "Approval review failed to request user approval. The tool call was cancelled.", ""
 			}
@@ -127,15 +147,25 @@ func waitApprovalIfNeeded(
 	approval, err := callbacks.WaitApproval(approvalCtx, tc.ID)
 	if err != nil {
 		notifyToolResult(callbacks, ToolCallResult{
-			ToolCallID: tc.ID, ToolName: invocation.toolName, Command: invocation.command,
-			RequiresApproval: invocation.requiresApproval, Status: constants.ToolCallStatusError, Error: "Approval timed out.",
+			ToolCallID:       tc.ID,
+			ToolName:         invocation.toolName,
+			Command:          invocation.command,
+			ModelFuncName:    invocation.modelFuncName,
+			RequiresApproval: invocation.requiresApproval,
+			Status:           constants.ToolCallStatusError,
+			Error:            "Approval timed out.",
 		})
 		return false, "Approval timed out or failed. The tool call was cancelled.", ""
 	}
 	if !approval.Approved {
 		notifyToolResult(callbacks, ToolCallResult{
-			ToolCallID: tc.ID, ToolName: invocation.toolName, Command: invocation.command,
-			RequiresApproval: invocation.requiresApproval, Status: constants.ToolCallStatusRejected, Error: "Execution was rejected by the user.",
+			ToolCallID:       tc.ID,
+			ToolName:         invocation.toolName,
+			Command:          invocation.command,
+			ModelFuncName:    invocation.modelFuncName,
+			RequiresApproval: invocation.requiresApproval,
+			Status:           constants.ToolCallStatusRejected,
+			Error:            "Execution was rejected by the user.",
 		})
 		return false, "The user rejected this tool call. Please answer in another way or explain that authorization is required.", ""
 	}
@@ -249,7 +279,7 @@ func (a *AgentService) executeInvocation(
 		if parseErr != nil {
 			return &tools.ExecuteResult{Error: parseErr.Error()}
 		}
-		callResult, callErr := a.mcp.Execute(ctx, mcpConfigs, invocation.toolName, invocation.command, argsAny)
+		callResult, callErr := a.mcp.Execute(ctx, mcpConfigs, invocation.serverAlias, invocation.command, argsAny)
 		if callErr != nil {
 			return &tools.ExecuteResult{Error: callErr.Error()}
 		}

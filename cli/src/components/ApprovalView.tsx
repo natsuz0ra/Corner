@@ -44,6 +44,22 @@ export interface ApprovalProgressDot {
 
 const DETAIL_PREVIEW_LINES = 5;
 const FILE_DIFF_PREVIEW_LINES = 3;
+const BUILTIN_APPROVAL_TOOL_NAMES = new Set([
+  "ask_questions",
+  "exec",
+  "file_edit",
+  "file_read",
+  "file_write",
+  "http_request",
+  "process",
+  "run_subagent",
+  "search_file",
+  "search_files",
+  "skills",
+  "todo",
+  "web_extract",
+  "web_search",
+]);
 
 function approvalItemsFromProps(props: Pick<ApprovalViewProps, "toolName" | "command" | "params" | "items">): ApprovalItem[] {
   return props.items && props.items.length > 0
@@ -67,7 +83,8 @@ function riskForTool(item: ApprovalItem): Pick<ApprovalQueueRow, "riskLabel" | "
 function toolLabel(item: ApprovalItem): string {
   const tool = item.toolName.trim() || "tool";
   const command = item.command.trim();
-  return command ? `${tool}.${command}` : tool;
+  if (!command) return tool;
+  return BUILTIN_APPROVAL_TOOL_NAMES.has(tool.toLowerCase()) ? `${tool}.${command}` : `${tool} | ${command}`;
 }
 
 function compactSummary(item: ApprovalItem): string {

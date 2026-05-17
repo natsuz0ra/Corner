@@ -7,6 +7,7 @@ import (
 )
 
 const SlimeBotDirName = ".slimebot"
+const GlobalAgentsFileName = "AGENTS.md"
 
 func SlimeBotHomeDir() string {
 	home, err := os.UserHomeDir()
@@ -14,6 +15,10 @@ func SlimeBotHomeDir() string {
 		return SlimeBotDirName
 	}
 	return filepath.Join(home, SlimeBotDirName)
+}
+
+func GlobalAgentsPath() string {
+	return filepath.Join(SlimeBotHomeDir(), GlobalAgentsFileName)
 }
 
 // DescribeConfigHome returns a human-readable listing of the SlimeBot config directory.

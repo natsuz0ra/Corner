@@ -2,11 +2,31 @@ import wrapAnsi from "wrap-ansi";
 import { fileToolSummaryFromParams, isFileToolName } from "./fileToolDisplay.js";
 import type { TimelineEntry, ToolCallStatus } from "../types.js";
 
+const BUILTIN_TOOL_NAMES = new Set([
+  "ask_questions",
+  "exec",
+  "file_edit",
+  "file_read",
+  "file_write",
+  "http_request",
+  "process",
+  "run_subagent",
+  "search_file",
+  "search_files",
+  "skills",
+  "todo",
+  "web_extract",
+  "web_search",
+]);
+
 /** Formats tool invocation text shown in timeline rows. */
 export function formatToolInvocation(toolName: string, command: string): string {
   const name = toolName.trim() || "tool";
   const cmd = command.trim() || "run";
-  return `${name}.${cmd}()`;
+  if (BUILTIN_TOOL_NAMES.has(name.toLowerCase())) {
+    return `${name}.${cmd}()`;
+  }
+  return `${name} | ${cmd}()`;
 }
 
 function normalizedParam(params: Record<string, unknown> | undefined, key: string): string {
