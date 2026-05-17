@@ -53,21 +53,35 @@ If the running build is `dev`, empty, or cannot be parsed as a version, automati
 
 ## Uninstall
 
-Run the uninstaller from the extracted Release directory or from the installed copy.
+Run the uninstaller from the latest Release with one command, or run it from the extracted Release directory or installed copy.
 
 macOS / Linux:
 
 ```bash
+curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.sh | sh
 ./uninstall.sh
 ```
 
 Windows PowerShell:
 
 ```powershell
+irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.ps1 | iex
 .\uninstall.ps1
 ```
 
 The uninstaller stops and removes the system service, deletes the installed program files, and removes command shims. It asks before deleting `~/.slimebot` user data. Use `--purge` / `-Purge` to delete user data non-interactively, or `--yes` / `-Yes` to uninstall non-interactively while keeping user data.
+
+Pass options to the remote script:
+
+```bash
+curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.sh | sh -s -- --yes
+curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.sh | sh -s -- --purge
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.ps1))) -Yes
+& ([scriptblock]::Create((irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.ps1))) -Purge
+```
 
 ## Commands
 

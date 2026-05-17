@@ -10,6 +10,7 @@ $ErrorActionPreference = "Stop"
 function Show-Usage {
   Write-Host @"
 Usage: .\uninstall.ps1 [-Yes] [-Purge] [-KeepData] [-Help]
+       irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.ps1 | iex
 
 Uninstalls SlimeBot service, installed files, and command shims.
 
@@ -23,6 +24,11 @@ Environment:
   SLIMEBOT_INSTALL_DIR  Install directory (default: %LOCALAPPDATA%\SlimeBot)
   SLIMEBOT_BIN_DIR      Command shim directory (default: install dir\bin)
   SLIMEBOT_HOME         User data directory (default: %USERPROFILE%\.slimebot)
+
+Remote examples:
+  irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.ps1 | iex
+  & ([scriptblock]::Create((irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.ps1))) -Yes
+  & ([scriptblock]::Create((irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.ps1))) -Purge
 "@
 }
 

@@ -12,6 +12,7 @@ KEEP_DATA=0
 usage() {
   cat <<'EOF'
 Usage: ./uninstall.sh [--yes] [--purge] [--keep-data] [--help]
+       curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.sh | sh
 
 Uninstalls SlimeBot service, installed files, and command shims.
 
@@ -25,6 +26,11 @@ Environment:
   SLIMEBOT_INSTALL_DIR  Install directory (default: ~/.local/share/slimebot)
   SLIMEBOT_BIN_DIR      Command shim directory (default: ~/.local/bin)
   SLIMEBOT_HOME         User data directory (default: ~/.slimebot)
+
+Remote examples:
+  curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.sh | sh
+  curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.sh | sh -s -- --yes
+  curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.sh | sh -s -- --purge
 EOF
 }
 
