@@ -11,9 +11,10 @@ interface BannerProps {
   cwd: string;
   approvalMode?: string;
   thinkingLevel?: string;
+  updateAvailable?: boolean;
 }
 
-export function Banner({ version, modelName, cwd, approvalMode, thinkingLevel }: BannerProps): React.ReactElement {
+export function Banner({ version, modelName, cwd, approvalMode, thinkingLevel, updateAvailable }: BannerProps): React.ReactElement {
   const logoLines = [
     "██████████",
     "███ ██ ███",
@@ -36,6 +37,7 @@ export function Banner({ version, modelName, cwd, approvalMode, thinkingLevel }:
             SlimeBot CLI{" "}
           </Text>
           <Text color="#94a3b8">v{version}</Text>
+          {updateAvailable && <Text color="#facc15"> [new]</Text>}
           {approvalMode === "auto_review" && <Text color="#eab308"> [auto review]</Text>}
           {approvalMode === "auto" && <Text color="#eab308"> [auto]</Text>}
         </Text>

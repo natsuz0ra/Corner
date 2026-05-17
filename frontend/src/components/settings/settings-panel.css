@@ -38,6 +38,15 @@
   color: var(--text-primary);
 }
 
+.settings-sidebar .update-notice-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #ef4444;
+  box-shadow: 0 0 0 2px var(--sidebar-bg);
+}
+
 .settings-content {
   background: var(--bg-main);
 }

@@ -7,8 +7,12 @@ import MdiIcon from '@/components/ui/MdiIcon.vue'
 import { updateAPI } from '@/api/update'
 import type { UpdateCheckResult, UpdateJobStatus } from '@/types/update'
 import { isUpdateJobActive, normalizeUpdateJob, updatePhaseTone } from '@/utils/updateStatus'
+import { renderMarkdown } from '@/utils/markdown'
 
 const { t } = useI18n()
+const emit = defineEmits<{
+  updateCheckLoaded: [result: UpdateCheckResult]
+}>()
 
 const githubUrl = 'https://github.com/natsuz0ra/SlimeBot'
 const version = `v${__APP_VERSION__}`
@@ -24,7 +28,7 @@ const canApplyUpdate = computed(() => Boolean(checkResult.value?.canApply) && !c
 const releaseNotes = computed(() => {
   const notes = checkResult.value?.releaseNotes?.trim() || ''
   if (!notes) return ''
-  return notes.split(/\r?\n/).filter(Boolean).slice(0, 4).join('\n')
+  return renderMarkdown(notes)
 })
 const statusTone = computed(() => updatePhaseTone(job.value.phase))
 const statusIcon = computed(() => {
@@ -76,6 +80,7 @@ async function checkUpdate(force = true) {
   errorMessage.value = ''
   try {
     checkResult.value = await updateAPI.check(force)
+    emit('updateCheckLoaded', checkResult.value)
     await loadJob()
   } catch (err: unknown) {
     const response = err as { response?: { data?: { error?: string } } }
@@ -165,7 +170,7 @@ onUnmounted(stopPolling)
         </div>
       </div>
 
-      <pre v-if="releaseNotes" class="update-notes">{{ releaseNotes }}</pre>
+      <div v-if="releaseNotes" class="update-notes bubble-markdown" v-html="releaseNotes"></div>
 
       <div v-if="manualHint" class="update-manual">
         <span>{{ t('updateManualHint') }}</span>
@@ -338,8 +343,25 @@ onUnmounted(stopPolling)
   border: 1px solid var(--card-border);
   font-size: 12px;
   line-height: 1.55;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+.update-notes :deep(h1),
+.update-notes :deep(h2),
+.update-notes :deep(h3) {
+  font-size: 13px;
+  line-height: 1.35;
+  margin: 0 0 6px;
+}
+
+.update-notes :deep(ul),
+.update-notes :deep(ol) {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+
+.update-notes :deep(p) {
+  margin: 6px 0;
 }
 
 .update-manual {

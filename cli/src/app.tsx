@@ -381,6 +381,15 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     }
   }, [appendSystem]);
 
+  const checkForUpdatesSilently = useCallback(async () => {
+    try {
+      const check = await apiRef.current.getUpdateCheck(false);
+      dispatch({ type: "SET_UPDATE_STATE", check } as AppAction);
+    } catch {
+      // Update checks are informational; keep startup quiet.
+    }
+  }, []);
+
   const applyUpdate = useCallback(async () => {
     if (!state.updateCheck?.canApply || !state.updateCheck.latest || state.updateApplying) {
       appendSystem("No applicable update is available.");
@@ -756,7 +765,8 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     void loadDefaultModel();
     void loadApprovalMode();
     void loadThinkingLevel();
-  }, [applyTerminalTitle, loadDefaultModel, loadApprovalMode, stdout]);
+    void checkForUpdatesSilently();
+  }, [applyTerminalTitle, loadDefaultModel, loadApprovalMode, loadThinkingLevel, checkForUpdatesSilently, stdout]);
 
   // Terminal resize.
   useEffect(() => {
@@ -830,7 +840,14 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
   return (
     <Box flexDirection="column">
-      <Banner version={state.version} modelName={state.modelName} cwd={state.cwd} approvalMode={state.approvalMode} thinkingLevel={state.thinkingLevel} />
+      <Banner
+        version={state.version}
+        modelName={state.modelName}
+        cwd={state.cwd}
+        approvalMode={state.approvalMode}
+        thinkingLevel={state.thinkingLevel}
+        updateAvailable={Boolean(state.updateCheck?.updateAvailable)}
+      />
       <Text> </Text>
       {(state.timeline.length > 0 || state.streaming) && (
         <>
@@ -1034,6 +1051,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           job={state.updateJob}
           loading={state.updateLoading}
           applying={state.updateApplying}
+          columns={width}
         />
       )}
 
