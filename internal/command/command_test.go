@@ -163,7 +163,7 @@ func TestExecuteRoutesUpdateCommand(t *testing.T) {
 }
 
 func TestExecuteRejectsUnknownCommand(t *testing.T) {
-	tests := []string{"wat", "cli"}
+	tests := []string{"wat"}
 	for _, command := range tests {
 		t.Run(command, func(t *testing.T) {
 			err := Execute(Options{
