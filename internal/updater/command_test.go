@@ -50,15 +50,6 @@ func TestRunCommandCheckPrintsVersionSummary(t *testing.T) {
 	}
 }
 
-func TestRunCommandApplyRequiresYes(t *testing.T) {
-	stub := &commandServiceStub{}
-	var stdout bytes.Buffer
-
-	if err := RunCommand(context.Background(), []string{"--version", "v1.26.2"}, &stdout, stub); err == nil {
-		t.Fatal("expected --yes to be required")
-	}
-}
-
 func TestRunCommandApplyStartsUpdate(t *testing.T) {
 	stub := &commandServiceStub{apply: JobStatus{
 		Phase:  PhaseChecking,
@@ -66,7 +57,7 @@ func TestRunCommandApplyStartsUpdate(t *testing.T) {
 	}}
 	var stdout bytes.Buffer
 
-	if err := RunCommand(context.Background(), []string{"--version", "v1.26.2", "--yes"}, &stdout, stub); err != nil {
+	if err := RunCommand(context.Background(), []string{"--version", "v1.26.2"}, &stdout, stub); err != nil {
 		t.Fatalf("RunCommand failed: %v", err)
 	}
 	if stub.applyReq.TargetVersion != "v1.26.2" {

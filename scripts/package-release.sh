@@ -6,6 +6,8 @@ DIST_DIR="${ROOT_DIR}/dist"
 VERSION="${VERSION:-dev}"
 COMMIT="${COMMIT:-$(git -C "${ROOT_DIR}" rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+export COPYFILE_DISABLE=1
+export COPY_EXTENDED_ATTRIBUTES_DISABLE=1
 
 TARGETS=(
   "darwin/amd64"
@@ -64,6 +66,7 @@ for target in "${TARGETS[@]}"; do
   if [[ -d docs ]]; then
     cp -R docs "${package_dir}/docs"
   fi
+  find "${package_dir}" -name '._*' -delete
 
   if [[ "${goos}" == "windows" ]]; then
     cat > "${bin_dir}/slimebot-cli.cmd" <<'EOF'

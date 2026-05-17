@@ -164,7 +164,7 @@ func TestServiceCheckKeepsDevVersionManual(t *testing.T) {
 	if !strings.Contains(got.Reason, "dev") {
 		t.Fatalf("expected dev reason, got %q", got.Reason)
 	}
-	if got.ManualHint != "slimebot update --version v1.26.2 --yes" {
+	if got.ManualHint != "slimebot update --version v1.26.2" {
 		t.Fatalf("unexpected manual hint: %q", got.ManualHint)
 	}
 }
