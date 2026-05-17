@@ -6,6 +6,10 @@ INSTALL_DIR="${SLIMEBOT_INSTALL_DIR:-"$HOME/.local/share/slimebot"}"
 SHIM_DIR="${SLIMEBOT_BIN_DIR:-"$HOME/.local/bin"}"
 REPO="${SLIMEBOT_REPO:-natsuz0ra/SlimeBot}"
 VERSION="${SLIMEBOT_VERSION:-latest}"
+PATH_BLOCK_START="# >>> SlimeBot PATH >>>"
+PATH_BLOCK_END="# <<< SlimeBot PATH <<<"
+PATH_CONFIG_FILE=""
+PATH_WAS_CONFIGURED=0
 
 download_file() {
   url="$1"
@@ -18,6 +22,59 @@ download_file() {
     echo "curl or wget is required to download SlimeBot." >&2
     exit 1
   fi
+}
+
+path_contains_dir() {
+  dir="$1"
+  case ":$PATH:" in
+    *":$dir:"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+shell_config_file() {
+  shell_path="${SHELL:-}"
+  if [ -n "$shell_path" ]; then
+    shell_name="$(basename "$shell_path")"
+  else
+    shell_name=""
+  fi
+  case "$shell_name" in
+    zsh) echo "$HOME/.zshrc" ;;
+    bash) echo "$HOME/.bashrc" ;;
+    *) echo "$HOME/.profile" ;;
+  esac
+}
+
+remove_slimebot_path_block() {
+  file="$1"
+  [ -f "$file" ] || return 0
+  tmp_file="$(mktemp)"
+  awk -v start="$PATH_BLOCK_START" -v end="$PATH_BLOCK_END" '
+    $0 == start { skip = 1; next }
+    $0 == end && skip { skip = 0; next }
+    !skip { print }
+  ' "$file" > "$tmp_file"
+  mv "$tmp_file" "$file"
+}
+
+configure_shell_path() {
+  if path_contains_dir "$SHIM_DIR"; then
+    echo "Command shim directory is already on PATH: $SHIM_DIR"
+    return 0
+  fi
+
+  PATH_CONFIG_FILE="$(shell_config_file)"
+  mkdir -p "$(dirname "$PATH_CONFIG_FILE")"
+  touch "$PATH_CONFIG_FILE"
+  remove_slimebot_path_block "$PATH_CONFIG_FILE"
+  {
+    printf '\n%s\n' "$PATH_BLOCK_START"
+    printf 'export PATH="%s:$PATH"\n' "$SHIM_DIR"
+    printf '%s\n' "$PATH_BLOCK_END"
+  } >> "$PATH_CONFIG_FILE"
+  PATH_WAS_CONFIGURED=1
+  echo "Added command shim directory to PATH in $PATH_CONFIG_FILE"
 }
 
 latest_version() {
@@ -93,6 +150,7 @@ exec "$INSTALL_DIR/bin/slimebot" cli "\$@"
 EOF
 
 chmod +x "$INSTALL_DIR/bin/slimebot" "$SHIM_DIR/slimebot" "$SHIM_DIR/slimebot-cli"
+configure_shell_path
 
 mkdir -p "$HOME/.slimebot"
 if [ ! -f "$HOME/.slimebot/config.cfg" ]; then
@@ -112,5 +170,10 @@ fi
 echo "SlimeBot installed to $INSTALL_DIR"
 echo "Command shims installed to $SHIM_DIR"
 echo "Run: slimebot"
-echo "If your shell cannot find slimebot, add this to PATH: $SHIM_DIR"
+if [ "$PATH_WAS_CONFIGURED" -eq 1 ]; then
+  echo "Open a new terminal to use slimebot directly."
+  echo "To use slimebot in this terminal now, run: export PATH=\"$SHIM_DIR:\$PATH\""
+elif ! command -v slimebot >/dev/null 2>&1; then
+  echo "If your shell cannot find slimebot, run: export PATH=\"$SHIM_DIR:\$PATH\""
+fi
 echo "Before starting the web service, set JWT_SECRET in $HOME/.slimebot/config.cfg"

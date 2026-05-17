@@ -4,6 +4,8 @@ set -eu
 INSTALL_DIR="${SLIMEBOT_INSTALL_DIR:-"$HOME/.local/share/slimebot"}"
 SHIM_DIR="${SLIMEBOT_BIN_DIR:-"$HOME/.local/bin"}"
 DATA_DIR="${SLIMEBOT_HOME:-"$HOME/.slimebot"}"
+PATH_BLOCK_START="# >>> SlimeBot PATH >>>"
+PATH_BLOCK_END="# <<< SlimeBot PATH <<<"
 
 YES=0
 PURGE=0
@@ -84,11 +86,35 @@ run_service_action() {
   return 0
 }
 
+remove_slimebot_path_block() {
+  file="$1"
+  [ -f "$file" ] || return 0
+  tmp_file="$(mktemp)"
+  awk -v start="$PATH_BLOCK_START" -v end="$PATH_BLOCK_END" '
+    $0 == start { skip = 1; next }
+    $0 == end && skip { skip = 0; next }
+    !skip { print }
+  ' "$file" > "$tmp_file"
+  if cmp -s "$file" "$tmp_file"; then
+    rm -f "$tmp_file"
+    return 0
+  fi
+  mv "$tmp_file" "$file"
+  echo "Removed SlimeBot PATH config from: $file"
+}
+
+remove_shell_path_config() {
+  remove_slimebot_path_block "$HOME/.zshrc"
+  remove_slimebot_path_block "$HOME/.bashrc"
+  remove_slimebot_path_block "$HOME/.profile"
+}
+
 run_service_action stop
 run_service_action uninstall
 
 rm -f "$SHIM_DIR/slimebot" "$SHIM_DIR/slimebot-cli"
 rm -rf "$INSTALL_DIR"
+remove_shell_path_config
 
 delete_data=0
 if [ "$PURGE" -eq 1 ]; then
@@ -117,4 +143,5 @@ fi
 
 echo "Removed install directory: $INSTALL_DIR"
 echo "Removed command shims from: $SHIM_DIR"
+echo "Open a new terminal to refresh PATH, or run: hash -r"
 echo "SlimeBot uninstall complete"
