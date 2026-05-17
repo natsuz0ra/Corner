@@ -36,7 +36,7 @@ export function Banner({ version, modelName, cwd, approvalMode, thinkingLevel, u
           <Text bold color="white">
             SlimeBot CLI{" "}
           </Text>
-          <Text color="#94a3b8">v{version}</Text>
+          <Text color="#94a3b8">{version}</Text>
           {updateAvailable && <Text color="#facc15"> [new]</Text>}
           {approvalMode === "auto_review" && <Text color="#eab308"> [auto review]</Text>}
           {approvalMode === "auto" && <Text color="#eab308"> [auto]</Text>}
