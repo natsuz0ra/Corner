@@ -37,6 +37,20 @@ irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/install.ps1 |
 
 启动 Web 服务前，请编辑 `~/.slimebot/config.cfg`，设置一个强随机的 `JWT_SECRET`。
 
+## 更新
+
+SlimeBot 可以通过已安装的命令检查 GitHub Release 并执行更新：
+
+```bash
+slimebot update --check          # 检查最新稳定 Release
+slimebot update --yes            # 更新到最新稳定 Release
+slimebot update --version v1.26.1 --yes
+```
+
+更新源沿用安装逻辑：优先读取 `SLIMEBOT_REPO`，否则使用 `natsuz0ra/SlimeBot`。Web 用户可在 **设置 -> 关于** 打开更新中心，CLI TUI 用户可输入 `/update`。
+
+如果当前构建版本是 `dev`、空值，或无法解析为版本号，默认会禁用一键更新。确认要安装某个指定 Release 时，请使用 `slimebot update --version vX.Y.Z --yes`。
+
 ## 卸载
 
 在解压后的 Release 目录，或已安装目录中运行卸载脚本。
@@ -67,6 +81,8 @@ slimebot service stop            # 停止 Web 系统服务
 slimebot service restart         # 重启 Web 系统服务
 slimebot service status          # 查看 Web 系统服务状态
 slimebot service uninstall       # 卸载 Web 系统服务
+slimebot update --check          # 检查更新
+slimebot update --yes            # 应用最新稳定更新
 slimebot version                 # 输出版本信息
 slimebot help                    # 显示命令帮助
 ```

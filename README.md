@@ -37,6 +37,20 @@ The installer downloads the matching package when needed, places SlimeBot under 
 
 Before running the Web service, edit `~/.slimebot/config.cfg` and set a strong `JWT_SECRET`.
 
+## Update
+
+SlimeBot can check GitHub Releases and apply updates from the installed command:
+
+```bash
+slimebot update --check          # check latest stable Release
+slimebot update --yes            # update to latest stable Release
+slimebot update --version v1.26.1 --yes
+```
+
+The update source follows the installer: `SLIMEBOT_REPO` first, otherwise `natsuz0ra/SlimeBot`. Web users can open **Settings -> About** for the update center, and CLI TUI users can run `/update`.
+
+If the running build is `dev`, empty, or cannot be parsed as a version, automatic latest updates are disabled by default. Use `slimebot update --version vX.Y.Z --yes` when you intentionally want to install a specific Release.
+
 ## Uninstall
 
 Run the uninstaller from the extracted Release directory or from the installed copy.
@@ -67,6 +81,8 @@ slimebot service stop            # stop the Web service
 slimebot service restart         # restart the Web service
 slimebot service status          # show Web service status
 slimebot service uninstall       # uninstall the Web service
+slimebot update --check          # check for updates
+slimebot update --yes            # apply latest stable update
 slimebot version                 # show version information
 slimebot help                    # show command help
 ```

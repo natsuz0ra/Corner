@@ -60,6 +60,14 @@ Release 压缩包包含 `install.sh` / `install.ps1` 和 `uninstall.sh` / `unins
 
 打包脚本也会生成独立的 `dist/install.sh` 和 `dist/install.ps1` 发布资产。这两个脚本在解压后的 Release 目录外执行时，会解析最新 GitHub Release，下载匹配当前平台的压缩包，然后运行压缩包内的安装器。可通过 `SLIMEBOT_VERSION=v1.26.1` 安装指定版本标签，或用 `SLIMEBOT_REPO=owner/repo` 指向 fork。
 
+更新行为：
+
+- `slimebot update --check` 检查 GitHub 最新稳定 Release。更新源沿用安装逻辑：优先读取 `SLIMEBOT_REPO`，否则使用 `natsuz0ra/SlimeBot`。
+- `slimebot update --yes` 会启动独立 helper 进程，下载匹配当前平台的 Release 压缩包，解压并运行包内安装脚本，同时把进度写入 `~/.slimebot/storage/update-status.json`。
+- `slimebot update --version vX.Y.Z --yes` 安装指定 Release tag。当前构建版本为 `dev`、空值，或无法解析为版本号时，界面也会展示这条命令作为恢复入口。
+- Web 服务模式下，helper 会尝试执行 `slimebot service stop`，完成安装后再尝试 `slimebot service start`。如果当前是前台 `slimebot server` 进程且没有安装系统服务，helper 完成后需要手动重启该前台进程。
+- Web 用户可在 **设置 -> 关于** 使用更新中心。CLI TUI 用户可输入 `/update`；确认更新后当前 TUI 会退出，以便 helper 安全替换已安装文件。
+
 卸载行为：
 
 - 尽可能停止并卸载系统服务。
@@ -108,6 +116,7 @@ make compose-down
 - `/approval` 切换审批模式
 - `/effort` 设置思考等级
 - `/plan` 切换规划模式
+- `/update` 检查并应用 Release 更新
 - `/help` 帮助
 
 ## 工具沙盒
@@ -132,12 +141,14 @@ SlimeBot 会对命令执行、文件工具和内置 HTTP 请求使用同一套�
   storage/
     data.db
     chat_uploads/
+    update-status.json
 ```
 
 - `config.cfg`：运行时配置文件
 - `AGENTS.md`：全局 Agent 指令文件
 - `storage/data.db`：SQLite 主数据库
 - `storage/chat_uploads`：聊天附件
+- `storage/update-status.json`：最近一次更新 helper 状态
 - `skills/`：已安装 Skills
 
 ## 配置文件
@@ -155,6 +166,7 @@ SlimeBot 各组件会读取下列变量：
 - `WEB_SEARCH_API_KEY`：Tavily API Key
 - `JWT_SECRET`：Web 服务模式必填
 - `JWT_EXPIRE`：JWT 过期时间，单位分钟，默认 `21600`
+- `SLIMEBOT_REPO`：安装/更新时覆盖 Release 仓库，默认 `natsuz0ra/SlimeBot`
 
 示例：
 

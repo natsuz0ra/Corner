@@ -69,6 +69,39 @@ export interface Settings {
   [key: string]: unknown;
 }
 
+export type UpdatePhase =
+  | "idle"
+  | "checking"
+  | "downloading"
+  | "installing"
+  | "restarting"
+  | "succeeded"
+  | "failed";
+
+export interface UpdateCheckResult {
+  current: string;
+  latest: string;
+  updateAvailable: boolean;
+  canApply: boolean;
+  reason?: string;
+  releaseName?: string;
+  releaseNotes?: string;
+  releaseUrl?: string;
+  publishedAt?: string;
+  assetName?: string;
+  manualHint?: string;
+}
+
+export interface UpdateJobStatus {
+  phase: UpdatePhase;
+  current?: string;
+  target?: string;
+  message?: string;
+  error?: string;
+  manualHint?: string;
+  updatedAt?: string;
+}
+
 // Thinking level cycle order
 export const THINKING_LEVELS = ["off", "low", "medium", "high", "max"] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
@@ -215,7 +248,7 @@ export interface ContextUsage {
 
 // ===== UI state types =====
 
-export type ViewMode = "chat" | "menu" | "mcp-editor" | "mcp-template" | "model-editor" | "approval" | "thinking-detail" | "plan-confirm" | "question-answer";
+export type ViewMode = "chat" | "menu" | "mcp-editor" | "mcp-template" | "model-editor" | "approval" | "thinking-detail" | "plan-confirm" | "question-answer" | "update";
 
 export type MenuKind =
   | "session"
@@ -225,6 +258,7 @@ export type MenuKind =
   | "effort"
   | "subagent_model"
   | "sandbox"
+  | "update"
   | "help";
 
 // ===== MCP Template types =====
@@ -336,6 +370,7 @@ export const SUPPORTED_COMMANDS: CommandMeta[] = [
   { command: "/approval", description: "Toggle approval mode (standard/auto review/auto)" },
   { command: "/effort", description: "Toggle thinking level (off/low/medium/high)" },
   { command: "/sandbox", description: "Configure sandbox mode and network access" },
+  { command: "/update", description: "Check and apply SlimeBot updates" },
   { command: "/skills", description: "View and manage installed skills" },
   { command: "/mcp", description: "Manage MCP configurations" },
   { command: "/plan", description: "Toggle plan mode (on/off)" },
@@ -374,6 +409,10 @@ export interface AppState {
   runtimeTodos: RuntimeTodoItem[];
   runtimeTodosNote: string;
   runtimeTodosUpdatedAt?: number;
+  updateCheck: UpdateCheckResult | null;
+  updateJob: UpdateJobStatus | null;
+  updateLoading: boolean;
+  updateApplying: boolean;
 
   // Thinking detail view
   thinkingDetailContent: string;
@@ -513,6 +552,7 @@ export type AppAction =
   | { type: "PLAN_BODY"; planBody: string; narration?: string }
   | { type: "PLAN_START" }
   | { type: "TODO_UPDATE"; items: RuntimeTodoItem[]; note?: string; updatedAt?: number }
+  | { type: "SET_UPDATE_STATE"; check?: UpdateCheckResult | null; job?: UpdateJobStatus | null; loading?: boolean; applying?: boolean }
   | { type: "VIEW_THINKING_DETAIL"; content: string }
   | { type: "SET_QA"; toolCallId: string; questions: QAQuestion[] }
   | { type: "QA_NAV"; delta: number }

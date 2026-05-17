@@ -42,7 +42,7 @@ for target in "${TARGETS[@]}"; do
 
   env GOOS="${goos}" GOARCH="${goarch}" CGO_ENABLED=0 go build \
     -trimpath \
-    -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${BUILD_DATE}" \
+    -ldflags "-s -w -X slimebot/internal/version.Version=${VERSION} -X slimebot/internal/version.Commit=${COMMIT} -X slimebot/internal/version.Date=${BUILD_DATE}" \
     -o "${bin_dir}/slimebot${exe_suffix}" ./cmd/server
 
   cp cli/cli.cjs "${package_dir}/cli/cli.cjs"
