@@ -105,6 +105,8 @@ Web 默认端口为 **6247**。服务启动后访问 `http://localhost:6247`。
 
 服务命令默认安装当前用户服务。macOS 使用 `~/Library/LaunchAgents`；Linux systemd 使用 `systemctl --user`，需要可用的用户服务会话。
 
+macOS 服务 label 为 `com.natsuzora.slimebot`，plist 位于 `~/Library/LaunchAgents/com.natsuzora.slimebot.plist`，日志位于 `~/.slimebot/log/service.out.log` 和 `~/.slimebot/log/service.err.log`。如果 `slimebot service start` 提示旧版 `slimebot` 服务仍在 launchd 中，先运行 `launchctl bootout gui/$(id -u)/slimebot`；如果旧服务来自系统级 LaunchDaemon，再运行 `sudo launchctl bootout system /Library/LaunchDaemons/slimebot.plist`，然后重新执行 `slimebot service start`。
+
 首次 Web 登录时，若数据库中尚无用户，会种子默认账号：用户名 **`admin`**，密码 **`admin`**。请立即修改。
 
 ## 手动源码部署
