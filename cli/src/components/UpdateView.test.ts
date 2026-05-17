@@ -38,14 +38,14 @@ test("formatUpdateSummaryLines leaves markdown release notes out of metadata lin
 			releaseUrl: "https://example.test/release",
 			releaseNotes: "## Highlights\n- **A** item",
 			reason: "",
-			manualHint: "slimebot update --version v1.26.0 --yes",
+			manualHint: "slimebot update --version v1.26.0",
 		},
 		job: null,
 	});
 
 	assert.equal(lines.some((line) => line.includes("## Highlights")), false);
 	assert.equal(lines.some((line) => line.includes("- **A** item")), false);
-	assert.ok(lines.some((line) => line.includes("Manual: slimebot update --version v1.26.0 --yes")));
+	assert.ok(lines.some((line) => line.includes("Manual: slimebot update --version v1.26.0")));
 });
 
 test("formatUpdateReleaseNotesLines renders markdown release notes for terminal output", () => {

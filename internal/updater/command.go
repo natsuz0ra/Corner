@@ -17,7 +17,7 @@ func RunCommand(ctx context.Context, args []string, stdout io.Writer, service Co
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	check := fs.Bool("check", false, "check for updates")
-	yes := fs.Bool("yes", false, "apply update without prompting")
+	_ = fs.Bool("yes", false, "deprecated no-op")
 	version := fs.String("version", "", "target version")
 	helper := fs.Bool("helper", false, "run hidden update helper")
 	repo := fs.String("repo", "", "release repository")
@@ -46,9 +46,6 @@ func RunCommand(ctx context.Context, args []string, stdout io.Writer, service Co
 		}
 		printCheckResult(stdout, result)
 		return nil
-	}
-	if !*yes {
-		return fmt.Errorf("refusing to update without --yes")
 	}
 	status, err := service.Apply(ctx, ApplyRequest{TargetVersion: *version})
 	if err != nil {
