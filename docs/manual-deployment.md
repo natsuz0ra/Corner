@@ -58,7 +58,7 @@ make package
 
 Release archives include `install.sh` / `install.ps1` and `uninstall.sh` / `uninstall.ps1`. The install scripts honor `SLIMEBOT_INSTALL_DIR` and `SLIMEBOT_BIN_DIR`; the uninstall scripts use the same variables plus `SLIMEBOT_HOME` for the user data directory.
 
-The packaging script also writes standalone `dist/install.sh` and `dist/install.ps1` assets. When those scripts are run outside an extracted Release archive, they resolve the latest GitHub Release, download the matching platform archive, and then run the installer inside that archive. Set `SLIMEBOT_VERSION=v1.26.1` to install a specific release tag, or `SLIMEBOT_REPO=owner/repo` for forks.
+The packaging script also writes standalone `dist/install.sh`, `dist/install.ps1`, `dist/uninstall.sh`, and `dist/uninstall.ps1` assets. When the install scripts are run outside an extracted Release archive, they resolve the latest GitHub Release, download the matching platform archive, and then run the installer inside that archive. Set `SLIMEBOT_VERSION=v1.26.1` to install a specific release tag, or `SLIMEBOT_REPO=owner/repo` for forks. The uninstall scripts can be run remotely without downloading a Release archive; they remove the local install using the configured install paths.
 
 Update behavior:
 
@@ -70,6 +70,7 @@ Update behavior:
 
 Uninstall behavior:
 
+- Can be run remotely with `curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.sh | sh` or `irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.ps1 | iex`.
 - Stops and uninstalls the system service when possible.
 - Removes the install directory and `slimebot` / `slimebot-cli` command shims.
 - Prompts before deleting `~/.slimebot`.

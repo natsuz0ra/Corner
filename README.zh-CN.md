@@ -53,21 +53,35 @@ slimebot update --version v1.26.1 --yes
 
 ## 卸载
 
-在解压后的 Release 目录，或已安装目录中运行卸载脚本。
+用一条命令运行最新 Release 中的卸载脚本，或在解压后的 Release 目录、已安装目录中运行卸载脚本。
 
 macOS / Linux：
 
 ```bash
+curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.sh | sh
 ./uninstall.sh
 ```
 
 Windows PowerShell：
 
 ```powershell
+irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.ps1 | iex
 .\uninstall.ps1
 ```
 
 卸载脚本会停止并卸载系统服务，删除程序安装目录和命令入口。删除 `~/.slimebot` 用户数据前会询问确认。使用 `--purge` / `-Purge` 可非交互删除用户数据，使用 `--yes` / `-Yes` 可非交互卸载但保留用户数据。
+
+远程执行并传入参数：
+
+```bash
+curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.sh | sh -s -- --yes
+curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.sh | sh -s -- --purge
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.ps1))) -Yes
+& ([scriptblock]::Create((irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.ps1))) -Purge
+```
 
 ## 常用命令
 
