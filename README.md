@@ -17,21 +17,23 @@ A personal AI agent demo: an extensible foundation for conversational AI apps. I
 
 ## Install From Release
 
-Download the archive for your system from the project releases, extract it, then run the installer from the extracted directory.
+Install the latest Release with one command:
 
 macOS / Linux:
 
 ```bash
-./install.sh
+curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/install.sh | sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-.\install.ps1
+irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/install.ps1 | iex
 ```
 
-The installer places SlimeBot under a user-local directory and creates command shims. If your shell cannot find `slimebot`, add the shim directory printed by the installer to `PATH`.
+You can also download the archive for your system from the project releases, extract it, then run `./install.sh` or `.\install.ps1` from the extracted directory.
+
+The installer downloads the matching package when needed, places SlimeBot under a user-local directory, and creates command shims. If your shell cannot find `slimebot`, add the shim directory printed by the installer to `PATH`.
 
 Before running the Web service, edit `~/.slimebot/config.cfg` and set a strong `JWT_SECRET`.
 

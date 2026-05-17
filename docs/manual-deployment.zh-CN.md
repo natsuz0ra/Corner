@@ -58,6 +58,8 @@ make package
 
 Release 压缩包包含 `install.sh` / `install.ps1` 和 `uninstall.sh` / `uninstall.ps1`。安装脚本支持 `SLIMEBOT_INSTALL_DIR` 与 `SLIMEBOT_BIN_DIR`；卸载脚本使用同样的变量，并额外支持 `SLIMEBOT_HOME` 指定用户数据目录。
 
+打包脚本也会生成独立的 `dist/install.sh` 和 `dist/install.ps1` 发布资产。这两个脚本在解压后的 Release 目录外执行时，会解析最新 GitHub Release，下载匹配当前平台的压缩包，然后运行压缩包内的安装器。可通过 `SLIMEBOT_VERSION=v1.26.0` 安装指定版本标签，或用 `SLIMEBOT_REPO=owner/repo` 指向 fork。
+
 卸载行为：
 
 - 尽可能停止并卸载系统服务。
