@@ -69,7 +69,7 @@ irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.ps1
 .\uninstall.ps1
 ```
 
-卸载脚本会停止并卸载系统服务，删除程序安装目录和命令入口。删除 `~/.slimebot` 用户数据前会询问确认。使用 `--purge` / `-Purge` 可非交互删除用户数据，使用 `--yes` / `-Yes` 可非交互卸载但保留用户数据。
+卸载脚本会停止并卸载用户服务，删除程序安装目录和命令入口。删除 `~/.slimebot` 用户数据前会询问确认。使用 `--purge` / `-Purge` 可非交互删除用户数据，使用 `--yes` / `-Yes` 可非交互卸载但保留用户数据。
 
 远程执行并传入参数：
 
@@ -89,12 +89,12 @@ curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninst
 slimebot                         # 启动 CLI TUI
 slimebot cli                     # 显式启动 CLI TUI
 slimebot server                  # 前台启动 Web 服务
-slimebot service install         # 安装 Web 系统服务
-slimebot service start           # 启动 Web 系统服务
-slimebot service stop            # 停止 Web 系统服务
-slimebot service restart         # 重启 Web 系统服务
-slimebot service status          # 查看 Web 系统服务状态
-slimebot service uninstall       # 卸载 Web 系统服务
+slimebot service install         # 安装 Web 用户服务
+slimebot service start           # 启动 Web 用户服务
+slimebot service stop            # 停止 Web 用户服务
+slimebot service restart         # 重启 Web 用户服务
+slimebot service status          # 查看 Web 用户服务状态
+slimebot service uninstall       # 卸载 Web 用户服务
 slimebot update --check          # 检查更新
 slimebot update --yes            # 应用最新稳定更新
 slimebot version                 # 输出版本信息
@@ -102,6 +102,8 @@ slimebot help                    # 显示命令帮助
 ```
 
 Web 默认端口为 **6247**。服务启动后访问 `http://localhost:6247`。
+
+服务命令默认安装当前用户服务。macOS 使用 `~/Library/LaunchAgents`；Linux systemd 使用 `systemctl --user`，需要可用的用户服务会话。
 
 首次 Web 登录时，若数据库中尚无用户，会种子默认账号：用户名 **`admin`**，密码 **`admin`**。请立即修改。
 
