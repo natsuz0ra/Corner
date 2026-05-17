@@ -45,6 +45,8 @@ func Execute(opts Options) error {
 	}
 
 	switch args[0] {
+	case "cli":
+		return call("cli", opts.RunCLI)
 	case "server":
 		return call("server", opts.RunServer)
 	case "service":
