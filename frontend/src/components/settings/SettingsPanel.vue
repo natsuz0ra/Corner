@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { mdiClose } from '@mdi/js'
 import CodeMirror from 'vue-codemirror6'
@@ -37,10 +37,17 @@ import { createWebSandboxModeOptions, toWebSandboxMode } from '@/utils/sandboxSe
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
 import { useRouter } from 'vue-router'
+import type { UpdateCheckResult } from '@/types/update'
 
 const emit = defineEmits<{
   close: []
   llmChanged: []
+}>()
+
+const props = defineProps<{
+  hasUpdateNotice: boolean
+  markUpdateNoticeRead: () => void
+  setUpdateCheckResult: (result: UpdateCheckResult) => void
 }>()
 
 const { t } = useI18n()
@@ -61,6 +68,7 @@ const settingsTabs: { key: SettingsTabKey; labelKey: string }[] = [
 ]
 
 const tab = ref<SettingsTabKey>('basic')
+const hasUpdateNotice = computed(() => props.hasUpdateNotice)
 const llmList = ref<LLMConfig[]>([])
 const mcpList = ref<MCPConfig[]>([])
 const skillsList = ref<SkillItem[]>([])
@@ -282,6 +290,12 @@ async function saveAgentsInstructions() {
 }
 
 onMounted(loadData)
+
+watch(tab, (nextTab) => {
+  if (nextTab === 'about') {
+    props.markUpdateNoticeRead()
+  }
+})
 </script>
 
 <template>
@@ -310,7 +324,7 @@ onMounted(loadData)
           v-for="item in settingsTabs"
           :key="item.key"
           type="button"
-          class="relative w-full text-left px-3.5 h-9 rounded-xl text-sm transition-all duration-150 cursor-pointer settings-tab"
+          class="relative w-full text-left px-3.5 h-9 rounded-xl text-sm transition-all duration-150 cursor-pointer settings-tab flex items-center gap-2"
           :class="tab === item.key ? 'settings-tab-active' : 'settings-tab-inactive'"
           @click="tab = item.key"
         >
@@ -319,7 +333,8 @@ onMounted(loadData)
             class="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
             style="background: #6366f1"
           />
-          {{ t(item.labelKey) }}
+          <span>{{ t(item.labelKey) }}</span>
+          <span v-if="item.key === 'about' && hasUpdateNotice" class="update-notice-dot" aria-hidden="true" />
         </button>
       </aside>
 
@@ -405,7 +420,7 @@ onMounted(loadData)
           @open-bind="openMessagePlatformDialog"
         />
 
-        <SettingsAboutTab v-if="tab === 'about'" />
+        <SettingsAboutTab v-if="tab === 'about'" @update-check-loaded="props.setUpdateCheckResult" />
       </section>
     </div>
   </div>

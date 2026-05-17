@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ToolCallItem } from '@/api/chat'
 import type { ToolTimelineEntry } from '@/types/chat'
+import type { UpdateCheckResult } from '@/types/update'
 import AccountEditDialog from '@/components/settings/AccountEditDialog.vue'
 import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 import ToolExecutionDetailDialog from '@/components/chat/ToolExecutionDetailDialog.vue'
@@ -18,6 +19,9 @@ const props = defineProps<{
   toolDetailItems: ToolCallItem[]
   toolDetailToolTimeline: ToolTimelineEntry[]
   settingsVisible: boolean
+  hasUpdateNotice: boolean
+  markUpdateNoticeRead: () => void
+  setUpdateCheckResult: (result: UpdateCheckResult) => void
   accountDialogVisible: boolean
 }>()
 
@@ -109,7 +113,13 @@ function onSettingsMaskClick(e: MouseEvent) {
         class="settings-modal settings-modal-size w-full rounded-2xl overflow-hidden"
         @click.stop
       >
-        <SettingsPanel @close="emit('update:settingsVisible', false)" @llm-changed="emit('refreshModelOptions')" />
+        <SettingsPanel
+          :has-update-notice="hasUpdateNotice"
+          :mark-update-notice-read="markUpdateNoticeRead"
+          :set-update-check-result="setUpdateCheckResult"
+          @close="emit('update:settingsVisible', false)"
+          @llm-changed="emit('refreshModelOptions')"
+        />
       </div>
     </div>
   </Transition>

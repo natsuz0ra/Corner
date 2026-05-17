@@ -128,6 +128,14 @@ test("session redraw uses Ink frame reset instead of raw terminal clearing", () 
   assert.doesNotMatch(source, /const clearScreenDeferred = useCallback/);
 });
 
+test("app checks for updates silently on startup and passes banner marker state", () => {
+  const source = readFileSync(new URL("./app.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /getUpdateCheck\(false\)/);
+  assert.match(source, /updateAvailable=\{Boolean\(state\.updateCheck\?\.updateAvailable\)\}/);
+  assert.match(source, /Update checks are informational; keep startup quiet/);
+});
+
 test("internal Ink forceRedraw keeps scrollback optional", () => {
   const inkSource = readFileSync(new URL("../packages/ink/src/ink/ink.tsx", import.meta.url), "utf8");
   const rootSource = readFileSync(new URL("../packages/ink/src/ink/root.ts", import.meta.url), "utf8");
