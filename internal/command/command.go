@@ -45,8 +45,6 @@ func Execute(opts Options) error {
 	}
 
 	switch args[0] {
-	case "cli":
-		return call("cli", opts.RunCLI)
 	case "server":
 		return call("server", opts.RunServer)
 	case "service":
@@ -134,7 +132,6 @@ func printHelp(w io.Writer) {
 func HelpText() string {
 	return `Usage:
   slimebot                         Start the CLI TUI
-  slimebot cli                     Start the CLI TUI
   slimebot server                  Start the web service in the foreground
   slimebot service install         Install the web service
   slimebot service start           Start the web service
@@ -144,7 +141,7 @@ func HelpText() string {
   slimebot service uninstall       Uninstall the web service
   slimebot update --check          Check for updates
   slimebot update                  Update to the latest release
-  slimebot update --version vX.Y.Z
+  slimebot update --version vX.Y.Z  Update to a specific release
   slimebot version                 Show version information
   slimebot help                    Show this help
 `

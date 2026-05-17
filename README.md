@@ -87,7 +87,6 @@ curl -fsSL https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninst
 
 ```bash
 slimebot                         # start the CLI TUI
-slimebot cli                     # start the CLI TUI explicitly
 slimebot server                  # start the Web service in the foreground
 slimebot service install         # install the Web service
 slimebot service start           # start the Web service
@@ -97,6 +96,7 @@ slimebot service status          # show Web service status
 slimebot service uninstall       # uninstall the Web service
 slimebot update --check          # check for updates
 slimebot update                  # apply latest stable update
+slimebot update --version vX.Y.Z # apply a specific Release tag
 slimebot version                 # show version information
 slimebot help                    # show command help
 ```
