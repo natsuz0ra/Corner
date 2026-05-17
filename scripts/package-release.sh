@@ -17,6 +17,24 @@ TARGETS=(
   "windows/amd64"
 )
 
+assert_cli_bundle_self_contained() {
+  local bundle="$1"
+  local deps=(
+    "ink"
+    "react"
+    "react/jsx-runtime"
+    "ink-text-input"
+  )
+
+  for dep in "${deps[@]}"; do
+    if grep -Fq "from \"$dep\"" "$bundle" || grep -Fq "from '$dep'" "$bundle"; then
+      echo "CLI bundle still imports runtime dependency: $dep" >&2
+      echo "Update cli/tsup.config.ts so release packages do not require cli/node_modules." >&2
+      exit 1
+    fi
+  done
+}
+
 cd "${ROOT_DIR}"
 
 npm --prefix frontend run build
@@ -30,6 +48,7 @@ if [[ ! -f cli/dist/index.js ]]; then
   echo "Missing CLI bundle: cli/dist/index.js" >&2
   exit 1
 fi
+assert_cli_bundle_self_contained "cli/dist/index.js"
 
 rm -rf "${DIST_DIR}"
 mkdir -p "${DIST_DIR}"
