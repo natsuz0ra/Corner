@@ -35,6 +35,24 @@ The installer places SlimeBot under a user-local directory and creates command s
 
 Before running the Web service, edit `~/.slimebot/config.cfg` and set a strong `JWT_SECRET`.
 
+## Uninstall
+
+Run the uninstaller from the extracted Release directory or from the installed copy.
+
+macOS / Linux:
+
+```bash
+./uninstall.sh
+```
+
+Windows PowerShell:
+
+```powershell
+.\uninstall.ps1
+```
+
+The uninstaller stops and removes the system service, deletes the installed program files, and removes command shims. It asks before deleting `~/.slimebot` user data. Use `--purge` / `-Purge` to delete user data non-interactively, or `--yes` / `-Yes` to uninstall non-interactively while keeping user data.
+
 ## Commands
 
 ```bash

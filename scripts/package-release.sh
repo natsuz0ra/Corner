@@ -46,6 +46,8 @@ for target in "${TARGETS[@]}"; do
   cp cli/cli.cjs "${package_dir}/cli/cli.cjs"
   cp scripts/install.sh "${package_dir}/install.sh"
   cp scripts/install.ps1 "${package_dir}/install.ps1"
+  cp scripts/uninstall.sh "${package_dir}/uninstall.sh"
+  cp scripts/uninstall.ps1 "${package_dir}/uninstall.ps1"
   cp README.md README.zh-CN.md LICENSE "${package_dir}/"
   if [[ -d docs ]]; then
     cp -R docs "${package_dir}/docs"
@@ -62,7 +64,7 @@ EOF
 #!/usr/bin/env sh
 exec "$(dirname "$0")/slimebot" cli "$@"
 EOF
-    chmod +x "${bin_dir}/slimebot" "${bin_dir}/slimebot-cli" "${package_dir}/install.sh"
+    chmod +x "${bin_dir}/slimebot" "${bin_dir}/slimebot-cli" "${package_dir}/install.sh" "${package_dir}/uninstall.sh"
     (cd "${DIST_DIR}" && tar -czf "${archive}" "${name}")
   fi
 done

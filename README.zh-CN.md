@@ -35,6 +35,24 @@ Windows PowerShell：
 
 启动 Web 服务前，请编辑 `~/.slimebot/config.cfg`，设置一个强随机的 `JWT_SECRET`。
 
+## 卸载
+
+在解压后的 Release 目录，或已安装目录中运行卸载脚本。
+
+macOS / Linux：
+
+```bash
+./uninstall.sh
+```
+
+Windows PowerShell：
+
+```powershell
+.\uninstall.ps1
+```
+
+卸载脚本会停止并卸载系统服务，删除程序安装目录和命令入口。删除 `~/.slimebot` 用户数据前会询问确认。使用 `--purge` / `-Purge` 可非交互删除用户数据，使用 `--yes` / `-Yes` 可非交互卸载但保留用户数据。
+
 ## 常用命令
 
 ```bash

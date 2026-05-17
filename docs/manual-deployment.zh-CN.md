@@ -56,6 +56,17 @@ npm run cli
 make package
 ```
 
+Release 压缩包包含 `install.sh` / `install.ps1` 和 `uninstall.sh` / `uninstall.ps1`。安装脚本支持 `SLIMEBOT_INSTALL_DIR` 与 `SLIMEBOT_BIN_DIR`；卸载脚本使用同样的变量，并额外支持 `SLIMEBOT_HOME` 指定用户数据目录。
+
+卸载行为：
+
+- 尽可能停止并卸载系统服务。
+- 删除安装目录和 `slimebot` / `slimebot-cli` 命令入口。
+- 删除 `~/.slimebot` 前会询问确认。
+- `--yes` / `-Yes` 跳过确认并保留用户数据。
+- `--purge` / `-Purge` 不询问，直接删除用户数据。
+- `--keep-data` / `-KeepData` 显式保留用户数据。
+
 ## 测试
 
 ```bash
