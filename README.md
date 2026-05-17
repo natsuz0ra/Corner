@@ -10,39 +10,54 @@ A personal AI agent demo: an extensible foundation for conversational AI apps. I
 
 ## Features
 
-- **Chat & sessions**
-  - Session list, create, rename, delete
-  - Per-session message history
-  - Real-time streaming replies
-  - Auto-generated session titles with live updates
-  - Multimodal support
-- **Tools & agent**
-  - Multi-turn agent tool-call flow
-  - Approval modes: **standard** (manual confirm for sensitive tools), **auto review** (model reviews uncertain sensitive tools first), and **auto** (execute directly)
-  - User approval for sensitive built-in actions such as command execution and file modification in web UI, CLI, and Telegram flows
-  - Codex-style sandbox policy for command execution, file access, and built-in HTTP requests, with `read-only`, `workspace-write`, and `danger-full-access` modes
-  - Tool results stored in history with detail views
-  - Built-in capabilities: command line, web requests, Tavily-powered web search, and task tracking
-  - Supports coding-agent-like file read/write capabilities for text editing workflows
-  - **Subagent:** the main agent can delegate a self-contained task to an inner agent with **isolated context** (no parent chat history). Only **one nesting level** is allowed. Inner tool calls are shown **nested under** the parent tool in the web UI and CLI; session history stores the parent-child relationship so grouping survives a reload.
-- **Planning & reasoning controls**
-  - Plan mode for “draft first, execute after approval” workflow
-  - Plan lifecycle: generate, approve/reject, modify-and-regenerate, execute
-  - Thinking level controls (`off` / `low` / `medium` / `high`) for model reasoning depth
-  - Thinking stream events and timeline rendering in both web UI and CLI
-- **Memory & context compression**
-  - Hidden compact summaries per session and model config
-  - Automatic history compaction when a model `contextSize` would be exceeded
-  - Context usage and compaction status in the web UI and CLI
-- **Configuration & extensions**
-  - MCP configuration management
-  - Skills: upload, list, delete, runtime activation
-  - AGENTS.md instructions: global instructions can be edited in the web settings; the CLI also reads project-level `AGENTS.md` files and merges them from the Git repository root to the current working directory before injecting them into the model context
-- **Messaging platforms** (Telegram today)
-  - Platform configuration management
-  - Inbound messages and replies
-- **CLI TUI**
-  - Standalone CLI for chat and basic configuration (headless Go child + Ink UI)
+- Chat sessions, real-time streaming replies, multimodal messages, and automatic title generation
+- Agent tool-call flows with approval modes, sandbox policies, command/file tools, web requests, web search, and task tracking
+- Plan mode, streamed thinking, context compression, MCP configuration, skills, and AGENTS.md instructions
+- Web UI, CLI TUI, and Telegram integration
+
+## Install From Release
+
+Download the archive for your system from the project releases, extract it, then run the installer from the extracted directory.
+
+macOS / Linux:
+
+```bash
+./install.sh
+```
+
+Windows PowerShell:
+
+```powershell
+.\install.ps1
+```
+
+The installer places SlimeBot under a user-local directory and creates command shims. If your shell cannot find `slimebot`, add the shim directory printed by the installer to `PATH`.
+
+Before running the Web service, edit `~/.slimebot/config.cfg` and set a strong `JWT_SECRET`.
+
+## Commands
+
+```bash
+slimebot                         # start the CLI TUI
+slimebot cli                     # start the CLI TUI explicitly
+slimebot server                  # start the Web service in the foreground
+slimebot service install         # install the Web service
+slimebot service start           # start the Web service
+slimebot service stop            # stop the Web service
+slimebot service restart         # restart the Web service
+slimebot service status          # show Web service status
+slimebot service uninstall       # uninstall the Web service
+slimebot version                 # show version information
+slimebot help                    # show command help
+```
+
+Default Web port: **6247**. After the service starts, open `http://localhost:6247`.
+
+First-time Web login seeds a default account if no user exists yet: username **`admin`**, password **`admin`**. Change it immediately.
+
+## Manual Source Deployment
+
+For development startup, production builds from source, Docker, Docker Compose, configuration, sandbox notes, and data layout, see [Manual Deployment](docs/manual-deployment.md).
 
 ## Screenshots
 
@@ -74,210 +89,11 @@ A personal AI agent demo: an extensible foundation for conversational AI apps. I
 
 <img src="assets/cli.png" alt="CLI" width="800" />
 
-## Architecture & stack
+## Status & Roadmap
 
-- **Production**: one Go binary serves REST/WebSocket and embeds the web UI from `web/dist` (`go:embed`).
-- **Development**: `npm run dev` runs the Go server and Vite; Vite proxies `/api` and `/ws` to the configured backend port (`6247` by default).
-- **Data**: SQLite by default at `~/.slimebot/storage/data.db`; compacted context summaries are stored there too.
-- **Memory**: currently session-scoped context compression. When needed, SlimeBot injects a hidden `<context_summary>` together with the latest conversation context.
+**Done:** Web/CLI chat, WebSocket streaming, agent tools, approvals, sandbox enforcement, plan mode, thinking controls, subagents, MCP, skills, AGENTS.md instructions, SQLite-backed summaries, Telegram, multimodal chat, and JWT auth.
 
-**Stack (high level):** Go backend · Vue 3 web app · React + Ink CLI.
-
-## Getting started
-
-Default ports: backend **6247**, Vite **7391**.
-
-From the repo root:
-
-```bash
-make deps
-npm run dev
-```
-
-Or install manually:
-
-```bash
-npm install
-npm install --prefix frontend
-npm run dev
-```
-
-On first run, `~/.slimebot/config.cfg` is created if missing; missing keys from the embedded template are appended over time. If an older `~/.slimebot/.env` exists and `config.cfg` does not, SlimeBot copies it to `config.cfg` and keeps the old file untouched.
-
-**First-time login (web server):** if no user exists yet, a default account is seeded (**username `admin`**, password **`admin`**) and you are prompted to change the password. Change it immediately for anything beyond local development.
-
-**Production build** (outputs `slimebot` with the embedded frontend):
-
-```bash
-npm run build
-# or
-make build
-```
-
-**Run the server only** (API + static UI after a build):
-
-```bash
-go run ./cmd/server/main.go
-```
-
-**CLI TUI:**
-
-```bash
-npm run cli
-```
-
-`make cli` installs CLI dependencies, builds the Ink bundle, and produces a `slimebot-cli` binary (see [Makefile](Makefile)).
-
-**Tests:**
-
-```bash
-make test
-# or
-go test ./...
-```
-
-**Docker:**
-
-```bash
-make docker-build
-make docker-run
-```
-
-**Docker Compose:**
-
-```bash
-make compose-up
-make compose-down
-```
-
-### CLI commands
-
-- `/new` — new session (lazy: created on first message)
-- `/session` — switch / delete sessions
-- `/model` — set default model
-- `/skills` — view / remove skills
-- `/mcp` — MCP CRUD with multiline editor
-- `/approval` — toggle approval mode (`standard` / `auto_review` / `auto`)
-- `/effort` — set thinking level (`off` / `low` / `medium` / `high`)
-- `/plan` — toggle plan mode (`on` / `off`)
-- `/help` — help
-
-## Tool sandbox
-
-SlimeBot applies one sandbox policy across command execution, file tools, and built-in HTTP requests.
-
-- `read-only` allows file reads but blocks file writes.
-- `workspace-write` is the default. It allows reads and writes under the server working directory plus configured writable roots.
-- `danger-full-access` keeps the legacy unrestricted host behavior and should only be enabled intentionally.
-- Denied paths, when configured, take priority over writable roots.
-- Command execution runs through `/usr/bin/sandbox-exec` on macOS and `bubblewrap` (`bwrap`) on Linux. If the platform sandbox is unavailable, SlimeBot fails closed instead of silently running on the host. Windows OS-level sandboxing is not implemented yet.
-- Network access is controlled by the sandbox network setting. Built-in HTTP requests also support an allowed-domain list; sandboxed subprocesses currently support the network on/off switch.
-- Tool calls that request elevated sandbox permissions are treated as escalation requests. Approval applies to the current tool call only.
-
-## Data layout (`~/.slimebot`)
-
-```text
-~/.slimebot/
-  config.cfg
-  AGENTS.md
-  skills/
-  storage/
-    data.db
-    chat_uploads/
-```
-
-- `config.cfg` — runtime configuration
-- `AGENTS.md` — global Agent instructions, readable and writable from the AGENTS tab in web settings
-- `storage/data.db` — SQLite
-- `storage/chat_uploads` — chat attachments
-- `skills/` — installed skills
-
-## AGENTS.md instructions
-
-- The global instructions file lives at `~/.slimebot/AGENTS.md` and provides long-lived working rules for all sessions.
-- The AGENTS tab in web settings reads global instructions with `GET /api/agents-instructions` and saves updates with `PUT /api/agents-instructions`.
-- CLI mode also reads `AGENTS.md` files from the current project. When the working directory is inside a Git repository, SlimeBot merges non-empty files in order from the repository root to the current working directory.
-- Regular Server/Web sessions inject only the global AGENTS instructions and do not read project-local files.
-- AGENTS content is part of the stable system prompt; changes to global or project instructions refresh the stable prompt cache.
-
-## Memory model
-
-- Memory is not a separate Markdown file store or search index. It is a SQLite-backed compact summary for each chat session.
-- If the full history, system prompt, runtime environment, and tool replay fit under the selected model config’s `contextSize`, SlimeBot sends the full history.
-- If the estimated context exceeds `contextSize`, SlimeBot asks the current model to generate a compact summary, stores it in `session_context_summaries`, and injects it later as a hidden `<context_summary>`.
-- Summaries are keyed by `sessionId + modelConfigId`, so different model configs can keep separate compacted prefixes for the same session.
-- Existing summaries are reused. If new messages after the summary exceed the window again, the previous summary and new messages are rolled into an updated summary.
-- The latest user message is protected. If that message alone cannot fit in the context window, the request fails and asks you to shorten the input or increase context size.
-- Web and CLI clients receive `context_usage` / `context_compacted` events with used tokens, available percentage, and compaction state.
-
-## Configuration (`~/.slimebot/config.cfg`)
-
-Variables read by SlimeBot components (defaults shown where applicable):
-
-- `SERVER_PORT` — HTTP port (default `6247`)
-- `FRONTEND_PORT` — Vite development server port (default `7391`)
-- `DB_PATH` — SQLite path (default `~/.slimebot/storage/data.db`)
-- `SKILLS_ROOT` — skills root (default `~/.slimebot/skills`)
-- `CHAT_UPLOAD_ROOT` — uploads (default `~/.slimebot/storage/chat_uploads`)
-- `CONTEXT_HISTORY_ROUNDS` — retained history-round setting (default `20`, clamped to `5`–`50`)
-- `DEFAULT_CONTEXT_SIZE` — default context size for new model configs (default `1000000`)
-- `FRONTEND_ORIGIN` — set to `http://localhost:7391` when using Vite; empty for same-origin production
-- `WEB_SEARCH_API_KEY` — Tavily API key for web search
-- `JWT_SECRET` — **required in server mode**; server fails to start if unset (CLI headless mode can auto-generate one)
-- `JWT_EXPIRE` — JWT lifetime in minutes (default `21600` ≈ 15 days)
-
-The file created on first boot follows the embedded template in [internal/runtime/env.template](internal/runtime/env.template). You can add the optional keys above manually if needed. Older `~/.slimebot/.env` files are copied to `config.cfg` on first boot for compatibility.
-
-Example:
-
-```env
-SERVER_PORT=6247
-FRONTEND_PORT=7391
-DB_PATH=~/.slimebot/storage/data.db
-SKILLS_ROOT=~/.slimebot/skills
-CHAT_UPLOAD_ROOT=~/.slimebot/storage/chat_uploads
-WEB_SEARCH_API_KEY=YOUR_TAVILY_API_KEY
-JWT_SECRET=CHANGE_ME_TO_A_RANDOM_SECRET
-JWT_EXPIRE=21600
-
-# CONTEXT_HISTORY_ROUNDS=20
-# DEFAULT_CONTEXT_SIZE=1000000
-
-# FRONTEND_ORIGIN=http://localhost:7391
-```
-
-### Frontend (`frontend/.env`)
-
-- `VITE_API_BASE_URL` — HTTP base (e.g. `http://localhost:6247`)
-- `VITE_WS_URL` — WebSocket base (e.g. `ws://localhost:6247`)
-- `FRONTEND_PORT` — Vite development server port; read from the process environment or `~/.slimebot/config.cfg`
-
-Example:
-
-```env
-VITE_API_BASE_URL=http://localhost:6247
-VITE_WS_URL=ws://localhost:6247
-```
-
-## Status & roadmap
-
-**Done**
-
-- Sessions and WebSocket streaming (including errors, tool-call, subagent, and thinking events)
-- Agent tools, approvals, and sandbox enforcement for command execution, file access, and built-in HTTP requests
-- Plan mode with plan generation, approve/reject/modify flow, and execution after approval
-- Thinking level controls (`off` / `low` / `medium` / `high`) with streamed reasoning display
-- Subagent / nested agent, nested tool UI, and persisted parent linkage in tool-call history
-- MCP and skills
-- Global and project-level AGENTS.md instructions, plus the AGENTS editor in settings
-- SQLite-backed compact session summaries and context usage tracking
-- Telegram integration
-- Multimodal chat
-- JWT auth and default admin bootstrap
-
-**Planned**
-
-- More messaging platforms (e.g. Discord, Slack)
+**Planned:** More messaging platforms such as Discord and Slack.
 
 ## License
 

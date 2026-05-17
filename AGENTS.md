@@ -15,6 +15,8 @@ Top-level navigation:
 ├─ frontend/                 # Vue 3 web app
 ├─ cli/                      # React + Ink terminal app
 ├─ prompts/                  # Embedded prompts and templates
+├─ scripts/                  # Release packaging and install scripts
+├─ docs/                     # Manual deployment and longer-form docs
 ├─ web/                      # Built frontend assets served by backend
 └─ assets/                   # README screenshots and images
 ```
@@ -107,6 +109,8 @@ Quick index (feature -> first place to inspect):
 - Web settings page UI: `frontend/src/components/settings/`, `frontend/src/composables/settings/`, `frontend/src/pages/`
 - CLI interaction flow: `cmd/cli/`, `cli/src/controllers/`, `cli/src/components/`, `cli/src/ws/`
 - Prompt templates: `prompts/`
+- Release/install packaging: `scripts/`
+- Manual deployment docs: `docs/`
 
 Notes:
 
@@ -128,6 +132,7 @@ Any repository structure changes must update this file in the same PR.
 - `make deps`: install root and frontend npm dependencies.
 - `npm run dev`: run the Go server and Vite dev server together.
 - `npm run build` or `make build`: build the frontend into `web/dist` and compile the `slimebot` server binary.
+- `make package`: build cross-platform Release archives under `dist/`.
 - `npm run cli`: build the Ink CLI and run the Go CLI entrypoint.
 - `make test` or `go test ./...`: run backend tests.
 - `npm --prefix frontend test`: run frontend Node tests.
