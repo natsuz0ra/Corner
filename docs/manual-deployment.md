@@ -56,6 +56,17 @@ Create local Release archives:
 make package
 ```
 
+Release archives include `install.sh` / `install.ps1` and `uninstall.sh` / `uninstall.ps1`. The install scripts honor `SLIMEBOT_INSTALL_DIR` and `SLIMEBOT_BIN_DIR`; the uninstall scripts use the same variables plus `SLIMEBOT_HOME` for the user data directory.
+
+Uninstall behavior:
+
+- Stops and uninstalls the system service when possible.
+- Removes the install directory and `slimebot` / `slimebot-cli` command shims.
+- Prompts before deleting `~/.slimebot`.
+- `--yes` / `-Yes` keeps user data and skips prompts.
+- `--purge` / `-Purge` deletes user data without prompting.
+- `--keep-data` / `-KeepData` explicitly preserves user data.
+
 ## Tests
 
 ```bash
