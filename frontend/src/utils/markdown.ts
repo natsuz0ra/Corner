@@ -57,7 +57,7 @@ md.renderer.rules.fence = (tokens, idx, options, env: MarkdownRenderEnv) => {
   const token = tokens[idx]
   const code = token?.content ?? ''
   const info = token?.info ? md.utils.unescapeAll(token.info).trim() : ''
-  const language = info ? info.split(/\s+/g)[0] : ''
+  const language = info ? (info.split(/\s+/g)[0] ?? '') : ''
   const languageClass = language ? ` class="language-${escapeHtml(language)}"` : ''
   const highlighted = options.highlight ? options.highlight(code, language, '') : escapeHtml(code)
   const codeMarkup = `<pre><code${languageClass}>${highlighted}</code></pre>`
