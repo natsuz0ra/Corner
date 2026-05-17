@@ -124,9 +124,10 @@ func serviceConfig() *kservice.Config {
 		Arguments:   []string{"service", "run"},
 		Executable:  executablePath(),
 		Option: kservice.KeyValue{
-			"RunAtLoad": true,
-			"Restart":   "on-failure",
-			"StartType": "manual",
+			"RunAtLoad":   true,
+			"Restart":     "on-failure",
+			"StartType":   "manual",
+			"UserService": true,
 		},
 	}
 }

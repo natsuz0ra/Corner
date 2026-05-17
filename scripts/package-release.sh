@@ -20,6 +20,15 @@ cd "${ROOT_DIR}"
 npm --prefix frontend run build
 npm --prefix cli run build
 
+if [[ ! -f cli/cli.cjs ]]; then
+  echo "Missing CLI entry: cli/cli.cjs" >&2
+  exit 1
+fi
+if [[ ! -f cli/dist/index.js ]]; then
+  echo "Missing CLI bundle: cli/dist/index.js" >&2
+  exit 1
+fi
+
 rm -rf "${DIST_DIR}"
 mkdir -p "${DIST_DIR}"
 cp scripts/install.sh scripts/install.ps1 scripts/uninstall.sh scripts/uninstall.ps1 "${DIST_DIR}/"
@@ -46,6 +55,7 @@ for target in "${TARGETS[@]}"; do
     -o "${bin_dir}/slimebot${exe_suffix}" ./cmd/server
 
   cp cli/cli.cjs "${package_dir}/cli/cli.cjs"
+  cp -R cli/dist "${package_dir}/cli/dist"
   cp scripts/install.sh "${package_dir}/install.sh"
   cp scripts/install.ps1 "${package_dir}/install.ps1"
   cp scripts/uninstall.sh "${package_dir}/uninstall.sh"
