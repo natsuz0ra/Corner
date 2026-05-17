@@ -70,6 +70,15 @@ func TestAssetNameForPlatform(t *testing.T) {
 	}
 }
 
+func TestTopDirIgnoresAppleDoubleEntries(t *testing.T) {
+	top := topDir("", "._slimebot-v1.26.2-darwin-arm64/install.sh")
+	top = topDir(top, "slimebot-v1.26.2-darwin-arm64/install.sh")
+
+	if top != "slimebot-v1.26.2-darwin-arm64" {
+		t.Fatalf("topDir = %q, want package root", top)
+	}
+}
+
 func TestParseLatestRelease(t *testing.T) {
 	raw := []byte(`{
 		"tag_name": "v1.26.2",
@@ -104,7 +113,7 @@ func TestStatusStoreRoundTrip(t *testing.T) {
 		Target:     "v1.26.2",
 		Message:    "Downloading",
 		UpdatedAt:  time.Date(2026, 5, 17, 1, 2, 3, 0, time.UTC),
-		ManualHint: "slimebot update --version v1.26.2 --yes",
+		ManualHint: "slimebot update --version v1.26.2",
 	}
 
 	if err := store.Write(context.Background(), want); err != nil {

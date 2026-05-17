@@ -263,6 +263,9 @@ func topDir(current, name string) string {
 		return current
 	}
 	part := strings.Split(clean, string(os.PathSeparator))[0]
+	if strings.HasPrefix(part, "._") || part == "__MACOSX" {
+		return current
+	}
 	if current == "" {
 		return part
 	}

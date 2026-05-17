@@ -63,8 +63,8 @@ Release 压缩包包含 `install.sh` / `install.ps1` 和 `uninstall.sh` / `unins
 更新行为：
 
 - `slimebot update --check` 检查 GitHub 最新稳定 Release。更新源沿用安装逻辑：优先读取 `SLIMEBOT_REPO`，否则使用 `natsuz0ra/SlimeBot`。
-- `slimebot update --yes` 会启动独立 helper 进程，下载匹配当前平台的 Release 压缩包，解压并运行包内安装脚本，同时把进度写入 `~/.slimebot/storage/update-status.json`。
-- `slimebot update --version vX.Y.Z --yes` 安装指定 Release tag。当前构建版本为 `dev`、空值，或无法解析为版本号时，界面也会展示这条命令作为恢复入口。
+- `slimebot update` 会启动独立 helper 进程，下载匹配当前平台的 Release 压缩包，解压并运行包内安装脚本，同时把进度写入 `~/.slimebot/storage/update-status.json`。
+- `slimebot update --version vX.Y.Z` 安装指定 Release tag。当前构建版本为 `dev`、空值，或无法解析为版本号时，界面也会展示这条命令作为恢复入口。
 - Web 用户服务模式下，helper 会尝试执行 `slimebot service stop`，完成安装后再尝试 `slimebot service start`。如果当前是前台 `slimebot server` 进程且没有安装服务，helper 完成后需要手动重启该前台进程。Linux systemd 下服务命令使用 `systemctl --user`，需要可用的用户服务会话。
 - Web 用户可在 **设置 -> 关于** 使用更新中心。CLI TUI 用户可输入 `/update`；确认更新后当前 TUI 会退出，以便 helper 安全替换已安装文件。
 
