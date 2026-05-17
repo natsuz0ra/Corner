@@ -478,7 +478,7 @@ export const useChatStore = defineStore('chat', () => {
       onMessageEdited: (data, sessionId) => {
         if (!sessionId || sessionId !== currentSessionId.value) return
         if (!data.messageId || (pendingEditMessageId.value && data.messageId !== pendingEditMessageId.value)) return
-        const applied = applyEditedUserMessage(messages.value, replyBatches.value, data.messageId, data.content)
+        const applied = applyEditedUserMessage(messages.value, replyBatches.value, data.messageId, data.content, data.createdAt)
         messages.value = applied.messages
         replyBatches.value = applied.replyBatches
         currentBatchId.value = ''

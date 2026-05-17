@@ -27,13 +27,17 @@ func TestChatTimingPayloadsUseServerReceivedAndDoneTimes(t *testing.T) {
 }
 
 func TestBuildMessageEditedPayload(t *testing.T) {
-	payload := buildMessageEditedPayload("session-1", "message-1", "edited text")
+	editedAt := time.Date(2026, 4, 29, 1, 2, 3, 0, time.UTC)
+	payload := buildMessageEditedPayload("session-1", "message-1", "edited text", editedAt)
 
 	if payload["type"] != "message_edited" {
 		t.Fatalf("unexpected type: %+v", payload)
 	}
 	if payload["sessionId"] != "session-1" || payload["messageId"] != "message-1" || payload["content"] != "edited text" {
 		t.Fatalf("unexpected edit payload: %+v", payload)
+	}
+	if payload["createdAt"] != editedAt.Format(time.RFC3339Nano) {
+		t.Fatalf("unexpected edit createdAt: %+v", payload)
 	}
 }
 

@@ -104,6 +104,32 @@ func TestGetMessageHistoryBuildsToolThinkingAndReplyTiming(t *testing.T) {
 	}
 }
 
+func TestGetMessageHistoryReplyTimingUsesEditedUserCreatedAt(t *testing.T) {
+	sessionID := "session-1"
+	originalUserAt := time.Date(2026, 4, 29, 1, 2, 3, 0, time.UTC)
+	editedUserAt := originalUserAt.Add(2 * time.Hour)
+	assistantAt := editedUserAt.Add(3200 * time.Millisecond)
+	store := &storeStub{
+		messages: []domain.Message{
+			{ID: "user-1", SessionID: sessionID, Role: "user", Content: "edited", CreatedAt: editedUserAt, Seq: 1},
+			{ID: "assistant-1", SessionID: sessionID, Role: "assistant", Content: "fresh answer", CreatedAt: assistantAt, Seq: 2},
+		},
+	}
+
+	got, err := NewSessionService(store).GetMessageHistory(context.Background(), sessionID, 10, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("GetMessageHistory failed: %v", err)
+	}
+
+	timing := got.ReplyTimingByAssistantMessageID["assistant-1"]
+	if timing.StartedAt != formatHistoryTime(editedUserAt) {
+		t.Fatalf("expected edited user createdAt as reply start, got %+v", timing)
+	}
+	if timing.DurationMs != 3200 {
+		t.Fatalf("expected duration from edited user time, got %+v", timing)
+	}
+}
+
 func TestSessionServicePassesContextToStore(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

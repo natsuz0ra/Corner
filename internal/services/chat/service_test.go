@@ -222,9 +222,12 @@ func TestHandleEditedChatStream_UpdatesExistingUserAndPrunesOldAssistant(t *test
 	var events []string
 
 	result, err := svc.HandleEditedChatStream(ctx, session.ID, "request-edit", user.ID, "edited question", model.ID, "off", false, "", "", AgentCallbacks{
-		OnMessageEdited: func(messageID, content string) error {
+		OnMessageEdited: func(messageID, content string, createdAt time.Time) error {
 			if messageID != user.ID || content != "edited question" {
 				t.Fatalf("unexpected edit confirmation: %s %q", messageID, content)
+			}
+			if !createdAt.After(user.CreatedAt) {
+				t.Fatalf("expected edit confirmation createdAt to advance from %s, got %s", user.CreatedAt, createdAt)
 			}
 			events = append(events, "message_edited")
 			return nil

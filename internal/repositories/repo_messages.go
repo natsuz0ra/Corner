@@ -251,7 +251,10 @@ func (r *Repository) UpdateUserMessageAndPruneAfter(ctx context.Context, session
 		now := time.Now()
 		if err := tx.Model(&domain.Message{}).
 			Where("id = ?", target.ID).
-			Update("content", content).Error; err != nil {
+			Updates(map[string]any{
+				"content":    content,
+				"created_at": now,
+			}).Error; err != nil {
 			return err
 		}
 		if err := tx.Model(&domain.Session{}).

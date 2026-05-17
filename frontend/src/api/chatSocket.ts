@@ -36,6 +36,7 @@ export type ConnectionStatus = 'connected' | 'reconnecting' | 'disconnected'
 export interface MessageEditedData {
   messageId: string
   content: string
+  createdAt?: string
 }
 
 export interface ToolCallStartData {
@@ -220,6 +221,7 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
     handlers?.onMessageEdited?.({
       messageId: data.messageId || '',
       content: data.content || '',
+      createdAt: data.createdAt,
     }, data.sessionId)
   }
   if (data.type === 'done') {
