@@ -69,7 +69,7 @@ irm https://github.com/natsuz0ra/SlimeBot/releases/latest/download/uninstall.ps1
 .\uninstall.ps1
 ```
 
-The uninstaller stops and removes the system service, deletes the installed program files, and removes command shims. It asks before deleting `~/.slimebot` user data. Use `--purge` / `-Purge` to delete user data non-interactively, or `--yes` / `-Yes` to uninstall non-interactively while keeping user data.
+The uninstaller stops and removes the user service, deletes the installed program files, and removes command shims. It asks before deleting `~/.slimebot` user data. Use `--purge` / `-Purge` to delete user data non-interactively, or `--yes` / `-Yes` to uninstall non-interactively while keeping user data.
 
 Pass options to the remote script:
 
@@ -102,6 +102,8 @@ slimebot help                    # show command help
 ```
 
 Default Web port: **6247**. After the service starts, open `http://localhost:6247`.
+
+Service commands install a current-user service by default. On macOS this uses `~/Library/LaunchAgents`; on Linux with systemd this uses `systemctl --user`, which requires a working user service session.
 
 First-time Web login seeds a default account if no user exists yet: username **`admin`**, password **`admin`**. Change it immediately.
 
