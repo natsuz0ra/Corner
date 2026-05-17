@@ -24,6 +24,7 @@ type ChatStore interface {
 	ListEnabledMCPConfigs(ctx context.Context) ([]MCPConfig, error)
 
 	AddMessageWithInput(ctx context.Context, input AddMessageInput) (*Message, error)
+	UpdateUserMessageAndPruneAfter(ctx context.Context, sessionID, messageID, content string) (*Message, error)
 	BindToolCallsToAssistantMessage(ctx context.Context, sessionID, requestID, assistantMessageID string) error
 	BindThinkingRecordsToAssistantMessage(ctx context.Context, sessionID, requestID, assistantMessageID string) error
 	FinishOpenToolCallsForRequest(ctx context.Context, sessionID, requestID, errorMessage string) error

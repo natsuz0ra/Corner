@@ -1,6 +1,5 @@
 import { createApp } from 'vue'
 import './styles/index.css'
-import 'highlight.js/styles/github-dark.css'
 import App from './App.vue'
 
 import { createPinia } from 'pinia'

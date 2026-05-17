@@ -4,6 +4,7 @@ import MdiIcon from '@/components/ui/MdiIcon.vue'
 defineProps<{
   toolIcon: string
   toolLabel: string
+  toolCommandLabel: string
   toolSummary: string
   statusLabel: string
   statusDotClass: string
@@ -26,6 +27,7 @@ const emit = defineEmits<{
       <div class="tool-meta">
         <MdiIcon :path="toolIcon" :size="16" class="tool-icon flex-shrink-0" />
         <span class="tool-label">{{ toolLabel }}</span>
+        <span v-if="toolCommandLabel" class="tool-command-label" :title="toolCommandLabel">{{ toolCommandLabel }}</span>
         <span
           v-if="toolSummary && !isAskQuestions"
           class="tool-summary"

@@ -291,7 +291,7 @@ onUnmounted(() => {
     <textarea
       ref="textareaRef"
       :value="modelValue"
-      class="textarea-primary w-full resize-none border-0 outline-none bg-transparent px-4 pt-3.5 pb-12 text-sm leading-relaxed min-h-[112px] max-h-[260px] overflow-y-auto"
+      class="textarea-primary w-full resize-none border-0 outline-none bg-transparent px-4 pt-3.5 pb-10  text-sm leading-relaxed min-h-[112px] max-h-[260px] overflow-y-auto"
       :placeholder="placeholder"
       rows="1"
       @keydown="onTextareaKeydown"

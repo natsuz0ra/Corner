@@ -36,6 +36,10 @@ const md = new MarkdownIt({
   },
 })
 
+interface MarkdownRenderEnv {
+  codeCopyButton?: boolean
+}
+
 const defaultLinkOpenRule =
   md.renderer.rules.link_open ??
   ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
@@ -49,6 +53,23 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   return defaultLinkOpenRule(tokens, idx, options, env, self)
 }
 
+md.renderer.rules.fence = (tokens, idx, options, env: MarkdownRenderEnv) => {
+  const token = tokens[idx]
+  const code = token?.content ?? ''
+  const info = token?.info ? md.utils.unescapeAll(token.info).trim() : ''
+  const language = info ? info.split(/\s+/g)[0] : ''
+  const languageClass = language ? ` class="language-${escapeHtml(language)}"` : ''
+  const highlighted = options.highlight ? options.highlight(code, language, '') : escapeHtml(code)
+  const codeMarkup = `<pre><code${languageClass}>${highlighted}</code></pre>`
+
+  if (!env.codeCopyButton) return codeMarkup
+
+  const blockClass = code.replace(/\n+$/, '').includes('\n')
+    ? 'markdown-code-block'
+    : 'markdown-code-block markdown-code-block--single-line'
+  return `<div class="${blockClass}">${codeMarkup}<button type="button" class="markdown-code-copy-btn" title="Copy code" aria-label="Copy code"></button></div>`
+}
+
 /**
  * Inserts zero-width spaces between CJK/fullwidth characters and emphasis markers
  * to work around markdown-it's CommonMark emphasis parsing limitations with CJK punctuation.
@@ -59,10 +80,20 @@ function preprocessCJKEmphasis(text: string): string {
     .replace(/(\*{1,3})([\u2e80-\u9fff\uff00-\uffef])/g, '$1\u200B$2')
 }
 
-export function renderMarkdown(content: string): string {
-  const raw = md.render(preprocessCJKEmphasis(content || ''))
-  return DOMPurify.sanitize(raw, {
+function sanitizeHtml(raw: string): string {
+  const purifierModule = DOMPurify as unknown as {
+    sanitize?: (html: string, options: Record<string, unknown>) => string
+    default?: { sanitize?: (html: string, options: Record<string, unknown>) => string }
+  }
+  const sanitize = purifierModule.sanitize ?? purifierModule.default?.sanitize
+  if (!sanitize) return raw
+  return sanitize(raw, {
     USE_PROFILES: { html: true },
-    ADD_ATTR: ['target', 'rel'],
+    ADD_ATTR: ['target', 'rel', 'type', 'title', 'aria-label'],
   })
+}
+
+export function renderMarkdown(content: string, options: { codeCopyButton?: boolean } = {}): string {
+  const raw = md.render(preprocessCJKEmphasis(content || ''), { codeCopyButton: !!options.codeCopyButton })
+  return sanitizeHtml(raw)
 }

@@ -112,7 +112,7 @@ func (s *ChatService) buildContextMessagesDetailed(ctx context.Context, sessionI
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		prefix, err := s.buildStableContextPrefix()
+		prefix, err := s.buildStableContextPrefix(ctx)
 		if err != nil {
 			loadErr = err
 			return
@@ -168,8 +168,8 @@ func (s *ChatService) buildContextMessagesDetailed(ctx context.Context, sessionI
 	return contextBuildResult{messages: msgs, usage: usage, compactedNow: compression.compactedNow}, nil
 }
 
-func (s *ChatService) buildStableContextPrefix() ([]llmsvc.ChatMessage, error) {
-	systemPrompt, err := s.loadStableSystemPrompt()
+func (s *ChatService) buildStableContextPrefix(ctx context.Context) ([]llmsvc.ChatMessage, error) {
+	systemPrompt, err := s.loadStableSystemPrompt(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -478,6 +478,10 @@ func buildHistoricalToolReplay(records []domain.ToolCallRecord) (llmsvc.ChatMess
 }
 
 func historicalToolFunctionName(record domain.ToolCallRecord) string {
+	modelFuncName := strings.TrimSpace(record.ModelFuncName)
+	if modelFuncName != "" {
+		return modelFuncName
+	}
 	toolName := strings.TrimSpace(record.ToolName)
 	command := strings.TrimSpace(record.Command)
 	if tools.IsHistoricalStableName(toolName) {
@@ -616,8 +620,8 @@ func (s *ChatService) loadSystemPrompt() (string, error) {
 	return prompt, nil
 }
 
-// loadStableSystemPrompt builds and caches stable system prompt; refreshes when skill catalog changes.
-func (s *ChatService) loadStableSystemPrompt() (string, error) {
+// loadStableSystemPrompt builds and caches stable system prompt; refreshes when skill catalog or AGENTS.md content changes.
+func (s *ChatService) loadStableSystemPrompt(ctx context.Context) (string, error) {
 	basePrompt, err := s.loadSystemPrompt()
 	if err != nil {
 		return "", err
@@ -633,7 +637,12 @@ func (s *ChatService) loadStableSystemPrompt() (string, error) {
 		catalogPrompt = strings.TrimSpace(catalogPrompt)
 	}
 
-	if cachedPrompt, cachedCatalog := s.getStableSystemPromptCached(); strings.TrimSpace(cachedPrompt) != "" && cachedCatalog == catalogPrompt {
+	agentsPrompt, err := s.buildAgentsInstructionsPrompt(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	if cachedPrompt, cachedCatalog, cachedAgents := s.getStableSystemPromptCached(); strings.TrimSpace(cachedPrompt) != "" && cachedCatalog == catalogPrompt && cachedAgents == agentsPrompt {
 		return cachedPrompt, nil
 	}
 
@@ -641,8 +650,57 @@ func (s *ChatService) loadStableSystemPrompt() (string, error) {
 	if catalogPrompt != "" {
 		stable = stable + "\n\n" + catalogPrompt
 	}
-	s.setStableSystemPromptCached(stable, catalogPrompt)
+	if agentsPrompt != "" {
+		stable = stable + "\n\n" + agentsPrompt
+	}
+	s.setStableSystemPromptCached(stable, catalogPrompt, agentsPrompt)
 	return stable, nil
+}
+
+func (s *ChatService) buildAgentsInstructionsPrompt(ctx context.Context) (string, error) {
+	if s.agents == nil {
+		return "", nil
+	}
+
+	global, err := s.agents.ReadGlobal(ctx)
+	if err != nil {
+		return "", err
+	}
+	globalContent := strings.TrimSpace(global.Content)
+	projectContent := ""
+	if s.runContext.IsCLI && strings.TrimSpace(s.runContext.WorkingDir) != "" {
+		projectContent, err = s.agents.ReadProject(ctx, s.runContext.WorkingDir)
+		if err != nil {
+			return "", err
+		}
+		projectContent = strings.TrimSpace(projectContent)
+	}
+
+	content := globalContent
+	if content != "" && projectContent != "" {
+		content += "\n\n--- project-doc ---\n\n" + projectContent
+	} else if projectContent != "" {
+		content = projectContent
+	}
+	if content == "" {
+		return "", nil
+	}
+
+	directory := strings.TrimSpace(s.runContext.WorkingDir)
+	if directory == "" {
+		directory = strings.TrimSpace(s.runContext.ConfigHomeDir)
+	}
+	if directory == "" {
+		directory = "global"
+	}
+
+	var b strings.Builder
+	b.WriteString("# AGENTS.md instructions for ")
+	b.WriteString(directory)
+	b.WriteString("\n\n<INSTRUCTIONS>\n")
+	b.WriteString(content)
+	b.WriteString("\n</INSTRUCTIONS>")
+	return b.String(), nil
 }
 
 func (s *ChatService) buildRuntimeEnvironmentPrompt() string {

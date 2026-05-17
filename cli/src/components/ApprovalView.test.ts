@@ -95,6 +95,14 @@ test("buildApprovalDetailLines keeps ask_questions compact and shows params for 
 	assert.ok(lines.some((line) => line.includes("npm test")));
 });
 
+test("approval rows use spaced pipe separator for MCP-style custom tools", () => {
+	const rows = buildApprovalQueueRows([
+		{ toolCallId: "call-mcp", toolName: "github", command: "search_repositories", params: {} },
+	], 0, []);
+
+	assert.equal(rows[0]?.toolLabel, "github | search_repositories");
+});
+
 test("approval view renders one focused tool with stable shortcut hints", () => {
 	const view = ApprovalView({
 		toolName: "",

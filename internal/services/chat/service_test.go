@@ -193,6 +193,87 @@ func TestHandleChatStream_UsesDisplayContentForStoredUserMessage(t *testing.T) {
 	}
 }
 
+func TestHandleEditedChatStream_UpdatesExistingUserAndPrunesOldAssistant(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	session, err := repo.CreateSession(ctx, "s")
+	if err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+	model, err := repo.CreateLLMConfig(ctx, domain.LLMConfig{
+		Name:     "fake",
+		Provider: llmsvc.ProviderOpenAI,
+		BaseURL:  "http://fake",
+		APIKey:   "key",
+		Model:    "fake-model",
+	})
+	if err != nil {
+		t.Fatalf("create model failed: %v", err)
+	}
+	user, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{SessionID: session.ID, Role: "user", Content: "old question"})
+	if err != nil {
+		t.Fatalf("add user failed: %v", err)
+	}
+	if _, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{SessionID: session.ID, Role: "assistant", Content: "old answer"}); err != nil {
+		t.Fatalf("add assistant failed: %v", err)
+	}
+	provider := &captureMessagesProvider{}
+	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
+	var events []string
+
+	result, err := svc.HandleEditedChatStream(ctx, session.ID, "request-edit", user.ID, "edited question", model.ID, "off", false, "", "", AgentCallbacks{
+		OnMessageEdited: func(messageID, content string) error {
+			if messageID != user.ID || content != "edited question" {
+				t.Fatalf("unexpected edit confirmation: %s %q", messageID, content)
+			}
+			events = append(events, "message_edited")
+			return nil
+		},
+		OnChunk: func(string) error {
+			events = append(events, "chunk")
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("HandleEditedChatStream failed: %v", err)
+	}
+	if result == nil || result.Answer != "answer" {
+		t.Fatalf("unexpected stream result: %+v", result)
+	}
+	if strings.Join(events, ",") != "message_edited,chunk" {
+		t.Fatalf("unexpected event order: %+v", events)
+	}
+	messages, _, err := repo.ListSessionMessagesPage(ctx, session.ID, 10, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("list messages failed: %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected edited user plus new assistant, got %+v", messages)
+	}
+	if messages[0].ID != user.ID || messages[0].Content != "edited question" {
+		t.Fatalf("unexpected edited user message: %+v", messages[0])
+	}
+	if messages[1].Role != "assistant" || messages[1].Content != "answer" {
+		t.Fatalf("unexpected new assistant message: %+v", messages[1])
+	}
+	var sawOldAnswer bool
+	var latestUser string
+	for _, message := range provider.messages {
+		if message.Role == "assistant" && strings.Contains(message.Content, "old answer") {
+			sawOldAnswer = true
+		}
+		if message.Role == "user" {
+			latestUser = message.Content
+		}
+	}
+	if sawOldAnswer {
+		t.Fatalf("provider context still included pruned assistant: %+v", provider.messages)
+	}
+	if latestUser != "edited question" {
+		t.Fatalf("provider latest user = %q, want edited question; messages=%+v", latestUser, provider.messages)
+	}
+}
+
 func TestHandleChatStream_PlanModeSavesOnlyPlanBody(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

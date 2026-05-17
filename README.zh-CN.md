@@ -37,6 +37,7 @@
 - **配置与扩展**
   - MCP 配置管理
   - Skills 上传安装、列表、删除与运行时激活
+  - AGENTS.md 指令支持：全局指令可在 Web 设置页编辑；CLI 会额外读取项目级 `AGENTS.md`，并从 Git 仓库根目录到当前工作目录逐级合并后注入模型上下文
 - **消息平台**（当前支持 Telegram）
   - 消息平台配置管理
   - 平台消息接入与回复
@@ -180,6 +181,7 @@ SlimeBot 会对命令执行、文件工具和内置 HTTP 请求使用同一套�
 ```text
 ~/.slimebot/
   config.cfg
+  AGENTS.md
   skills/
   storage/
     data.db
@@ -187,9 +189,18 @@ SlimeBot 会对命令执行、文件工具和内置 HTTP 请求使用同一套�
 ```
 
 - `config.cfg`：运行时配置文件
+- `AGENTS.md`：全局 Agent 指令文件，可通过 Web 设置页的 AGENTS 标签读取和保存
 - `storage/data.db`：SQLite 主数据库
 - `storage/chat_uploads`：聊天附件
 - `skills`：Skills 存储目录
+
+## AGENTS.md 指令
+
+- 全局指令文件位于 `~/.slimebot/AGENTS.md`，用于为所有会话提供长期工作规则。
+- Web 设置页的 AGENTS 标签会通过 `GET /api/agents-instructions` 读取全局指令，并通过 `PUT /api/agents-instructions` 保存更新。
+- CLI 模式会额外读取当前项目中的 `AGENTS.md`。如果当前工作目录位于 Git 仓库内，会按“仓库根目录 -> 当前工作目录”的顺序合并沿途非空的 `AGENTS.md` 文件。
+- Server/Web 普通会话只注入全局 AGENTS 指令，不读取项目局部文件。
+- AGENTS 内容会进入稳定系统提示词；当全局或项目指令变化时，系统提示词缓存会随之刷新。
 
 ## 记忆存储（工作机制）
 
@@ -261,6 +272,7 @@ VITE_WS_URL=ws://localhost:6247
 - 思考等级控制（`off` / `low` / `medium` / `high`）与流式思考展示
 - 子代理 / 嵌套 Agent、嵌套工具 UI，以及工具历史中的父子关联持久化
 - MCP 与 Skills
+- AGENTS.md 全局/项目指令支持，以及设置页 AGENTS 编辑能力
 - 基于 SQLite 的会话压缩摘要、上下文用量统计与隐藏上下文注入
 - Telegram 集成
 - 多模态支持

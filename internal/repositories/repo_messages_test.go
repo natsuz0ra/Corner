@@ -2,6 +2,8 @@ package repositories
 
 import (
 	"context"
+	"errors"
+	"slimebot/internal/apperrors"
 	"slimebot/internal/domain"
 	llmsvc "slimebot/internal/services/llm"
 	"testing"
@@ -245,5 +247,131 @@ func TestAddMessageWithInput_UsesProvidedCreatedAt(t *testing.T) {
 
 	if !message.CreatedAt.Equal(createdAt) {
 		t.Fatalf("expected createdAt %s, got %s", createdAt, message.CreatedAt)
+	}
+}
+
+func TestUpdateUserMessageAndPruneAfter_UpdatesLatestUserAndDeletesTail(t *testing.T) {
+	repo := New(NewSQLiteDBTest(t, "repo_messages_edit_prune_test"))
+	ctx := context.Background()
+	session, err := repo.CreateSession(ctx, "s")
+	if err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+	user, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{SessionID: session.ID, Role: "user", Content: "old"})
+	if err != nil {
+		t.Fatalf("add user failed: %v", err)
+	}
+	assistant, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{SessionID: session.ID, Role: "assistant", Content: "answer"})
+	if err != nil {
+		t.Fatalf("add assistant failed: %v", err)
+	}
+	if err := repo.UpsertToolCallStart(ctx, domain.ToolCallStartRecordInput{
+		SessionID:  session.ID,
+		RequestID:  "req-1",
+		ToolCallID: "tool-1",
+		ToolName:   "exec",
+		Command:    "exec",
+		Status:     "completed",
+		StartedAt:  time.Now(),
+	}); err != nil {
+		t.Fatalf("upsert tool failed: %v", err)
+	}
+	if err := repo.BindToolCallsToAssistantMessage(ctx, session.ID, "req-1", assistant.ID); err != nil {
+		t.Fatalf("bind tool failed: %v", err)
+	}
+	if err := repo.UpsertThinkingStart(ctx, domain.ThinkingStartRecordInput{
+		SessionID:  session.ID,
+		RequestID:  "req-1",
+		ThinkingID: "think-1",
+		StartedAt:  time.Now(),
+	}); err != nil {
+		t.Fatalf("start thinking failed: %v", err)
+	}
+	if err := repo.BindThinkingRecordsToAssistantMessage(ctx, session.ID, "req-1", assistant.ID); err != nil {
+		t.Fatalf("bind thinking failed: %v", err)
+	}
+	if err := repo.UpsertSessionContextSummary(ctx, &domain.SessionContextSummary{
+		SessionID:          session.ID,
+		ModelConfigID:      "",
+		Summary:            "old summary",
+		SummarizedUntilSeq: assistant.Seq,
+	}); err != nil {
+		t.Fatalf("upsert context summary failed: %v", err)
+	}
+
+	updated, err := repo.UpdateUserMessageAndPruneAfter(ctx, session.ID, user.ID, "edited")
+	if err != nil {
+		t.Fatalf("edit prune failed: %v", err)
+	}
+	if updated.Content != "edited" || updated.ID != user.ID {
+		t.Fatalf("unexpected updated message: %+v", updated)
+	}
+	messages, _, err := repo.ListSessionMessagesPage(ctx, session.ID, 10, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("list messages failed: %v", err)
+	}
+	if len(messages) != 1 || messages[0].ID != user.ID || messages[0].Content != "edited" {
+		t.Fatalf("expected only edited user message, got %+v", messages)
+	}
+	toolRecords, err := repo.ListSessionToolCallRecordsByAssistantMessageIDs(ctx, session.ID, []string{assistant.ID})
+	if err != nil {
+		t.Fatalf("list tool records failed: %v", err)
+	}
+	if len(toolRecords) != 0 {
+		t.Fatalf("expected pruned tool records, got %+v", toolRecords)
+	}
+	thinkingRecords, err := repo.ListSessionThinkingRecordsByAssistantMessageIDs(ctx, session.ID, []string{assistant.ID})
+	if err != nil {
+		t.Fatalf("list thinking records failed: %v", err)
+	}
+	if len(thinkingRecords) != 0 {
+		t.Fatalf("expected pruned thinking records, got %+v", thinkingRecords)
+	}
+	if _, err := repo.GetSessionContextSummary(ctx, session.ID, ""); !errors.Is(err, apperrors.ErrNotFound) {
+		t.Fatalf("expected context summary deleted, got %v", err)
+	}
+}
+
+func TestUpdateUserMessageAndPruneAfter_RejectsNonLatestUser(t *testing.T) {
+	repo := New(NewSQLiteDBTest(t, "repo_messages_edit_non_latest_test"))
+	ctx := context.Background()
+	session, err := repo.CreateSession(ctx, "s")
+	if err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+	first, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{SessionID: session.ID, Role: "user", Content: "first"})
+	if err != nil {
+		t.Fatalf("add first failed: %v", err)
+	}
+	if _, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{SessionID: session.ID, Role: "user", Content: "second"}); err != nil {
+		t.Fatalf("add second failed: %v", err)
+	}
+
+	if _, err := repo.UpdateUserMessageAndPruneAfter(ctx, session.ID, first.ID, "edited"); err == nil {
+		t.Fatal("expected editing non-latest user message to fail")
+	}
+	messages, _, err := repo.ListSessionMessagesPage(ctx, session.ID, 10, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("list messages failed: %v", err)
+	}
+	if len(messages) != 2 || messages[0].Content != "first" || messages[1].Content != "second" {
+		t.Fatalf("messages changed after rejected edit: %+v", messages)
+	}
+}
+
+func TestUpdateUserMessageAndPruneAfter_RejectsAssistantMessage(t *testing.T) {
+	repo := New(NewSQLiteDBTest(t, "repo_messages_edit_assistant_test"))
+	ctx := context.Background()
+	session, err := repo.CreateSession(ctx, "s")
+	if err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+	assistant, err := repo.AddMessageWithInput(ctx, domain.AddMessageInput{SessionID: session.ID, Role: "assistant", Content: "answer"})
+	if err != nil {
+		t.Fatalf("add assistant failed: %v", err)
+	}
+
+	if _, err := repo.UpdateUserMessageAndPruneAfter(ctx, session.ID, assistant.ID, "edited"); err == nil {
+		t.Fatal("expected editing assistant message to fail")
 	}
 }

@@ -8,6 +8,7 @@ import {
   formatToolParamEntries,
   filterToolParamsForDetail,
   formatToolCallSummary,
+  formatToolInvocation,
   parseExecOutputPayload,
   summarizeExecOutput,
   formatToolExecutionCompactOutput,
@@ -145,6 +146,11 @@ test("formatToolCallSummary uses core tool parameters", () => {
     formatToolCallSummary("ask_questions", "ask", { questions: "[{\"question\":\"Pick one\"}]" }),
     "",
   );
+});
+
+test("formatToolInvocation includes command for MCP-style custom tools", () => {
+  assert.equal(formatToolInvocation("github", "search_repositories"), "github | search_repositories()");
+  assert.equal(formatToolInvocation("exec", "run"), "exec.run()");
 });
 
 test("formatToolCallSummary falls back to compact exec command text", () => {
