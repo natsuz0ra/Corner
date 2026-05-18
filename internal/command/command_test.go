@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestExecuteDefaultsToCLI(t *testing.T) {
@@ -54,7 +58,7 @@ func TestExecuteRoutesServer(t *testing.T) {
 }
 
 func TestExecuteRoutesServiceActions(t *testing.T) {
-	actions := []string{"install", "start", "stop", "restart", "status", "uninstall"}
+	actions := []string{"install", "stop", "restart", "status", "uninstall"}
 
 	for _, action := range actions {
 		t.Run(action, func(t *testing.T) {
@@ -162,6 +166,87 @@ func TestExecuteRoutesUpdateCommand(t *testing.T) {
 	}
 }
 
+func TestExecuteServiceStartPrintsLocalURLAfterHealthReady(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/health" {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	port := testServerPort(t, server.URL)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("SERVER_PORT", port)
+	t.Setenv("JWT_SECRET", "test-secret")
+	setServiceReadyTestTimings(t)
+
+	var stdout bytes.Buffer
+	service := &fakeServiceController{}
+	err := Execute(Options{
+		Args:      []string{"service", "start"},
+		RunCLI:    func() error { return errors.New("cli should not run") },
+		RunServer: func() error { return errors.New("server should not run") },
+		Service:   service,
+		Stdout:    &stdout,
+	})
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if got := strings.Join(service.calls, ","); got != "start" {
+		t.Fatalf("expected service start, got %q", got)
+	}
+	if want := "SlimeBot web service is ready: http://localhost:" + port; !strings.Contains(stdout.String(), want) {
+		t.Fatalf("expected ready URL %q, got %q", want, stdout.String())
+	}
+}
+
+func TestExecuteServiceStartReturnsStartErrorWithoutHealthCheck(t *testing.T) {
+	startErr := errors.New("start failed")
+	service := &fakeServiceController{startErr: startErr}
+	var stdout bytes.Buffer
+
+	err := Execute(Options{
+		Args:      []string{"service", "start"},
+		RunCLI:    func() error { return errors.New("cli should not run") },
+		RunServer: func() error { return errors.New("server should not run") },
+		Service:   service,
+		Stdout:    &stdout,
+	})
+	if !errors.Is(err, startErr) {
+		t.Fatalf("expected start error, got %v", err)
+	}
+	if stdout.String() != "" {
+		t.Fatalf("expected no stdout, got %q", stdout.String())
+	}
+}
+
+func TestExecuteServiceStartFailsWhenHealthDoesNotBecomeReady(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("SERVER_PORT", "1")
+	t.Setenv("JWT_SECRET", "test-secret")
+	setServiceReadyTestTimings(t)
+
+	var stdout bytes.Buffer
+	err := Execute(Options{
+		Args:      []string{"service", "start"},
+		RunCLI:    func() error { return errors.New("cli should not run") },
+		RunServer: func() error { return errors.New("server should not run") },
+		Service:   &fakeServiceController{},
+		Stdout:    &stdout,
+	})
+	if err == nil {
+		t.Fatal("expected readiness timeout error")
+	}
+	if !strings.Contains(err.Error(), "service start succeeded but health check did not become ready") {
+		t.Fatalf("expected readiness error, got %v", err)
+	}
+	if stdout.String() != "" {
+		t.Fatalf("expected no stdout, got %q", stdout.String())
+	}
+}
+
 func TestExecuteRejectsUnknownCommand(t *testing.T) {
 	tests := []string{"wat"}
 	for _, command := range tests {
@@ -198,7 +283,8 @@ func TestExecuteRejectsUnknownServiceAction(t *testing.T) {
 }
 
 type fakeServiceController struct {
-	calls []string
+	calls    []string
+	startErr error
 }
 
 func (f *fakeServiceController) Install() error {
@@ -208,7 +294,7 @@ func (f *fakeServiceController) Install() error {
 
 func (f *fakeServiceController) Start() error {
 	f.calls = append(f.calls, "start")
-	return nil
+	return f.startErr
 }
 
 func (f *fakeServiceController) Stop() error {
@@ -234,4 +320,28 @@ func (f *fakeServiceController) Uninstall() error {
 func (f *fakeServiceController) Run() error {
 	f.calls = append(f.calls, "run")
 	return nil
+}
+
+func testServerPort(t *testing.T, rawURL string) string {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	return parsed.Port()
+}
+
+func setServiceReadyTestTimings(t *testing.T) {
+	t.Helper()
+	oldTimeout := serviceReadyTimeout
+	oldInterval := serviceReadyInterval
+	oldHTTPTimeout := serviceReadyHTTPTimeout
+	serviceReadyTimeout = 80 * time.Millisecond
+	serviceReadyInterval = 5 * time.Millisecond
+	serviceReadyHTTPTimeout = 20 * time.Millisecond
+	t.Cleanup(func() {
+		serviceReadyTimeout = oldTimeout
+		serviceReadyInterval = oldInterval
+		serviceReadyHTTPTimeout = oldHTTPTimeout
+	})
 }

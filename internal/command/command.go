@@ -3,8 +3,19 @@ package command
 import (
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
+	"time"
+
+	"slimebot/internal/config"
+	"slimebot/internal/runtime"
+)
+
+var (
+	serviceReadyTimeout     = 10 * time.Second
+	serviceReadyInterval    = 200 * time.Millisecond
+	serviceReadyHTTPTimeout = 500 * time.Millisecond
 )
 
 type VersionInfo struct {
@@ -85,7 +96,7 @@ func executeService(args []string, stdout io.Writer, svc ServiceController) erro
 	case "install":
 		return svc.Install()
 	case "start":
-		return svc.Start()
+		return executeServiceStart(stdout, svc)
 	case "stop":
 		return svc.Stop()
 	case "restart":
@@ -102,6 +113,52 @@ func executeService(args []string, stdout io.Writer, svc ServiceController) erro
 	default:
 		return fmt.Errorf("unknown service action %q\n\n%s", args[0], HelpText())
 	}
+}
+
+func executeServiceStart(stdout io.Writer, svc ServiceController) error {
+	if err := svc.Start(); err != nil {
+		return err
+	}
+	if err := runtime.EnsureAndLoadEnv(); err != nil {
+		return err
+	}
+
+	webURL := "http://localhost:" + strings.TrimSpace(config.Load().ServerPort)
+	healthURL := webURL + "/health"
+	if err := waitForServiceReady(healthURL); err != nil {
+		return fmt.Errorf("service start succeeded but health check did not become ready at %s: %w", healthURL, err)
+	}
+	_, _ = fmt.Fprintf(stdout, "SlimeBot web service is ready: %s\n", webURL)
+	return nil
+}
+
+func waitForServiceReady(healthURL string) error {
+	client := &http.Client{Timeout: serviceReadyHTTPTimeout}
+	deadline := time.Now().Add(serviceReadyTimeout)
+	var lastErr error
+
+	for {
+		resp, err := client.Get(healthURL)
+		if err == nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
+			if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+				return nil
+			}
+			lastErr = fmt.Errorf("unexpected health status %d", resp.StatusCode)
+		} else {
+			lastErr = err
+		}
+
+		if time.Now().Add(serviceReadyInterval).After(deadline) {
+			break
+		}
+		time.Sleep(serviceReadyInterval)
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("timed out waiting for %s", healthURL)
+	}
+	return lastErr
 }
 
 func call(name string, fn func() error) error {
@@ -133,18 +190,18 @@ func printHelp(w io.Writer) {
 
 func HelpText() string {
 	return `Usage:
-  slimebot                         Start the CLI TUI
-  slimebot server                  Start the web service in the foreground
-  slimebot service install         Install the web service
-  slimebot service start           Start the web service
-  slimebot service stop            Stop the web service
-  slimebot service restart         Restart the web service
-  slimebot service status          Show web service status
-  slimebot service uninstall       Uninstall the web service
-  slimebot update --check          Check for updates
-  slimebot update                  Update to the latest release
+  slimebot                          Start the CLI TUI
+  slimebot server                   Start the web service in the foreground
+  slimebot service install          Install the web service
+  slimebot service start            Start the web service
+  slimebot service stop             Stop the web service
+  slimebot service restart          Restart the web service
+  slimebot service status           Show web service status
+  slimebot service uninstall        Uninstall the web service
+  slimebot update --check           Check for updates
+  slimebot update                   Update to the latest release
   slimebot update --version vX.Y.Z  Update to a specific release
-  slimebot version                 Show version information
-  slimebot help                    Show this help
+  slimebot version                  Show version information
+  slimebot help                     Show this help
 `
 }
