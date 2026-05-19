@@ -141,7 +141,10 @@ func (s *ChatService) buildContextMessagesDetailed(ctx context.Context, sessionI
 		}
 	}
 
-	dynamicTail := s.buildDynamicContextTail()
+	dynamicTail, err := s.buildDynamicContextTail(ctx)
+	if err != nil {
+		return contextBuildResult{}, err
+	}
 	msgs := make([]llmsvc.ChatMessage, 0, len(stablePrefix)+len(dynamicTail))
 	msgs = append(msgs, stablePrefix...)
 	msgs = append(msgs, dynamicTail...)
@@ -176,12 +179,31 @@ func (s *ChatService) buildStableContextPrefix(ctx context.Context) ([]llmsvc.Ch
 	return []llmsvc.ChatMessage{{Role: "system", Content: systemPrompt}}, nil
 }
 
-func (s *ChatService) buildDynamicContextTail() []llmsvc.ChatMessage {
+func (s *ChatService) buildDynamicContextTail(ctx context.Context) ([]llmsvc.ChatMessage, error) {
 	runtimeEnvPrompt := s.buildRuntimeEnvironmentPrompt()
-	if runtimeEnvPrompt == "" {
-		return nil
+	memoryPrompt := ""
+	if s.memory != nil {
+		block, err := s.memory.FormatForSystemPrompt(ctx)
+		if err != nil {
+			return nil, err
+		}
+		memoryPrompt = strings.TrimSpace(block)
 	}
-	return []llmsvc.ChatMessage{{Role: "system", Content: runtimeEnvPrompt}}
+	content := strings.TrimSpace(strings.Join(nonEmptyStrings(runtimeEnvPrompt, memoryPrompt), "\n\n"))
+	if content == "" {
+		return nil, nil
+	}
+	return []llmsvc.ChatMessage{{Role: "system", Content: content}}, nil
+}
+
+func nonEmptyStrings(values ...string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 func (s *ChatService) applyContextCompression(ctx context.Context, sessionID string, modelConfig llmsvc.ModelRuntimeConfig, prefix []llmsvc.ChatMessage, history []domain.Message, toolRecords []domain.ToolCallRecord) (contextCompressionResult, error) {

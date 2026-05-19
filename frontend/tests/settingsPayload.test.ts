@@ -29,3 +29,27 @@ test('buildSettingsPayload sends platform runtime settings and empty default mod
     messagePlatformApprovalMode: 'auto',
   })
 })
+
+test('settings payload normalizes and sends memory settings', () => {
+  const normalized = normalizeSettingsPayload({ language: 'zh-CN' })
+  assert.equal(normalized.memoryEnabled, true)
+  assert.equal(normalized.memoryUserProfileEnabled, true)
+  assert.equal(normalized.memoryCharLimit, 2200)
+  assert.equal(normalized.memoryUserCharLimit, 1375)
+  assert.equal(normalized.memoryNudgeInterval, 10)
+
+  const payload = buildSettingsPayload({
+    memoryEnabled: false,
+    memoryUserProfileEnabled: true,
+    memoryCharLimit: 3000,
+    memoryUserCharLimit: 1500,
+    memoryNudgeInterval: 5,
+  })
+  assert.deepEqual(payload, {
+    memoryEnabled: false,
+    memoryUserProfileEnabled: true,
+    memoryCharLimit: 3000,
+    memoryUserCharLimit: 1500,
+    memoryNudgeInterval: 5,
+  })
+})

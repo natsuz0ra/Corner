@@ -13,6 +13,7 @@ import (
 	"slimebot/internal/constants"
 	"slimebot/internal/domain"
 	llmsvc "slimebot/internal/services/llm"
+	memorysvc "slimebot/internal/services/memory"
 	plansvc "slimebot/internal/services/plan"
 	prompts "slimebot/prompts"
 )
@@ -589,8 +590,117 @@ func TestRunAgentLoopPreservesReasoningContentAcrossToolIterations(t *testing.T)
 	}
 }
 
+func TestRunAgentLoopMemoryToolIsSilentAndWrites(t *testing.T) {
+	provider := &memoryToolProvider{}
+	agent := NewAgentService(llmsvc.NewFactory(provider), nil, nil)
+	memoryService := memorysvc.NewService(memorysvc.NewStore(t.TempDir()), memorysvc.NewStaticSettings(memorysvc.DefaultConfig()))
+	agent.SetMemoryService(memoryService)
+	var started int
+	var finished int
+
+	answer, err := agent.RunAgentLoop(
+		context.Background(),
+		llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI},
+		"session-1",
+		[]llmsvc.ChatMessage{{Role: "user", Content: "记住我偏好中文"}},
+		nil,
+		map[string]struct{}{},
+		AgentCallbacks{
+			OnToolCallStart: func(ApprovalRequest) error {
+				started++
+				return nil
+			},
+			OnToolCallResult: func(ToolCallResult) error {
+				finished++
+				return nil
+			},
+		},
+		AgentLoopOptions{},
+	)
+	if err != nil {
+		t.Fatalf("RunAgentLoop failed: %v", err)
+	}
+	if answer != "done" {
+		t.Fatalf("answer = %q, want done", answer)
+	}
+	if started != 0 || finished != 0 {
+		t.Fatalf("memory tool should be silent, start=%d result=%d", started, finished)
+	}
+	snapshot, err := memoryService.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot failed: %v", err)
+	}
+	if len(snapshot.User.Entries) != 1 || !strings.Contains(snapshot.User.Entries[0], "中文回复") {
+		t.Fatalf("memory tool did not write user memory: %#v", snapshot.User.Entries)
+	}
+	if !provider.sawMemoryTool {
+		t.Fatal("provider did not receive memory tool definition")
+	}
+}
+
+func TestMemoryReviewCounterTriggersAtInterval(t *testing.T) {
+	svc := NewChatService(newTestRepo(t), nil, nil, nil, nil)
+	if svc.noteMemoryReviewTurn("session-memory-review", 3) {
+		t.Fatal("first turn should not trigger review")
+	}
+	if svc.noteMemoryReviewTurn("session-memory-review", 3) {
+		t.Fatal("second turn should not trigger review")
+	}
+	if !svc.noteMemoryReviewTurn("session-memory-review", 3) {
+		t.Fatal("third turn should trigger review")
+	}
+	if svc.noteMemoryReviewTurn("session-memory-review", 3) {
+		t.Fatal("counter should reset after triggering")
+	}
+}
+
 type captureMessagesProvider struct {
 	messages []llmsvc.ChatMessage
+}
+
+type memoryToolProvider struct {
+	calls         int
+	sawMemoryTool bool
+}
+
+func (p *memoryToolProvider) StreamChatWithTools(
+	_ context.Context,
+	_ llmsvc.ModelRuntimeConfig,
+	_ []llmsvc.ChatMessage,
+	toolDefs []llmsvc.ToolDef,
+	callbacks llmsvc.StreamCallbacks,
+) (*llmsvc.StreamResult, error) {
+	p.calls++
+	for _, def := range toolDefs {
+		if def.Name == "memory__add" {
+			p.sawMemoryTool = true
+			break
+		}
+	}
+	if p.calls == 1 {
+		return &llmsvc.StreamResult{
+			Type: llmsvc.StreamResultToolCalls,
+			ToolCalls: []llmsvc.ToolCallInfo{{
+				ID:        "mem-1",
+				Name:      "memory__add",
+				Arguments: `{"target":"user","content":"用户偏好中文回复。"}`,
+			}},
+			AssistantMessage: llmsvc.ChatMessage{
+				Role: "assistant",
+				ToolCalls: []llmsvc.ToolCallInfo{{
+					ID:        "mem-1",
+					Name:      "memory__add",
+					Arguments: `{"target":"user","content":"用户偏好中文回复。"}`,
+				}},
+			},
+		}, nil
+	}
+	if callbacks.OnChunk != nil {
+		if err := callbacks.OnChunk("done"); err != nil {
+			return nil, err
+		}
+	}
+	return &llmsvc.StreamResult{Type: llmsvc.StreamResultText}, nil
 }
 
 func (p *captureMessagesProvider) StreamChatWithTools(

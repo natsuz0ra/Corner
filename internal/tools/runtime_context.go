@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 
+	memorysvc "slimebot/internal/services/memory"
 	skillsvc "slimebot/internal/services/skill"
 )
 
@@ -11,6 +12,7 @@ type activatedSkillsContextKey struct{}
 type subagentRunnerContextKey struct{}
 type todoStateContextKey struct{}
 type processManagerContextKey struct{}
+type memoryServiceContextKey struct{}
 
 // SubagentRunRequest is the tool-layer input passed to the chat agent runner.
 type SubagentRunRequest struct {
@@ -119,4 +121,22 @@ func processManagerFromContext(ctx context.Context) *ProcessManager {
 		return manager
 	}
 	return defaultProcessManager
+}
+
+func WithMemoryService(ctx context.Context, service *memorysvc.Service) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if service == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, memoryServiceContextKey{}, service)
+}
+
+func memoryServiceFromContext(ctx context.Context) (*memorysvc.Service, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+	service, ok := ctx.Value(memoryServiceContextKey{}).(*memorysvc.Service)
+	return service, ok && service != nil
 }

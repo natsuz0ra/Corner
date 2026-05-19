@@ -802,6 +802,9 @@ func (s *ChatService) finalizeChatTurn(
 		streamResult.PushFailed = true
 		streamResult.PushError = result.pushErr.Error()
 	}
+	if !planMode && !result.interrupted && strings.TrimSpace(result.answer) != "" {
+		s.maybeTriggerMemoryReview(sessionID, state.modelConfig, state.userContent, result.answer)
+	}
 	return streamResult, nil
 }
 

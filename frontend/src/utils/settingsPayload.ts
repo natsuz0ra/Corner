@@ -17,6 +17,11 @@ export type SettingsPayload = {
   cliSandboxWritableRoots?: string[]
   cliSandboxNetworkEnabled?: boolean
   cliSandboxNetworkAllowedDomains?: string[]
+  memoryEnabled?: boolean
+  memoryUserProfileEnabled?: boolean
+  memoryCharLimit?: number
+  memoryUserCharLimit?: number
+  memoryNudgeInterval?: number
 }
 
 export function normalizeSettingsPayload(data: Partial<SettingsPayload>): AppSettings {
@@ -36,6 +41,11 @@ export function normalizeSettingsPayload(data: Partial<SettingsPayload>): AppSet
     cliSandboxWritableRoots: Array.isArray(data.cliSandboxWritableRoots) ? data.cliSandboxWritableRoots : [],
     cliSandboxNetworkEnabled: data.cliSandboxNetworkEnabled !== undefined ? data.cliSandboxNetworkEnabled : true,
     cliSandboxNetworkAllowedDomains: Array.isArray(data.cliSandboxNetworkAllowedDomains) ? data.cliSandboxNetworkAllowedDomains : [],
+    memoryEnabled: data.memoryEnabled !== undefined ? data.memoryEnabled : true,
+    memoryUserProfileEnabled: data.memoryUserProfileEnabled !== undefined ? data.memoryUserProfileEnabled : true,
+    memoryCharLimit: typeof data.memoryCharLimit === 'number' ? data.memoryCharLimit : 2200,
+    memoryUserCharLimit: typeof data.memoryUserCharLimit === 'number' ? data.memoryUserCharLimit : 1375,
+    memoryNudgeInterval: typeof data.memoryNudgeInterval === 'number' ? data.memoryNudgeInterval : 10,
   }
 }
 
@@ -57,5 +67,10 @@ export function buildSettingsPayload(payload: Partial<AppSettings>): Partial<Set
   if (payload.cliSandboxWritableRoots !== undefined) wirePayload.cliSandboxWritableRoots = payload.cliSandboxWritableRoots
   if (payload.cliSandboxNetworkEnabled !== undefined) wirePayload.cliSandboxNetworkEnabled = payload.cliSandboxNetworkEnabled
   if (payload.cliSandboxNetworkAllowedDomains !== undefined) wirePayload.cliSandboxNetworkAllowedDomains = payload.cliSandboxNetworkAllowedDomains
+  if (payload.memoryEnabled !== undefined) wirePayload.memoryEnabled = payload.memoryEnabled
+  if (payload.memoryUserProfileEnabled !== undefined) wirePayload.memoryUserProfileEnabled = payload.memoryUserProfileEnabled
+  if (payload.memoryCharLimit !== undefined) wirePayload.memoryCharLimit = payload.memoryCharLimit
+  if (payload.memoryUserCharLimit !== undefined) wirePayload.memoryUserCharLimit = payload.memoryUserCharLimit
+  if (payload.memoryNudgeInterval !== undefined) wirePayload.memoryNudgeInterval = payload.memoryNudgeInterval
   return wirePayload
 }

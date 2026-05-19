@@ -15,6 +15,7 @@ import (
 	"slimebot/internal/mcp"
 	sandboxpolicy "slimebot/internal/sandbox"
 	llmsvc "slimebot/internal/services/llm"
+	memorysvc "slimebot/internal/services/memory"
 	skillsvc "slimebot/internal/services/skill"
 	"slimebot/internal/tools"
 )
@@ -25,6 +26,7 @@ const todoUpdateFuncName = tools.TodoUpdateFunctionName
 type AgentService struct {
 	providerFactory *llmsvc.Factory
 	mcp             *mcp.Manager
+	memory          *memorysvc.Service
 	skillRuntime    *skillsvc.SkillRuntimeService
 	subagentHost    SubagentHost
 	toolCacheMu     sync.Mutex
@@ -64,6 +66,13 @@ func NewAgentService(providerFactory *llmsvc.Factory, mcpManager *mcp.Manager, s
 // SetSubagentHost wires ChatService (or tests) for run_subagent delegation.
 func (a *AgentService) SetSubagentHost(h SubagentHost) {
 	a.subagentHost = h
+}
+
+func (a *AgentService) SetMemoryService(service *memorysvc.Service) {
+	a.memory = service
+	a.toolCacheMu.Lock()
+	a.toolCache = make(map[string]cachedToolDefs)
+	a.toolCacheMu.Unlock()
 }
 
 func (a *AgentService) getSessionReadFileState(sessionID string) *tools.ReadFileState {
@@ -201,10 +210,19 @@ func (a *AgentService) buildRuntimeToolDefs(ctx context.Context, configs []domai
 	if a.skillRuntime != nil {
 		cacheKey += "|s:" + a.skillRuntime.ToolCacheKey()
 	}
+	memoryToolsEnabled := a.memory != nil && a.memory.ToolsEnabled(ctx)
+	if a.memory != nil {
+		cacheKey += "|" + a.memory.ToolCacheKey(ctx)
+	} else {
+		cacheKey += "|memory:nil"
+	}
 	if defs, metaByFunc, ok := a.getCachedToolDefs(cacheKey); ok {
 		return defs, metaByFunc, nil
 	}
 	defs := BuildToolDefs()
+	if !memoryToolsEnabled {
+		defs = filterToolDefsByToolName(defs, constants.MemoryToolName)
+	}
 	metaByFunc := make(map[string]mcp.ToolMeta)
 	specialOpts := tools.SpecialToolOptions{IncludeRunSubagent: depth == 0}
 	if a.skillRuntime != nil {
@@ -327,6 +345,10 @@ func (a *AgentService) RunAgentLoop(
 		toolDefs = filterPlanModeToolDefs(toolDefs)
 		mcpToolMeta = filterPlanModeMCPMeta(mcpToolMeta)
 		toolDefs = append(toolDefs, tools.BuildSpecialToolDefs(tools.SpecialToolOptions{IncludePlanTools: true})...)
+	}
+	if len(opts.AllowedToolFunctions) > 0 {
+		toolDefs = filterAllowedToolDefs(toolDefs, opts.AllowedToolFunctions)
+		mcpToolMeta = filterAllowedMCPMeta(mcpToolMeta, opts.AllowedToolFunctions)
 	}
 	messages := make([]llmsvc.ChatMessage, len(contextMessages))
 	copy(messages, contextMessages)
@@ -464,6 +486,13 @@ func (a *AgentService) RunAgentLoop(
 				messages = appendToolMessage(messages, tc.ID, "This tool is blocked in plan mode. Only read-only tools (web_search, file_read) are allowed.")
 				continue
 			}
+			if len(opts.AllowedToolFunctions) > 0 {
+				if _, ok := opts.AllowedToolFunctions[tc.Name]; !ok {
+					flushParallelJobs()
+					messages = appendToolMessage(messages, tc.ID, "This tool is not available in this restricted agent run.")
+					continue
+				}
+			}
 
 			invocation, err := resolveToolInvocation(tc, mcpToolMeta, opts.ApprovalMode)
 			if err != nil {
@@ -479,6 +508,7 @@ func (a *AgentService) RunAgentLoop(
 				continue
 			}
 			invocation = applyParamApprovalPolicy(invocation, params)
+			silentTool := isSilentInternalTool(invocation)
 
 			if tc.Name == constants.ActivateSkillTool && a.skillRuntime != nil {
 				flushParallelJobs()
@@ -526,7 +556,7 @@ func (a *AgentService) RunAgentLoop(
 				continue
 			}
 
-			if callbacks.OnToolCallStart != nil && invocation.toolName != constants.RunSubagentTool {
+			if callbacks.OnToolCallStart != nil && invocation.toolName != constants.RunSubagentTool && !silentTool {
 				reviewStatus := ""
 				if invocation.approvalPolicy == toolApprovalPolicyAutoReview {
 					reviewStatus = string(ApprovalReviewStatusReviewing)
@@ -554,6 +584,7 @@ func (a *AgentService) RunAgentLoop(
 				command:          invocation.command,
 				modelFuncName:    invocation.modelFuncName,
 				requiresApproval: invocation.requiresApproval,
+				silent:           silentTool,
 				awaitApproval: func(approvalCtx context.Context) approvalDecision {
 					reviewMessages := make([]llmsvc.ChatMessage, len(messages))
 					copy(reviewMessages, messages)
@@ -615,6 +646,7 @@ func (a *AgentService) RunAgentLoop(
 					execCtx = tools.WithTodoState(execCtx, todoState)
 					execCtx = tools.WithProcessManager(execCtx, processManager)
 					execCtx = tools.WithSkillRuntime(execCtx, a.skillRuntime)
+					execCtx = tools.WithMemoryService(execCtx, a.memory)
 					execResult := a.executeInvocation(execCtx, tcCopy, invocationCopy, paramsCopy, sessionID, mcpConfigs)
 					if isSuccessfulBuiltinTodoUpdate(invocationCopy, execResult) && callbacks.OnTodoUpdate != nil {
 						update, parseErr := parseTodoUpdateParams(paramsCopy)
@@ -654,6 +686,45 @@ func filterPlanModeToolDefs(defs []llmsvc.ToolDef) []llmsvc.ToolDef {
 		}
 	}
 	return filtered
+}
+
+func filterToolDefsByToolName(defs []llmsvc.ToolDef, toolName string) []llmsvc.ToolDef {
+	filtered := make([]llmsvc.ToolDef, 0, len(defs))
+	for _, def := range defs {
+		name, _, ok := tools.ParseFunctionName(def.Name)
+		if ok && name == toolName {
+			continue
+		}
+		if def.Name == toolName {
+			continue
+		}
+		filtered = append(filtered, def)
+	}
+	return filtered
+}
+
+func filterAllowedToolDefs(defs []llmsvc.ToolDef, allowed map[string]struct{}) []llmsvc.ToolDef {
+	filtered := make([]llmsvc.ToolDef, 0, len(defs))
+	for _, def := range defs {
+		if _, ok := allowed[def.Name]; ok {
+			filtered = append(filtered, def)
+		}
+	}
+	return filtered
+}
+
+func filterAllowedMCPMeta(meta map[string]mcp.ToolMeta, allowed map[string]struct{}) map[string]mcp.ToolMeta {
+	filtered := make(map[string]mcp.ToolMeta)
+	for name, item := range meta {
+		if _, ok := allowed[name]; ok {
+			filtered[name] = item
+		}
+	}
+	return filtered
+}
+
+func isSilentInternalTool(invocation resolvedToolInvocation) bool {
+	return invocation.toolName == constants.MemoryToolName && !invocation.isMCP
 }
 
 // filterPlanModeMCPMeta keeps only MCP metadata entries for read-only tools.

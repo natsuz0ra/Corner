@@ -74,6 +74,11 @@ const (
 	SettingCLISandboxWritableRoots         = "cliSandboxWritableRoots"
 	SettingCLISandboxNetworkEnabled        = "cliSandboxNetworkEnabled"
 	SettingCLISandboxNetworkAllowedDomains = "cliSandboxNetworkAllowedDomains"
+	SettingMemoryEnabled                   = "memory.enabled"
+	SettingMemoryUserProfileEnabled        = "memory.userProfileEnabled"
+	SettingMemoryCharLimit                 = "memory.charLimit"
+	SettingMemoryUserCharLimit             = "memory.userCharLimit"
+	SettingMemoryNudgeInterval             = "memory.nudgeInterval"
 
 	// Plan mode
 	PlanStartTool      = "plan_start"
@@ -81,6 +86,8 @@ const (
 	PlanStatusPending  = "pending"
 	PlanStatusApproved = "approved"
 	PlanStatusRejected = "rejected"
+
+	MemoryToolName = "memory"
 
 	// WebSocket
 	WSChatTimeout     = 600 * time.Second

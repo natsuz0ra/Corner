@@ -26,6 +26,7 @@ type parallelToolJob struct {
 	command          string
 	modelFuncName    string
 	requiresApproval bool
+	silent           bool
 	awaitApproval    func(context.Context) approvalDecision
 	execute          func(context.Context) *tools.ExecuteResult
 }
@@ -69,7 +70,7 @@ func runParallelToolJobs(
 					if errText == "" {
 						errText = "Execution was rejected by the user."
 					}
-					if onResult != nil && !decision.notified {
+					if onResult != nil && !decision.notified && !job.silent {
 						onResult(ToolCallResult{
 							ToolCallID:       job.toolCallID,
 							ToolName:         job.toolName,
@@ -124,7 +125,7 @@ func runParallelToolJobs(
 				result.Error = execResult.Error
 				result.Metadata = execResult.Metadata
 			}
-			if onResult != nil {
+			if onResult != nil && !job.silent {
 				onResult(result)
 			}
 			outCh <- parallelToolOutcome{

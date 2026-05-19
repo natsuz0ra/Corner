@@ -14,7 +14,14 @@ test("matchCommandHints returns all commands for slash input", () => {
 test("matchCommandHints returns matching command prefixes", () => {
   assert.deepEqual(
     matchCommandHints("/m").map((hint) => hint.command),
-    ["/model", "/mcp"],
+    ["/model", "/memory", "/mcp"],
+  );
+});
+
+test("matchCommandHints includes memory command", () => {
+  assert.deepEqual(
+    matchCommandHints("/mem").map((hint) => hint.command),
+    ["/memory"],
   );
 });
 
@@ -38,7 +45,7 @@ test("matchCommandHints ignores completed commands with trailing content", () =>
 });
 
 test("completeCommand fills the selected matching command", () => {
-  assert.equal(completeCommand("/m", 1), "/mcp");
+  assert.equal(completeCommand("/m", 2), "/mcp");
 });
 
 test("completeCommand safely clamps out-of-range selected indexes", () => {

@@ -198,4 +198,9 @@ VITE_WS_URL=ws://localhost:6247
 
 ## 记忆机制
 
-记忆是按会话存储在 SQLite 中的压缩摘要。如果完整历史低于所选模型配置的 `contextSize`，SlimeBot 会直接发送完整历史；如果超出窗口，会调用当前模型生成压缩摘要，写入 `session_context_summaries`，并在后续请求中以隐藏 `<context_summary>` 形式注入。
+SlimeBot 现在有两层记忆：
+
+- 会话上下文压缩是按会话存储在 SQLite 中的压缩摘要。如果完整历史超出所选模型配置的 `contextSize`，SlimeBot 会调用当前模型生成压缩摘要，写入 `session_context_summaries`，并在后续请求中以隐藏 `<context_summary>` 形式注入。
+- 长期文件记忆会把代理长期笔记写入 `~/.slimebot/memories/MEMORY.md`，把用户画像写入 `~/.slimebot/memories/USER.md`。内置 `memory` 工具会在 Web/CLI 普通对话中静默更新这些文件，下一轮对话构建上下文时再注入最新快照。
+
+长期记忆可在 Web 设置页的“记忆”标签管理，也可以在 CLI 中使用 `/memory` 和 `/memory reset memory|user|all` 查看或重置。

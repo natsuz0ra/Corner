@@ -69,6 +69,26 @@ export interface Settings {
   [key: string]: unknown;
 }
 
+export type MemoryTarget = "memory" | "user";
+
+export interface MemoryTargetState {
+  target: MemoryTarget;
+  entries: string[];
+  usageChars: number;
+  charLimit: number;
+  entryCount: number;
+  enabled: boolean;
+}
+
+export interface MemorySnapshot {
+  memory: MemoryTargetState;
+  user: MemoryTargetState;
+  memoryEnabled: boolean;
+  memoryUserProfileEnabled: boolean;
+  memoryNudgeInterval: number;
+  memoryDirectory: string;
+}
+
 export type UpdatePhase =
   | "idle"
   | "checking"
@@ -366,6 +386,7 @@ export const SUPPORTED_COMMANDS: CommandMeta[] = [
   { command: "/new", description: "Create a new chat session" },
   { command: "/session", description: "Open session menu to switch or delete" },
   { command: "/model", description: "Choose the default model" },
+  { command: "/memory", description: "Show or reset long-term memory" },
   { command: "/subagent_model", description: "Choose sub-agent model" },
   { command: "/approval", description: "Toggle approval mode (standard/auto review/auto)" },
   { command: "/effort", description: "Toggle thinking level (off/low/medium/high)" },

@@ -27,6 +27,7 @@ import { completeCommand, isCommand, matchCommandHints, moveCommandHintCursor } 
 import { formatTimestamp, formatWaitingStatsSuffix } from "./utils/format.js";
 import { mapHistoryMessages } from "./utils/history.js";
 import { buildSandboxMenuItems, type SandboxMenuAction } from "./utils/sandboxSettings.js";
+import { formatMemorySnapshot, normalizeMemoryResetTarget } from "./utils/memory.js";
 import { clearScreen, setTerminalTitle } from "./utils/terminal.js";
 import { SHOW_CLI_THINKING } from "./utils/timelineFormat.js";
 import { CLISocket } from "./ws/socket.js";
@@ -365,6 +366,31 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       } as AppAction);
     } catch (error) {
       appendSystem(`Failed to load sandbox settings: ${(error as Error).message}`);
+    }
+  }, [appendSystem]);
+
+  const loadMemory = useCallback(async () => {
+    try {
+      const snapshot = await apiRef.current.getMemory();
+      appendSystem(formatMemorySnapshot(snapshot));
+    } catch (error) {
+      appendSystem(`Failed to load memory: ${(error as Error).message}`);
+    }
+  }, [appendSystem]);
+
+  const resetMemory = useCallback(async (targetText: string) => {
+    const target = normalizeMemoryResetTarget(targetText);
+    if (!target) {
+      appendSystem("Usage: /memory reset memory|user|all");
+      return;
+    }
+    try {
+      await apiRef.current.clearMemory(target);
+      appendSystem(`Memory reset: ${target}`);
+      const snapshot = await apiRef.current.getMemory();
+      appendSystem(formatMemorySnapshot(snapshot));
+    } catch (error) {
+      appendSystem(`Failed to reset memory: ${(error as Error).message}`);
     }
   }, [appendSystem]);
 
@@ -735,6 +761,8 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       loadUpdate,
       loadMCPConfigs,
       loadSandboxSettings,
+      loadMemory,
+      resetMemory,
       showHelp,
       togglePlanMode: () => dispatch({ type: "TOGGLE_PLAN_MODE" } as AppAction),
       unknownCommand: (cmd) => appendSystem(`Unknown command: ${cmd}`),
@@ -745,11 +773,13 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     redrawTerminal,
     loadMCPConfigs,
     loadModels,
+    loadMemory,
     loadSandboxSettings,
     loadSessions,
     loadSkills,
     loadUpdate,
     loadSubagentModels,
+    resetMemory,
     setThinkingLevel,
     showHelp,
     toggleApprovalMode,

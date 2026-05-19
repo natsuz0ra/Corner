@@ -198,4 +198,9 @@ VITE_WS_URL=ws://localhost:6247
 
 ## Memory Model
 
-Memory is a SQLite-backed compact summary for each chat session. If the full history fits under the selected model config's `contextSize`, SlimeBot sends the full history. If it exceeds the window, SlimeBot asks the current model to generate a compact summary, stores it in `session_context_summaries`, and injects it later as a hidden `<context_summary>`.
+SlimeBot has two memory layers:
+
+- Session context compression is a SQLite-backed compact summary for each chat session. If full history exceeds the selected model config's `contextSize`, SlimeBot asks the current model to generate a compact summary, stores it in `session_context_summaries`, and injects it later as a hidden `<context_summary>`.
+- Long-term file memory stores durable assistant notes in `~/.slimebot/memories/MEMORY.md` and durable user profile facts in `~/.slimebot/memories/USER.md`. The built-in `memory` tool can update these files silently during normal Web/CLI conversations, and the next turn injects the latest snapshot into the model context.
+
+Long-term memory can be managed from the Web settings Memory tab or from CLI with `/memory` and `/memory reset memory|user|all`.
