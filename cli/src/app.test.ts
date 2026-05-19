@@ -92,6 +92,14 @@ test("getChatFooterHint returns toggle hint in auto review mode", () => {
   );
 });
 
+test("memory command opens the dedicated console instead of printing only a snapshot", () => {
+  const source = readFileSync(new URL("./app.tsx", import.meta.url), "utf-8");
+
+  assert.match(source, /SET_MEMORY_CONSOLE/);
+  assert.match(source, /<MemoryConsoleView/);
+  assert.doesNotMatch(source, /appendSystem\(formatMemorySnapshot\(snapshot\)\)/);
+});
+
 test("getChatFooterHint returns default hint in standard mode", () => {
   assert.equal(
     getChatFooterHint(false, "standard"),

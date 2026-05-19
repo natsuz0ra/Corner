@@ -1,4 +1,5 @@
 import type { ApprovalMode, QAAnswer, QAQuestion } from "./types/uiTypes.js";
+import type { MemoryConsoleEditField, MemoryConsoleMode } from "./utils/memoryConsole.js";
 
 export type { ApprovalMode, QAAnswer, QAQuestion } from "./types/uiTypes.js";
 
@@ -58,6 +59,11 @@ export interface Skill {
 export interface Settings {
   defaultModel: string;
   approvalMode?: string;
+  memoryEnabled?: boolean;
+  memoryUserProfileEnabled?: boolean;
+  memoryCharLimit?: number;
+  memoryUserCharLimit?: number;
+  memoryNudgeInterval?: number;
   sandboxMode?: string;
   sandboxWritableRoots?: string[];
   sandboxNetworkEnabled?: boolean;
@@ -268,7 +274,7 @@ export interface ContextUsage {
 
 // ===== UI state types =====
 
-export type ViewMode = "chat" | "menu" | "mcp-editor" | "mcp-template" | "model-editor" | "approval" | "thinking-detail" | "plan-confirm" | "question-answer" | "update";
+export type ViewMode = "chat" | "menu" | "mcp-editor" | "mcp-template" | "model-editor" | "approval" | "thinking-detail" | "plan-confirm" | "question-answer" | "update" | "memory-console";
 
 export type MenuKind =
   | "session"
@@ -386,7 +392,7 @@ export const SUPPORTED_COMMANDS: CommandMeta[] = [
   { command: "/new", description: "Create a new chat session" },
   { command: "/session", description: "Open session menu to switch or delete" },
   { command: "/model", description: "Choose the default model" },
-  { command: "/memory", description: "Show or reset long-term memory" },
+  { command: "/memory", description: "Open memory console" },
   { command: "/subagent_model", description: "Choose sub-agent model" },
   { command: "/approval", description: "Toggle approval mode (standard/auto review/auto)" },
   { command: "/effort", description: "Toggle thinking level (off/low/medium/high)" },
@@ -434,6 +440,16 @@ export interface AppState {
   updateJob: UpdateJobStatus | null;
   updateLoading: boolean;
   updateApplying: boolean;
+
+  // Memory console
+  memorySnapshot: MemorySnapshot | null;
+  memoryLoading: boolean;
+  memoryCursor: number;
+  memoryMode: MemoryConsoleMode;
+  memoryEditingField: MemoryConsoleEditField | null;
+  memoryDraft: string;
+  memoryViewTarget: MemoryTarget | null;
+  memoryMessage: string;
 
   // Thinking detail view
   thinkingDetailContent: string;
@@ -574,6 +590,13 @@ export type AppAction =
   | { type: "PLAN_START" }
   | { type: "TODO_UPDATE"; items: RuntimeTodoItem[]; note?: string; updatedAt?: number }
   | { type: "SET_UPDATE_STATE"; check?: UpdateCheckResult | null; job?: UpdateJobStatus | null; loading?: boolean; applying?: boolean }
+  | { type: "SET_MEMORY_CONSOLE"; snapshot?: MemorySnapshot | null; loading?: boolean; message?: string }
+  | { type: "MEMORY_CONSOLE_NAV"; delta: number }
+  | { type: "MEMORY_CONSOLE_SET_MODE"; mode: MemoryConsoleMode; cursor?: number; message?: string }
+  | { type: "MEMORY_CONSOLE_START_EDIT"; field: MemoryConsoleEditField; draft: string }
+  | { type: "MEMORY_CONSOLE_SET_DRAFT"; draft: string }
+  | { type: "MEMORY_CONSOLE_VIEW_TARGET"; target: MemoryTarget }
+  | { type: "MEMORY_CONSOLE_MESSAGE"; message: string }
   | { type: "VIEW_THINKING_DETAIL"; content: string }
   | { type: "SET_QA"; toolCallId: string; questions: QAQuestion[] }
   | { type: "QA_NAV"; delta: number }

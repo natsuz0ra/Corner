@@ -14,6 +14,7 @@ import { CommandHints } from "./components/CommandHints.js";
 import { MCPEditor } from "./components/MCPEditor.js";
 import { MCPTemplatePicker } from "./components/MCPTemplatePicker.js";
 import { CLI_HINT_COLOR, MenuView } from "./components/MenuView.js";
+import MemoryConsoleView from "./components/MemoryConsoleView.js";
 import { ModelEditor } from "./components/ModelEditor.js";
 import { TextInput } from "./components/TextInput.js";
 import { Timeline } from "./components/Timeline.js";
@@ -28,6 +29,13 @@ import { formatTimestamp, formatWaitingStatsSuffix } from "./utils/format.js";
 import { mapHistoryMessages } from "./utils/history.js";
 import { buildSandboxMenuItems, type SandboxMenuAction } from "./utils/sandboxSettings.js";
 import { formatMemorySnapshot, normalizeMemoryResetTarget } from "./utils/memory.js";
+import {
+  MEMORY_CONSOLE_ACTIONS,
+  MEMORY_CONSOLE_EDIT_LIMITS,
+  MEMORY_CONSOLE_RESET_ACTIONS,
+  parseMemoryConsoleDraft,
+  type MemoryConsoleEditField,
+} from "./utils/memoryConsole.js";
 import { clearScreen, setTerminalTitle } from "./utils/terminal.js";
 import { SHOW_CLI_THINKING } from "./utils/timelineFormat.js";
 import { CLISocket } from "./ws/socket.js";
@@ -370,13 +378,14 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
   }, [appendSystem]);
 
   const loadMemory = useCallback(async () => {
+    dispatch({ type: "SET_MEMORY_CONSOLE", loading: true, message: "" } as AppAction);
     try {
       const snapshot = await apiRef.current.getMemory();
-      appendSystem(formatMemorySnapshot(snapshot));
+      dispatch({ type: "SET_MEMORY_CONSOLE", snapshot, loading: false, message: "" } as AppAction);
     } catch (error) {
-      appendSystem(`Failed to load memory: ${(error as Error).message}`);
+      dispatch({ type: "SET_MEMORY_CONSOLE", loading: false, message: `Failed to load memory: ${(error as Error).message}` } as AppAction);
     }
-  }, [appendSystem]);
+  }, []);
 
   const resetMemory = useCallback(async (targetText: string) => {
     const target = normalizeMemoryResetTarget(targetText);
@@ -393,6 +402,112 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       appendSystem(`Failed to reset memory: ${(error as Error).message}`);
     }
   }, [appendSystem]);
+
+  const refreshMemoryConsole = useCallback(async (message = "") => {
+    try {
+      const snapshot = await apiRef.current.getMemory();
+      dispatch({ type: "SET_MEMORY_CONSOLE", snapshot, loading: false, message } as AppAction);
+    } catch (error) {
+      dispatch({ type: "SET_MEMORY_CONSOLE", loading: false, message: `Failed to refresh memory: ${(error as Error).message}` } as AppAction);
+    }
+  }, []);
+
+  const startMemoryConsoleEdit = useCallback((field: MemoryConsoleEditField) => {
+    const snapshot = state.memorySnapshot;
+    if (!snapshot) return;
+    const draft = field === "memoryCharLimit"
+      ? String(snapshot.memory.charLimit)
+      : field === "memoryUserCharLimit"
+        ? String(snapshot.user.charLimit)
+        : String(snapshot.memoryNudgeInterval);
+    dispatch({ type: "MEMORY_CONSOLE_START_EDIT", field, draft } as AppAction);
+  }, [state.memorySnapshot]);
+
+  const handleMemoryConsoleSelect = useCallback(async () => {
+    const snapshot = state.memorySnapshot;
+    if (!snapshot || state.memoryLoading) return;
+
+    if (state.memoryMode === "reset") {
+      const item = MEMORY_CONSOLE_RESET_ACTIONS[state.memoryCursor];
+      if (!item || item.action === "cancel") {
+        dispatch({ type: "MEMORY_CONSOLE_SET_MODE", mode: "actions", message: "" } as AppAction);
+        return;
+      }
+      try {
+        await apiRef.current.clearMemory(item.action);
+        await refreshMemoryConsole(`Memory reset: ${item.action}.`);
+        dispatch({ type: "MEMORY_CONSOLE_SET_MODE", mode: "actions" } as AppAction);
+      } catch (error) {
+        dispatch({ type: "MEMORY_CONSOLE_MESSAGE", message: `Failed to reset memory: ${(error as Error).message}` } as AppAction);
+      }
+      return;
+    }
+
+    if (state.memoryMode === "view") {
+      dispatch({ type: "MEMORY_CONSOLE_SET_MODE", mode: "actions", message: "" } as AppAction);
+      return;
+    }
+
+    if (state.memoryMode !== "actions") return;
+
+    const item = MEMORY_CONSOLE_ACTIONS[state.memoryCursor];
+    if (!item) return;
+    try {
+      if (item.action === "toggle-memory") {
+        await apiRef.current.updateSettings({ memoryEnabled: !snapshot.memoryEnabled });
+        await refreshMemoryConsole(`Long-term memory ${snapshot.memoryEnabled ? "disabled" : "enabled"}.`);
+        return;
+      }
+      if (item.action === "toggle-user-profile") {
+        await apiRef.current.updateSettings({ memoryUserProfileEnabled: !snapshot.memoryUserProfileEnabled });
+        await refreshMemoryConsole(`User profile memory ${snapshot.memoryUserProfileEnabled ? "disabled" : "enabled"}.`);
+        return;
+      }
+      if (item.action === "edit-memory-budget") {
+        startMemoryConsoleEdit("memoryCharLimit");
+        return;
+      }
+      if (item.action === "edit-user-budget") {
+        startMemoryConsoleEdit("memoryUserCharLimit");
+        return;
+      }
+      if (item.action === "edit-review-interval") {
+        startMemoryConsoleEdit("memoryNudgeInterval");
+        return;
+      }
+      if (item.action === "view-memory") {
+        dispatch({ type: "MEMORY_CONSOLE_VIEW_TARGET", target: "memory" } as AppAction);
+        return;
+      }
+      if (item.action === "view-user") {
+        dispatch({ type: "MEMORY_CONSOLE_VIEW_TARGET", target: "user" } as AppAction);
+        return;
+      }
+      if (item.action === "reset") {
+        dispatch({ type: "MEMORY_CONSOLE_SET_MODE", mode: "reset", message: "" } as AppAction);
+      }
+    } catch (error) {
+      dispatch({ type: "MEMORY_CONSOLE_MESSAGE", message: `Memory action failed: ${(error as Error).message}` } as AppAction);
+    }
+  }, [refreshMemoryConsole, startMemoryConsoleEdit, state.memoryCursor, state.memoryLoading, state.memoryMode, state.memorySnapshot]);
+
+  const saveMemoryConsoleDraft = useCallback(async () => {
+    const field = state.memoryEditingField;
+    if (!field) return;
+    const parsed = parseMemoryConsoleDraft(field, state.memoryDraft);
+    if (parsed.value === null) {
+      dispatch({ type: "MEMORY_CONSOLE_MESSAGE", message: parsed.error } as AppAction);
+      return;
+    }
+    try {
+      await apiRef.current.updateSettings({ [field]: parsed.value });
+      const label = MEMORY_CONSOLE_EDIT_LIMITS[field].label;
+      await refreshMemoryConsole(`${label} set to ${parsed.value}.`);
+      dispatch({ type: "MEMORY_CONSOLE_SET_MODE", mode: "actions" } as AppAction);
+    } catch (error) {
+      dispatch({ type: "MEMORY_CONSOLE_MESSAGE", message: `Failed to save memory setting: ${(error as Error).message}` } as AppAction);
+    }
+  }, [refreshMemoryConsole, state.memoryDraft, state.memoryEditingField]);
 
   const loadUpdate = useCallback(async () => {
     dispatch({ type: "SET_VIEW", view: "update" } as AppAction);
@@ -441,6 +556,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       { title: "/new", desc: "Create a new chat (lazy session creation)", data: null },
       { title: "/session", desc: "Browse, switch, or delete sessions", data: null },
       { title: "/model", desc: "Switch default model", data: null },
+      { title: "/memory", desc: "Open memory console", data: null },
       { title: "/approval", desc: "Toggle approval mode (standard/auto review/auto)", data: null },
       { title: "/effort", desc: "Toggle thinking level (off/low/medium/high)", data: null },
       { title: "/sandbox", desc: "Configure sandbox mode and network access", data: null },
@@ -856,6 +972,9 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     handleMenuToggle,
     loadUpdate,
     applyUpdate,
+    loadMemory,
+    handleMemoryConsoleSelect,
+    saveMemoryConsoleDraft,
     loadMCPConfigs,
     loadModels,
     saveMCPConfig,
@@ -1081,6 +1200,20 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           job={state.updateJob}
           loading={state.updateLoading}
           applying={state.updateApplying}
+          columns={width}
+        />
+      )}
+
+      {state.view === "memory-console" && (
+        <MemoryConsoleView
+          snapshot={state.memorySnapshot}
+          loading={state.memoryLoading}
+          cursor={state.memoryCursor}
+          mode={state.memoryMode}
+          editingField={state.memoryEditingField}
+          draft={state.memoryDraft}
+          viewTarget={state.memoryViewTarget}
+          message={state.memoryMessage}
           columns={width}
         />
       )}
