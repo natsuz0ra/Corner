@@ -56,6 +56,15 @@ npm run cli
 make package
 ```
 
+正式发版推荐通过 GitHub Actions 完成：推送符合 `vX.Y.Z` 格式的 tag 后，`.github/workflows/release.yml` 会在 GitHub 上运行同一套打包脚本并创建稳定 Release。
+
+```bash
+git tag v1.27.0
+git push origin v1.27.0
+```
+
+该 workflow 也支持手动触发并输入已有 tag，用于补发指定版本的 Release 资产。tag 格式校验只接受 `vX.Y.Z`，例如 `v1.27.0-test` 不会发布为稳定 Release。
+
 Release 压缩包包含 `install.sh` / `install.ps1` 和 `uninstall.sh` / `uninstall.ps1`。安装脚本支持 `SLIMEBOT_INSTALL_DIR` 与 `SLIMEBOT_BIN_DIR`；卸载脚本使用同样的变量，并额外支持 `SLIMEBOT_HOME` 指定用户数据目录。
 
 打包脚本也会生成独立的 `dist/install.sh`、`dist/install.ps1`、`dist/uninstall.sh` 和 `dist/uninstall.ps1` 发布资产。安装脚本在解压后的 Release 目录外执行时，会解析最新 GitHub Release，下载匹配当前平台的压缩包，然后运行压缩包内的安装器；可通过 `SLIMEBOT_VERSION=v1.26.1` 安装指定版本标签，或用 `SLIMEBOT_REPO=owner/repo` 指向 fork。卸载脚本可直接远程执行，不下载 Release 压缩包，而是按本机安装路径删除已安装内容。

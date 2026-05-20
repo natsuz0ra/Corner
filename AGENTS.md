@@ -8,6 +8,8 @@ Top-level navigation:
 
 ```text
 .
+├─ .github/
+│  └─ workflows/             # GitHub Actions CI/release workflows
 ├─ cmd/                      # Go entrypoints
 │  ├─ server/                # HTTP/WebSocket server bootstrap
 │  └─ cli/                   # Headless CLI bridge bootstrap
@@ -121,6 +123,7 @@ Quick index (feature -> first place to inspect):
 - CLI update view: `cli/src/components/UpdateView.tsx`, `/update` command routing in `cli/src/controllers/commands.ts`
 - Prompt templates: `prompts/`
 - Release/install packaging: `scripts/`
+- GitHub Release automation: `.github/workflows/release.yml`
 - Bundled ripgrep binaries for release packages: `third_party/ripgrep/`
 - Manual deployment docs: `docs/`
 
