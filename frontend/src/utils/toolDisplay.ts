@@ -295,6 +295,8 @@ export function isLightweightToolName(toolName?: string) {
     name === 'web_extract' ||
     name === 'web_search' ||
     name === 'file_read' ||
+    name === 'grep' ||
+    name === 'glob' ||
     name === 'search_files' ||
     name === 'search_file'
 }
@@ -337,6 +339,18 @@ export function buildLightweightToolDisplay(item: Pick<ToolCallItem, 'toolCallId
   if (toolName === 'web_search') {
     label = 'Search'
     target = normalizedParam(params, 'query') || 'web'
+  } else if (toolName === 'grep') {
+    label = 'Grep'
+    target = normalizedParam(params, 'pattern') || 'content'
+    const path = normalizedParam(params, 'path')
+    const glob = normalizedParam(params, 'glob')
+    if (path) target += ` in ${path}`
+    if (glob) target += ` (${glob})`
+  } else if (toolName === 'glob') {
+    label = 'Glob'
+    target = normalizedParam(params, 'pattern') || 'files'
+    const path = normalizedParam(params, 'path')
+    if (path) target += ` in ${path}`
   } else if (toolName === 'search_files' || toolName === 'search_file') {
     label = 'Search files'
     target = normalizedParam(params, 'query') || normalizedParam(params, 'pattern') || 'files'
@@ -480,6 +494,19 @@ export function getToolSummaryParamKeys(toolCall: ToolCallSummaryInput): string[
   if (toolName === 'web_search' && normalizedParam(params, 'query') !== '') {
     return ['query']
   }
+  if (toolName === 'grep') {
+    const keys: string[] = []
+    if (normalizedParam(params, 'pattern') !== '') keys.push('pattern')
+    if (normalizedParam(params, 'path') !== '') keys.push('path')
+    if (normalizedParam(params, 'glob') !== '') keys.push('glob')
+    if (keys.length > 0) return keys
+  }
+  if (toolName === 'glob') {
+    const keys: string[] = []
+    if (normalizedParam(params, 'pattern') !== '') keys.push('pattern')
+    if (normalizedParam(params, 'path') !== '') keys.push('path')
+    if (keys.length > 0) return keys
+  }
   if (toolName === 'search_files') {
     const keys: string[] = []
     if (normalizedParam(params, 'query') !== '') keys.push('query')
@@ -531,6 +558,22 @@ export function buildToolCallSummary(toolCall: ToolCallSummaryInput): string {
   if (toolName === 'web_search') {
     const query = normalizedParam(params, 'query')
     return query
+  }
+  if (toolName === 'grep') {
+    const pattern = normalizedParam(params, 'pattern')
+    if (!pattern) return ''
+    const path = normalizedParam(params, 'path')
+    const glob = normalizedParam(params, 'glob')
+    let summary = pattern
+    if (path) summary += ` in ${path}`
+    if (glob) summary += ` (${glob})`
+    return summary
+  }
+  if (toolName === 'glob') {
+    const pattern = normalizedParam(params, 'pattern')
+    if (!pattern) return ''
+    const path = normalizedParam(params, 'path')
+    return path ? `${pattern} in ${path}` : pattern
   }
   if (toolName === 'search_files') {
     const query = normalizedParam(params, 'query')

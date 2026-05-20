@@ -166,7 +166,7 @@ test('buildLightweightToolTimelineRows marks only the unbroken final group as tr
 test('buildLightweightToolGroupSummary counts activity categories', () => {
   const items = [
     buildLightweightToolDisplay(tool({ toolName: 'web_search', command: 'search', params: { query: 'a' } }))!,
-    buildLightweightToolDisplay(tool({ toolName: 'search_files', command: 'search', params: { query: 'b' } }))!,
+    buildLightweightToolDisplay(tool({ toolName: 'grep', command: 'search', params: { pattern: 'b' } }))!,
     buildLightweightToolDisplay(tool({ toolName: 'web_extract', command: 'extract', params: { url: 'https://example.test' } }))!,
     buildLightweightToolDisplay(tool({ toolName: 'http_request', command: 'request', params: { method: 'GET', url: 'https://api.test' } }))!,
     buildLightweightToolDisplay(tool({ toolName: 'file_read', command: 'read', params: { requests: [{ file_path: 'a.ts' }, { file_path: 'b.ts' }] } }))!,
@@ -178,6 +178,8 @@ test('buildLightweightToolGroupSummary counts activity categories', () => {
 
 test('isLightweightToolCall excludes file edits and writes', () => {
   assert.equal(isLightweightToolCall(tool({ toolName: 'file_read', command: 'read' })), true)
+  assert.equal(isLightweightToolCall(tool({ toolName: 'grep', command: 'search' })), true)
+  assert.equal(isLightweightToolCall(tool({ toolName: 'glob', command: 'find' })), true)
   assert.equal(isLightweightToolCall(tool({ toolName: 'search_file', command: 'search' })), true)
   assert.equal(isLightweightToolCall(tool({ toolName: 'file_edit', command: 'edit' })), false)
   assert.equal(isLightweightToolCall(tool({ toolName: 'file_write', command: 'write' })), false)
@@ -185,6 +187,14 @@ test('isLightweightToolCall excludes file edits and writes', () => {
 })
 
 test('buildToolCallSummary formats newly added tools compactly', () => {
+  assert.equal(
+    buildToolCallSummary(tool({ toolName: 'grep', command: 'search', params: { pattern: 'BuildToolDefs', path: 'internal/tools', glob: '*.go' } })),
+    'BuildToolDefs in internal/tools (*.go)',
+  )
+  assert.equal(
+    buildToolCallSummary(tool({ toolName: 'glob', command: 'find', params: { pattern: '**/*.go', path: 'internal/tools' } })),
+    '**/*.go in internal/tools',
+  )
   assert.equal(
     buildToolCallSummary(tool({ toolName: 'search_files', command: 'search', params: { query: 'BuildToolDefs', path: 'internal/tools', pattern: '*.go' } })),
     'BuildToolDefs in internal/tools (*.go)',
@@ -283,6 +293,14 @@ test('filterToolParamsForDetail removes params already shown in summary', () => 
   assert.deepEqual(
     filterToolParamsForDetail(tool({ toolName: 'search_files', command: 'search', params: { query: 'BuildToolDefs', path: 'internal/tools', pattern: '*.go', max_matches: 20 } })),
     { max_matches: 20 },
+  )
+  assert.deepEqual(
+    filterToolParamsForDetail(tool({ toolName: 'grep', command: 'search', params: { pattern: 'BuildToolDefs', path: 'internal/tools', glob: '*.go', head_limit: 20 } })),
+    { head_limit: 20 },
+  )
+  assert.deepEqual(
+    filterToolParamsForDetail(tool({ toolName: 'glob', command: 'find', params: { pattern: '**/*.go', path: 'internal/tools', limit: 20 } })),
+    { limit: 20 },
   )
   assert.deepEqual(
     filterToolParamsForDetail(tool({ toolName: 'web_extract', command: 'extract', params: { url: 'https://example.test/docs/intro' } })),

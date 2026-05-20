@@ -185,6 +185,8 @@ func TestFilterPlanModeToolDefs_KeepsRunSubagentAndReadOnlyTools(t *testing.T) {
 		{Name: "file_read__read"},
 		{Name: "file_edit__edit"},
 		{Name: "file_write__write"},
+		{Name: "grep__search"},
+		{Name: "glob__find"},
 		{Name: "web_search__search"},
 		{Name: constants.PlanStartTool},
 		{Name: constants.PlanCompleteTool},
@@ -199,6 +201,8 @@ func TestFilterPlanModeToolDefs_KeepsRunSubagentAndReadOnlyTools(t *testing.T) {
 	for _, name := range []string{
 		constants.RunSubagentTool,
 		"file_read__read",
+		"grep__search",
+		"glob__find",
 		"web_search__search",
 		constants.PlanStartTool,
 		constants.PlanCompleteTool,

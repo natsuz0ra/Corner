@@ -9,7 +9,7 @@ export function getToolCallIcon(toolName: string) {
   if (toolName === 'exec') return mdiConsoleLine
   if (toolName === 'run_subagent') return mdiSourceBranch
   if (toolName === 'http_request' || toolName === 'web_search') return mdiWeb
-  if (toolName === 'search_files') return mdiFileSearchOutline
+  if (toolName === 'grep' || toolName === 'glob' || toolName === 'search_files') return mdiFileSearchOutline
   if (toolName === 'web_extract') return mdiWebBox
   if (toolName === 'skills') return mdiBookOpenOutline
   if (toolName === 'todo') return mdiFormatListChecks
@@ -25,6 +25,8 @@ export function getToolCallLabel(toolName: string, t: Translate) {
   if (toolName === 'exec') return t('toolExec')
   if (toolName === 'http_request') return t('toolHttpRequest')
   if (toolName === 'web_search') return t('toolWebSearch')
+  if (toolName === 'grep') return t('toolGrep')
+  if (toolName === 'glob') return t('toolGlob')
   if (toolName === 'search_files') return t('toolSearchFiles')
   if (toolName === 'web_extract') return t('toolWebExtract')
   if (toolName === 'skills') return t('toolSkills')
