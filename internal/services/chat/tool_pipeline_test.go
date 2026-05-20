@@ -227,6 +227,9 @@ func TestBuildToolDefs_GrepAndGlobSchemasExposePagination(t *testing.T) {
 	if grepDef == nil {
 		t.Fatal("expected grep__search tool definition")
 	}
+	if !strings.Contains(grepDef.Description, "use glob__find instead when the user is looking for a filename") {
+		t.Fatalf("grep__search description should steer filename searches to glob: %q", grepDef.Description)
+	}
 	grepProps, ok := grepDef.Parameters["properties"].(map[string]any)
 	if !ok {
 		t.Fatalf("grep parameters.properties has unexpected type: %#v", grepDef.Parameters["properties"])
@@ -240,6 +243,9 @@ func TestBuildToolDefs_GrepAndGlobSchemasExposePagination(t *testing.T) {
 	globDef := findToolDef(defs, "glob__find")
 	if globDef == nil {
 		t.Fatal("expected glob__find tool definition")
+	}
+	if !strings.Contains(globDef.Description, "set path to ~/Downloads") {
+		t.Fatalf("glob__find description should mention Downloads path handling: %q", globDef.Description)
 	}
 	globProps, ok := globDef.Parameters["properties"].(map[string]any)
 	if !ok {

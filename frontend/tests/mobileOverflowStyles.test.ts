@@ -44,6 +44,8 @@ test('assistant waiting placeholder centers typing dots with the avatar', () => 
 test('mobile user message actions are visible without hover', () => {
   const itemSource = readFileSync(resolve(projectRoot, 'src/components/chat/ChatMessageItem.vue'), 'utf8')
 
+  assert.match(itemSource, /\.user-message-shell--actions::after\s*\{[\s\S]*?content:\s*'';[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*100%;[\s\S]*?height:\s*26px;[\s\S]*?pointer-events:\s*auto;/)
+  assert.match(itemSource, /\.user-message-shell:hover \.user-message-actions,[\s\S]*?\.user-message-shell:focus-within \.user-message-actions\s*\{[\s\S]*?opacity:\s*1;[\s\S]*?pointer-events:\s*auto;/)
   assert.match(itemSource, /@media\s*\(hover:\s*none\),\s*\(pointer:\s*coarse\)\s*\{[\s\S]*?\.user-message-actions\s*\{[\s\S]*?opacity:\s*1;[\s\S]*?pointer-events:\s*auto;/)
   assert.match(itemSource, /@media\s*\(hover:\s*none\),\s*\(pointer:\s*coarse\)\s*\{[\s\S]*?\.user-message-actions--hidden\s*\{[\s\S]*?opacity:\s*0;[\s\S]*?pointer-events:\s*none;/)
 })

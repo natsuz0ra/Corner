@@ -207,6 +207,10 @@ func BuildToolDefs() []llmsvc.ToolDef {
 // buildRuntimeToolDefs merges built-in, skill, and MCP tools and returns MCP name mapping.
 func (a *AgentService) buildRuntimeToolDefs(ctx context.Context, configs []domain.MCPConfig, depth int) ([]llmsvc.ToolDef, map[string]mcp.ToolMeta, error) {
 	cacheKey := buildToolDefsCacheKey(configs, depth)
+	surface := constants.ClientSurfaceFromContext(ctx)
+	if surface != "" {
+		cacheKey += "|surface:" + surface
+	}
 	if a.skillRuntime != nil {
 		cacheKey += "|s:" + a.skillRuntime.ToolCacheKey()
 	}
@@ -220,6 +224,9 @@ func (a *AgentService) buildRuntimeToolDefs(ctx context.Context, configs []domai
 		return defs, metaByFunc, nil
 	}
 	defs := BuildToolDefs()
+	if surface == constants.ClientSurfaceWeb {
+		defs = requireExplicitPathForWebFileSearch(defs)
+	}
 	if !memoryToolsEnabled {
 		defs = filterToolDefsByToolName(defs, constants.MemoryToolName)
 	}
@@ -274,6 +281,81 @@ func (a *AgentService) buildRuntimeToolDefs(ctx context.Context, configs []domai
 	})
 	a.setCachedToolDefs(cacheKey, defs, metaByFunc)
 	return defs, metaByFunc, nil
+}
+
+func requireExplicitPathForWebFileSearch(defs []llmsvc.ToolDef) []llmsvc.ToolDef {
+	out := append([]llmsvc.ToolDef(nil), defs...)
+	for i := range out {
+		switch out[i].Name {
+		case "grep__search":
+			out[i] = cloneToolDef(out[i])
+			out[i].Description += " In web server mode, there is no user working directory, so path is required."
+			markToolParamRequired(&out[i], "path")
+			updateToolParamDescription(&out[i], "path", "File or directory to search. Required in web server mode because there is no user working directory.")
+		case "glob__find":
+			out[i] = cloneToolDef(out[i])
+			out[i].Description += " In web server mode, there is no user working directory, so path is required."
+			markToolParamRequired(&out[i], "path")
+			updateToolParamDescription(&out[i], "path", "Directory to search. Required in web server mode because there is no user working directory.")
+		}
+	}
+	return out
+}
+
+func cloneToolDef(def llmsvc.ToolDef) llmsvc.ToolDef {
+	params := make(map[string]any, len(def.Parameters))
+	for key, value := range def.Parameters {
+		if nested, ok := value.(map[string]any); ok {
+			copyNested := make(map[string]any, len(nested))
+			for nestedKey, nestedValue := range nested {
+				copyNested[nestedKey] = nestedValue
+			}
+			params[key] = copyNested
+			continue
+		}
+		if nested, ok := value.([]string); ok {
+			params[key] = append([]string(nil), nested...)
+			continue
+		}
+		params[key] = value
+	}
+	def.Parameters = params
+	return def
+}
+
+func markToolParamRequired(def *llmsvc.ToolDef, param string) {
+	if def == nil || def.Parameters == nil || strings.TrimSpace(param) == "" {
+		return
+	}
+	required, _ := def.Parameters["required"].([]string)
+	if stringSliceContains(required, param) {
+		return
+	}
+	def.Parameters["required"] = append(required, param)
+}
+
+func stringSliceContains(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
+}
+
+func updateToolParamDescription(def *llmsvc.ToolDef, param, description string) {
+	if def == nil || def.Parameters == nil {
+		return
+	}
+	props, ok := def.Parameters["properties"].(map[string]any)
+	if !ok {
+		return
+	}
+	prop, ok := props[param].(map[string]any)
+	if !ok {
+		return
+	}
+	prop["description"] = description
 }
 
 func buildToolDefsCacheKey(configs []domain.MCPConfig, depth int) string {

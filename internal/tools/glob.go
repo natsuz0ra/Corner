@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"slimebot/internal/constants"
 )
 
 const (
@@ -22,13 +24,13 @@ func init() {
 func (g *globTool) Name() string { return "glob" }
 
 func (g *globTool) Description() string {
-	return "Find local files by glob pattern using ripgrep, sorted by modification time."
+	return "Find local files by filename or glob pattern using ripgrep, sorted by modification time."
 }
 
 func (g *globTool) Commands() []Command {
 	return []Command{{
 		Name:        "find",
-		Description: "Find files matching a glob pattern. Returns matching paths sorted by modification time.",
+		Description: "Find files matching a filename or glob pattern. Use this for filename searches; set path to ~/Downloads when the user mentions downloads/下载目录. Returns matching paths sorted by modification time.",
 		Params: []CommandParam{
 			{Name: "pattern", Required: true, Description: "Glob pattern to match files against.", Example: "**/*.go"},
 			{Name: "path", Required: false, Description: "Directory to search. Defaults to current working directory.", Example: "/path/to/repo"},
@@ -53,6 +55,9 @@ func (g *globTool) find(ctx context.Context, params map[string]any) (*ExecuteRes
 		return nil, fmt.Errorf("pattern is required")
 	}
 	rootRaw := paramStringTrim(params, "path")
+	if rootRaw == "" && constants.ClientSurfaceFromContext(ctx) == constants.ClientSurfaceWeb {
+		return nil, fmt.Errorf("path is required when running from the web server because there is no user working directory")
+	}
 	if rootRaw == "" {
 		rootRaw = "."
 	}
@@ -101,8 +106,8 @@ func (g *globTool) find(ctx context.Context, params map[string]any) (*ExecuteRes
 		}
 	}
 
-	args := []string{"--files", "--glob", searchPattern, "--sort=modified", "--hidden", "--no-ignore"}
-	rg, err := runRipgrep(ctx, args, searchDir)
+	args := []string{"--files", "--glob", searchPattern, "--sort=modified", "--hidden", "--no-ignore", "--no-messages"}
+	rg, err := runRipgrepWithOptions(ctx, args, searchDir, ripgrepRunOptions{allowPartialOutput: true})
 	if err != nil {
 		return nil, err
 	}

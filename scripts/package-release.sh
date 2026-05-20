@@ -35,6 +35,38 @@ assert_cli_bundle_self_contained() {
   done
 }
 
+ripgrep_binary_name() {
+  local goos="$1"
+  if [[ "${goos}" == "windows" ]]; then
+    echo "rg.exe"
+  else
+    echo "rg"
+  fi
+}
+
+copy_ripgrep_vendor() {
+  local goos="$1"
+  local goarch="$2"
+  local bin_dir="$3"
+  local platform="${goos}-${goarch}"
+  local rg_name
+  rg_name="$(ripgrep_binary_name "${goos}")"
+  local source="${ROOT_DIR}/third_party/ripgrep/${platform}/${rg_name}"
+  local dest_dir="${bin_dir}/vendor/ripgrep/${platform}"
+
+  if [[ ! -f "${source}" ]]; then
+    echo "Missing bundled ripgrep binary: ${source}" >&2
+    echo "Place ${rg_name} at third_party/ripgrep/${platform}/ before packaging ${platform}." >&2
+    exit 1
+  fi
+
+  mkdir -p "${dest_dir}"
+  cp "${source}" "${dest_dir}/${rg_name}"
+  if [[ "${goos}" != "windows" ]]; then
+    chmod +x "${dest_dir}/${rg_name}"
+  fi
+}
+
 cd "${ROOT_DIR}"
 
 npm --prefix frontend run build
@@ -74,6 +106,7 @@ for target in "${TARGETS[@]}"; do
     -trimpath \
     -ldflags "-s -w -X slimebot/internal/version.Version=${VERSION} -X slimebot/internal/version.Commit=${COMMIT} -X slimebot/internal/version.Date=${BUILD_DATE}" \
     -o "${bin_dir}/slimebot${exe_suffix}" ./cmd/server
+  copy_ripgrep_vendor "${goos}" "${goarch}" "${bin_dir}"
 
   cp cli/cli.cjs "${package_dir}/cli/cli.cjs"
   cp -R cli/dist "${package_dir}/cli/dist"

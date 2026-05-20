@@ -3,11 +3,14 @@ package tools
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	"slimebot/internal/constants"
 	sandboxpolicy "slimebot/internal/sandbox"
 )
 
@@ -114,6 +117,82 @@ func TestGlobFindSortsLimitsAndTruncates(t *testing.T) {
 	}
 }
 
+func TestGlobFindReturnsPartialResultsWhenRipgrepHitsUnreadablePaths(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a shell script fake rg")
+	}
+
+	exeDir := t.TempDir()
+	vendor := filepath.Join(exeDir, "vendor", "ripgrep", runtime.GOOS+"-"+runtime.GOARCH)
+	if err := os.MkdirAll(vendor, 0o755); err != nil {
+		t.Fatalf("mkdir vendor: %v", err)
+	}
+	fakeRG := filepath.Join(vendor, ripgrepExecutableName())
+	script := "#!/bin/sh\nprintf 'Downloads/test_text_2_副本.txt\\n'\nprintf 'rg: Library: Operation not permitted (os error 1)\\n' >&2\nexit 2\n"
+	if err := os.WriteFile(fakeRG, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake rg: %v", err)
+	}
+	restore := setRipgrepTestOverrides(ripgrepTestOverrides{
+		lookPath: func(file string) (string, error) {
+			return "", exec.ErrNotFound
+		},
+		executable: func() (string, error) {
+			return filepath.Join(exeDir, "slimebot"), nil
+		},
+	})
+	defer restore()
+
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "Downloads"), 0o755); err != nil {
+		t.Fatalf("mkdir downloads: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Downloads", "test_text_2_副本.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write match: %v", err)
+	}
+
+	res, err := (&globTool{}).find(context.Background(), map[string]any{
+		"path":    dir,
+		"pattern": "**/*test_text_2_副本*",
+	})
+	if err != nil {
+		t.Fatalf("glob should return partial results instead of failing: %v", err)
+	}
+	if !strings.Contains(res.Output, "Downloads/test_text_2_副本.txt") {
+		t.Fatalf("expected partial match in output, got:\n%s", res.Output)
+	}
+}
+
+func TestRunRipgrepPartialModeKeepsInvalidPatternErrors(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a shell script fake rg")
+	}
+
+	exeDir := t.TempDir()
+	vendor := filepath.Join(exeDir, "vendor", "ripgrep", runtime.GOOS+"-"+runtime.GOARCH)
+	if err := os.MkdirAll(vendor, 0o755); err != nil {
+		t.Fatalf("mkdir vendor: %v", err)
+	}
+	fakeRG := filepath.Join(vendor, ripgrepExecutableName())
+	script := "#!/bin/sh\nprintf \"rg: error parsing glob '[': unclosed character class; missing ']'\\n\" >&2\nexit 2\n"
+	if err := os.WriteFile(fakeRG, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake rg: %v", err)
+	}
+	restore := setRipgrepTestOverrides(ripgrepTestOverrides{
+		lookPath: func(file string) (string, error) {
+			return "", exec.ErrNotFound
+		},
+		executable: func() (string, error) {
+			return filepath.Join(exeDir, "slimebot"), nil
+		},
+	})
+	defer restore()
+
+	_, err := runRipgrepWithOptions(context.Background(), []string{"--files"}, t.TempDir(), ripgrepRunOptions{allowPartialOutput: true})
+	if err == nil || !strings.Contains(err.Error(), "error parsing glob") {
+		t.Fatalf("expected invalid pattern error to be preserved, got %v", err)
+	}
+}
+
 func TestGrepAndGlobRejectSandboxDeniedPath(t *testing.T) {
 	dir := t.TempDir()
 	policy, err := sandboxpolicy.NewPolicy(sandboxpolicy.Config{
@@ -134,13 +213,119 @@ func TestGrepAndGlobRejectSandboxDeniedPath(t *testing.T) {
 	}
 }
 
+func TestGrepAndGlobRequirePathInWebSurface(t *testing.T) {
+	ctx := constants.WithClientSurface(context.Background(), constants.ClientSurfaceWeb)
+
+	if _, err := (&grepTool{}).search(ctx, map[string]any{"pattern": "x"}); err == nil || !strings.Contains(err.Error(), "path is required") {
+		t.Fatalf("expected grep path requirement in web mode, got %v", err)
+	}
+	if _, err := (&globTool{}).find(ctx, map[string]any{"pattern": "*.go"}); err == nil || !strings.Contains(err.Error(), "path is required") {
+		t.Fatalf("expected glob path requirement in web mode, got %v", err)
+	}
+}
+
 func TestRipgrepMissingBinaryReturnsActionableError(t *testing.T) {
-	restore := setRipgrepPathForTest("definitely-missing-rg-for-slimebot-test")
+	restore := setRipgrepTestOverrides(ripgrepTestOverrides{
+		lookPath: func(file string) (string, error) {
+			return "", exec.ErrNotFound
+		},
+		executable: func() (string, error) {
+			return filepath.Join(t.TempDir(), "slimebot"), nil
+		},
+		repoRoot: t.TempDir(),
+	})
 	defer restore()
 
 	dir := t.TempDir()
 	_, err := (&grepTool{}).search(context.Background(), map[string]any{"path": dir, "pattern": "x"})
-	if err == nil || !strings.Contains(err.Error(), "ripgrep (rg) was not found") {
+	if err == nil || !strings.Contains(err.Error(), "ripgrep (rg) was not found") || !strings.Contains(err.Error(), "bundled vendor") {
 		t.Fatalf("expected missing rg error, got %v", err)
+	}
+}
+
+func TestResolveRipgrepCommandPrefersSystemPath(t *testing.T) {
+	restore := setRipgrepTestOverrides(ripgrepTestOverrides{
+		lookPath: func(file string) (string, error) {
+			if file != "rg" {
+				t.Fatalf("lookPath file = %q, want rg", file)
+			}
+			return "/usr/local/bin/rg", nil
+		},
+		executable: func() (string, error) {
+			t.Fatal("executable should not be checked when system rg exists")
+			return "", nil
+		},
+		repoRoot: t.TempDir(),
+	})
+	defer restore()
+
+	cmd, err := resolveRipgrepCommand()
+	if err != nil {
+		t.Fatalf("resolve ripgrep: %v", err)
+	}
+	if cmd != "rg" {
+		t.Fatalf("command = %q, want rg", cmd)
+	}
+}
+
+func TestResolveRipgrepCommandUsesBundledVendorWhenSystemMissing(t *testing.T) {
+	exeDir := t.TempDir()
+	vendor := filepath.Join(exeDir, "vendor", "ripgrep", runtime.GOOS+"-"+runtime.GOARCH)
+	if err := os.MkdirAll(vendor, 0o755); err != nil {
+		t.Fatalf("mkdir vendor: %v", err)
+	}
+	vendorRG := filepath.Join(vendor, ripgrepExecutableName())
+	if err := os.WriteFile(vendorRG, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("write vendor rg: %v", err)
+	}
+
+	restore := setRipgrepTestOverrides(ripgrepTestOverrides{
+		lookPath: func(file string) (string, error) {
+			return "", exec.ErrNotFound
+		},
+		executable: func() (string, error) {
+			return filepath.Join(exeDir, "slimebot"), nil
+		},
+		repoRoot: t.TempDir(),
+	})
+	defer restore()
+
+	cmd, err := resolveRipgrepCommand()
+	if err != nil {
+		t.Fatalf("resolve ripgrep: %v", err)
+	}
+	if cmd != vendorRG {
+		t.Fatalf("command = %q, want %q", cmd, vendorRG)
+	}
+}
+
+func TestResolveRipgrepCommandUsesThirdPartyFallbackInDevelopment(t *testing.T) {
+	repoRoot := t.TempDir()
+	thirdParty := filepath.Join(repoRoot, "third_party", "ripgrep", runtime.GOOS+"-"+runtime.GOARCH)
+	if err := os.MkdirAll(thirdParty, 0o755); err != nil {
+		t.Fatalf("mkdir third_party ripgrep: %v", err)
+	}
+	thirdPartyRG := filepath.Join(thirdParty, ripgrepExecutableName())
+	if err := os.WriteFile(thirdPartyRG, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("write third_party rg: %v", err)
+	}
+
+	restore := setRipgrepTestOverrides(ripgrepTestOverrides{
+		lookPath: func(file string) (string, error) {
+			return "", exec.ErrNotFound
+		},
+		executable: func() (string, error) {
+			return filepath.Join(t.TempDir(), "slimebot"), nil
+		},
+		repoRoot: repoRoot,
+	})
+	defer restore()
+
+	cmd, err := resolveRipgrepCommand()
+	if err != nil {
+		t.Fatalf("resolve ripgrep: %v", err)
+	}
+	if cmd != thirdPartyRG {
+		t.Fatalf("command = %q, want %q", cmd, thirdPartyRG)
 	}
 }

@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"slimebot/internal/constants"
 )
 
 const (
@@ -26,13 +28,13 @@ func init() {
 func (g *grepTool) Name() string { return "grep" }
 
 func (g *grepTool) Description() string {
-	return "Search local file contents with ripgrep regex, glob/type filters, output modes, and pagination."
+	return "Search local file contents with ripgrep regex, glob/type filters, output modes, and pagination. Use glob to locate files by filename."
 }
 
 func (g *grepTool) Commands() []Command {
 	return []Command{{
 		Name:        "search",
-		Description: "Search file contents using ripgrep. Defaults to returning files with matches.",
+		Description: "Search file contents using ripgrep. Defaults to returning files with matches; use glob__find instead when the user is looking for a filename.",
 		Params: []CommandParam{
 			{Name: "pattern", Required: true, Description: "Regular expression pattern to search for.", Example: "func\\s+BuildToolDefs"},
 			{Name: "path", Required: false, Description: "File or directory to search. Defaults to current working directory.", Example: "/path/to/repo"},
@@ -66,6 +68,9 @@ func (g *grepTool) search(ctx context.Context, params map[string]any) (*ExecuteR
 		return nil, fmt.Errorf("pattern is required")
 	}
 	rootRaw := paramStringTrim(params, "path")
+	if rootRaw == "" && constants.ClientSurfaceFromContext(ctx) == constants.ClientSurfaceWeb {
+		return nil, fmt.Errorf("path is required when running from the web server because there is no user working directory")
+	}
 	if rootRaw == "" {
 		rootRaw = "."
 	}

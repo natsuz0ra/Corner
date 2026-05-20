@@ -179,6 +179,29 @@ func TestBuildRuntimeToolDefs_ExposesTodoUpdateAliasOnly(t *testing.T) {
 	}
 }
 
+func TestBuildRuntimeToolDefs_WebRequiresExplicitSearchPath(t *testing.T) {
+	ctx := constants.WithClientSurface(context.Background(), constants.ClientSurfaceWeb)
+	agent := NewAgentService(nil, nil, nil)
+
+	defs, _, err := agent.buildRuntimeToolDefs(ctx, nil, 0)
+	if err != nil {
+		t.Fatalf("buildRuntimeToolDefs failed: %v", err)
+	}
+	for _, name := range []string{"grep__search", "glob__find"} {
+		def := findAgentToolDef(defs, name)
+		if def == nil {
+			t.Fatalf("expected %s tool definition", name)
+		}
+		if !strings.Contains(def.Description, "there is no user working directory") {
+			t.Fatalf("%s description should explain web mode path requirement: %q", name, def.Description)
+		}
+		required, _ := def.Parameters["required"].([]string)
+		if !containsString(required, "path") {
+			t.Fatalf("%s should require path in web mode, required=%#v", name, required)
+		}
+	}
+}
+
 func TestFilterPlanModeToolDefs_KeepsRunSubagentAndReadOnlyTools(t *testing.T) {
 	defs := []llmsvc.ToolDef{
 		{Name: constants.RunSubagentTool},
@@ -220,12 +243,16 @@ func TestFilterPlanModeToolDefs_KeepsRunSubagentAndReadOnlyTools(t *testing.T) {
 }
 
 func containsToolName(defs []llmsvc.ToolDef, name string) bool {
+	return findAgentToolDef(defs, name) != nil
+}
+
+func findAgentToolDef(defs []llmsvc.ToolDef, name string) *llmsvc.ToolDef {
 	for _, d := range defs {
 		if d.Name == name {
-			return true
+			return &d
 		}
 	}
-	return false
+	return nil
 }
 
 func containsString(items []string, want string) bool {

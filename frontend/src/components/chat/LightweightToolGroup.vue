@@ -29,6 +29,10 @@ function statusSymbol(status: LightweightToolDisplay['status']) {
   return ''
 }
 
+function isActiveStatus(status: LightweightToolDisplay['status']) {
+  return status === 'pending' || status === 'reviewing' || status === 'executing'
+}
+
 function toolLabel(toolName: string) {
   return getToolCallLabel(toolName === 'search_file' ? 'search_files' : toolName, (key) => t(key))
 }
@@ -60,8 +64,16 @@ function toggleExpanded() {
     <Transition name="tool-subagent-expand">
       <div v-if="expanded" class="light-tool-list">
         <div v-for="item in items" :key="item.toolCallId" class="light-tool-item">
-          <span :class="['light-tool-status', `light-tool-status--${getToolCallStatusTone(item.status)}`]">
+          <span
+            :class="[
+              'light-tool-status',
+              `light-tool-status--${getToolCallStatusTone(item.status)}`,
+              isActiveStatus(item.status) ? 'light-tool-status--active' : '',
+            ]"
+            :aria-label="getToolCallStatusLabel(item.status, (key) => t(key))"
+          >
             <template v-if="statusSymbol(item.status)">{{ statusSymbol(item.status) }}</template>
+            <span v-else-if="isActiveStatus(item.status)" class="light-tool-running-dot" aria-hidden="true" />
             <span v-else>{{ getToolCallStatusLabel(item.status, (key) => t(key)) }}</span>
           </span>
           <span class="light-tool-item-label">{{ toolLabel(item.toolName) }}</span>
@@ -255,9 +267,17 @@ function toggleExpanded() {
   color: var(--tool-pending-dot, #facc15);
 }
 
-.light-tool-group--running .light-tool-status--pending,
-.light-tool-group--running .light-tool-status--executing {
-  animation: light-tool-status-breathe 1.35s ease-in-out infinite;
+.light-tool-status--active {
+  color: var(--tool-running-dot, #6366f1);
+}
+
+.light-tool-running-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
+  animation: light-tool-running-dot-pulse 1.4s ease-in-out infinite;
 }
 
 .light-tool-error {
@@ -306,16 +326,16 @@ function toggleExpanded() {
   }
 }
 
-@keyframes light-tool-status-breathe {
+@keyframes light-tool-running-dot-pulse {
   0%,
   100% {
-    opacity: 0.72;
-    transform: scale(0.94);
+    opacity: 1;
+    transform: scale(1);
   }
 
   50% {
-    opacity: 1;
-    transform: scale(1);
+    opacity: 0.35;
+    transform: scale(0.8);
   }
 }
 
@@ -344,8 +364,7 @@ function toggleExpanded() {
   }
 
   .light-tool-group--running,
-  .light-tool-group--running .light-tool-status--pending,
-  .light-tool-group--running .light-tool-status--executing,
+  .light-tool-running-dot,
   .light-tool-group--running::before {
     animation: none;
   }

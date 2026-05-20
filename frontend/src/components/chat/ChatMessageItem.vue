@@ -354,7 +354,7 @@ function handleEditKeydown(event: KeyboardEvent) {
 
 <style scoped>
 .user-message-item {
-  margin-block: -4px;
+  margin-block: 2px 8px;
 }
 
 .user-message-shell {
@@ -408,18 +408,27 @@ function handleEditKeydown(event: KeyboardEvent) {
 }
 
 .user-message-shell--actions {
-  padding-bottom: 16px;
+  padding-bottom: 0;
+}
+
+.user-message-shell--actions::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: min(100%, 72px);
+  height: 26px;
+  pointer-events: auto;
 }
 
 .user-message-actions {
-  position: relative;
+  position: absolute;
+  top: calc(100% + 5px);
   right: 2px;
   z-index: 1;
   display: flex;
   gap: 4px;
   min-height: 16px;
-  margin-top: 5px;
-  margin-bottom: -16px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.22s ease;
