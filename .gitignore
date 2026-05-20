@@ -30,3 +30,4 @@ cli/native/color-diff/*.node
 CLAUDE.md
 .omx/
 .opencode/
+third_party/ripgrep/*/
