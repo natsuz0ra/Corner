@@ -136,6 +136,12 @@ test("CLI release bundle opts runtime dependencies back into tsup bundling", () 
   assert.match(source, /__slimebotCreateRequire\(import\.meta\.url\)/);
   assert.match(source, /@slimebot\\\/color-diff-native/);
   assert.match(source, /external:\s*\[\s*["']@slimebot\/color-diff-native["']\s*\]/);
+  assert.match(source, /options\.alias\s*=\s*\{/);
+  assert.match(source, /["']react["']:\s*resolve\(__dirname,\s*["']node_modules\/react\/index\.js["']\)/);
+  assert.match(source, /["']react\/jsx-runtime["']:\s*resolve\(__dirname,\s*["']node_modules\/react\/jsx-runtime\.js["']\)/);
+  assert.match(source, /["']react\/compiler-runtime["']:\s*resolve\(__dirname,\s*["']node_modules\/react\/compiler-runtime\.js["']\)/);
+  assert.match(source, /["']react-reconciler["']:\s*resolve\(__dirname,\s*["']node_modules\/react-reconciler\/index\.js["']\)/);
+  assert.match(source, /["']react-reconciler\/constants\.js["']:\s*resolve\(__dirname,\s*["']node_modules\/react-reconciler\/constants\.js["']\)/);
 });
 
 test("release packaging fails when CLI bundle still imports runtime packages", () => {
@@ -144,6 +150,9 @@ test("release packaging fails when CLI bundle still imports runtime packages", (
   assert.match(source, /assert_cli_bundle_self_contained/);
   assert.match(source, /grep -Fq/);
   assert.match(source, /react\/jsx-runtime/);
+  assert.match(source, /packages\/ink\/node_modules\/react/);
+  assert.match(source, /react_module_count/);
+  assert.match(source, /"node_modules\/react\/index\.js"\(exports, module\)/);
   assert.match(source, /assert_cli_bundle_self_contained "cli\/dist\/index\.js"/);
 });
 

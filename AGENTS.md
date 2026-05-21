@@ -175,6 +175,43 @@ Use release branch names in the `dev/x.y.z` format, matching existing branches s
 
 Pull requests should include a clear summary, test commands run, linked issues when available, and screenshots or short recordings for visible Web/CLI UI changes.
 
+## Release Publishing Notes
+
+Official Release packages are built on GitHub Actions, not locally. After a release branch such as `dev/1.27.1` is merged into `main`, create and push the matching stable tag from the merged `main` commit:
+
+```bash
+git checkout main
+git pull origin main
+git tag v1.27.1
+git push origin v1.27.1
+```
+
+The tag push triggers `.github/workflows/release.yml`, which runs `scripts/package-release.sh` on GitHub and publishes the Release assets. Local packaging commands may be used for verification, but they are not the official publishing path.
+
+Release PR descriptions should use the existing Chinese numbered-list style and include the verification commands that were actually run:
+
+```markdown
+1. 更新版本号或修复摘要
+2. 关键行为变更
+3. 测试或文档补充
+
+验证：
+- npm --prefix cli test
+- go test ./...
+```
+
+GitHub Release notes should use the current bilingual format:
+
+```markdown
+## English
+
+- Short user-facing release note.
+
+## 中文
+
+- 简短的面向用户的发布说明。
+```
+
 ## Security & Configuration Tips
 
 Runtime data defaults to `~/.slimebot`. Do not commit `config.cfg`, legacy `.env`, SQLite data, uploads, API keys, JWT secrets, or local `.slimebot` directories. Server mode requires `JWT_SECRET`; CLI headless mode can generate one automatically.
