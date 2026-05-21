@@ -14,16 +14,18 @@ import SettingsLLMTab from '@/components/settings/SettingsLLMTab.vue'
 import SettingsMCPTab from '@/components/settings/SettingsMCPTab.vue'
 import SettingsSkillsTab from '@/components/settings/SettingsSkillsTab.vue'
 import SettingsAgentsTab from '@/components/settings/SettingsAgentsTab.vue'
+import SettingsMemoryTab from '@/components/settings/SettingsMemoryTab.vue'
 import SettingsPlatformTab from '@/components/settings/SettingsPlatformTab.vue'
 import SettingsAboutTab from '@/components/settings/SettingsAboutTab.vue'
 import AccountEditDialog from '@/components/settings/AccountEditDialog.vue'
 import { llmAPI } from '@/api/llm'
 import { mcpAPI } from '@/api/mcp'
 import { settingAPI } from '@/api/settings'
+import { memoryAPI } from '@/api/memory'
 import { agentsInstructionsAPI } from '@/api/agentsInstructions'
 import { skillsAPI } from '@/api/skills'
 import { messagePlatformAPI } from '@/api/messagePlatform'
-import type { AppSettings, ApprovalMode, LLMConfig, MCPConfig, MessagePlatformConfig, SandboxMode, SettingsTabKey, SkillItem, ThinkingLevel } from '@/types/settings'
+import type { AppSettings, ApprovalMode, LLMConfig, MCPConfig, MemorySnapshot, MemoryTarget, MessagePlatformConfig, SandboxMode, SettingsTabKey, SkillItem, ThinkingLevel } from '@/types/settings'
 import { useToast } from '@/composables/useToast'
 import { useSettingsLLM } from '@/composables/settings/useSettingsLLM'
 import { useSettingsMCP } from '@/composables/settings/useSettingsMCP'
@@ -63,6 +65,7 @@ const settingsTabs: { key: SettingsTabKey; labelKey: string }[] = [
   { key: 'mcp', labelKey: 'mcpSettings' },
   { key: 'skills', labelKey: 'skillsSettings' },
   { key: 'agents', labelKey: 'agentsSettings' },
+  { key: 'memory', labelKey: 'memorySettings' },
   { key: 'platform', labelKey: 'messagePlatformSettings' },
   { key: 'about', labelKey: 'aboutSettings' },
 ]
@@ -92,6 +95,12 @@ const messagePlatformSubmitting = ref(false)
 const messagePlatformDefaultModel = ref('')
 const messagePlatformThinkingLevel = ref<ThinkingLevel>('off')
 const messagePlatformApprovalMode = ref<ApprovalMode>('standard')
+const memoryEnabled = ref(true)
+const memoryUserProfileEnabled = ref(true)
+const memoryCharLimit = ref(2200)
+const memoryUserCharLimit = ref(1375)
+const memoryNudgeInterval = ref(10)
+const memorySnapshot = ref<MemorySnapshot | null>(null)
 const sandboxModeOptions = computed(() => createWebSandboxModeOptions((key) => t(key)))
 const { confirmDialogVisible, openConfirmDialog, runConfirmDialog } = useSettingsConfirmDialog()
 const {
@@ -199,6 +208,11 @@ async function loadData() {
     webSearchKey.value = appSettings.webSearchKey || ''
     sandboxMode.value = toWebSandboxMode(appSettings.sandboxMode || 'workspace-write')
     sandboxNetworkEnabled.value = appSettings.sandboxNetworkEnabled !== undefined ? appSettings.sandboxNetworkEnabled : true
+    memoryEnabled.value = appSettings.memoryEnabled !== undefined ? appSettings.memoryEnabled : true
+    memoryUserProfileEnabled.value = appSettings.memoryUserProfileEnabled !== undefined ? appSettings.memoryUserProfileEnabled : true
+    memoryCharLimit.value = appSettings.memoryCharLimit || 2200
+    memoryUserCharLimit.value = appSettings.memoryUserCharLimit || 1375
+    memoryNudgeInterval.value = appSettings.memoryNudgeInterval || 10
     llmList.value = await llmAPI.list()
     mcpList.value = await mcpAPI.list()
     skillsList.value = await skillsAPI.list()
@@ -206,9 +220,14 @@ async function loadData() {
     agentsInstructionsContent.value = agentsInstructions.content
     agentsInstructionsPath.value = agentsInstructions.path
     messagePlatformList.value = await messagePlatformAPI.list()
+    await loadMemorySnapshot()
   } finally {
     loading.value = false
   }
+}
+
+async function loadMemorySnapshot() {
+  memorySnapshot.value = await memoryAPI.get()
 }
 
 async function onLanguageChange(nextLanguage: LanguageCode) {
@@ -237,6 +256,73 @@ async function onSandboxNetworkChange(enabled: boolean) {
     const response = err as { response?: { data?: { error?: string } } }
     toast.error(response.response?.data?.error || t('sandboxSaveFailed'))
   }
+}
+
+async function saveMemorySetting<K extends keyof AppSettings>(key: K, value: AppSettings[K], rollback: () => void) {
+  try {
+    await settingAPI.update({ [key]: value } as Partial<AppSettings>)
+    await loadMemorySnapshot()
+  } catch (err: unknown) {
+    rollback()
+    const response = err as { response?: { data?: { error?: string } } }
+    toast.error(response.response?.data?.error || t('memorySaveFailed'))
+  }
+}
+
+function onMemoryEnabledChange(enabled: boolean) {
+  const previous = memoryEnabled.value
+  memoryEnabled.value = enabled
+  void saveMemorySetting('memoryEnabled', enabled, () => {
+    memoryEnabled.value = previous
+  })
+}
+
+function onMemoryUserProfileEnabledChange(enabled: boolean) {
+  const previous = memoryUserProfileEnabled.value
+  memoryUserProfileEnabled.value = enabled
+  void saveMemorySetting('memoryUserProfileEnabled', enabled, () => {
+    memoryUserProfileEnabled.value = previous
+  })
+}
+
+function onMemoryCharLimitChange(value: number) {
+  const previous = memoryCharLimit.value
+  memoryCharLimit.value = value
+  void saveMemorySetting('memoryCharLimit', value, () => {
+    memoryCharLimit.value = previous
+  })
+}
+
+function onMemoryUserCharLimitChange(value: number) {
+  const previous = memoryUserCharLimit.value
+  memoryUserCharLimit.value = value
+  void saveMemorySetting('memoryUserCharLimit', value, () => {
+    memoryUserCharLimit.value = previous
+  })
+}
+
+function onMemoryNudgeIntervalChange(value: number) {
+  const previous = memoryNudgeInterval.value
+  memoryNudgeInterval.value = value
+  void saveMemorySetting('memoryNudgeInterval', value, () => {
+    memoryNudgeInterval.value = previous
+  })
+}
+
+function clearMemoryTarget(target: MemoryTarget | 'all') {
+  openConfirmDialog(async () => {
+    await memoryAPI.clear(target)
+    await loadMemorySnapshot()
+    toast.success(t('memoryUpdated'))
+  })
+}
+
+function deleteMemoryEntry(target: MemoryTarget, index: number) {
+  openConfirmDialog(async () => {
+    await memoryAPI.deleteEntry(target, index)
+    await loadMemorySnapshot()
+    toast.success(t('memoryUpdated'))
+  })
 }
 
 function openAccountDialog() {
@@ -401,6 +487,23 @@ watch(tab, (nextTab) => {
           :path="agentsInstructionsPath"
           :saving="agentsInstructionsSaving"
           @save="saveAgentsInstructions"
+        />
+
+        <SettingsMemoryTab
+          v-if="tab === 'memory'"
+          :memory-enabled="memoryEnabled"
+          :memory-user-profile-enabled="memoryUserProfileEnabled"
+          :memory-char-limit="memoryCharLimit"
+          :memory-user-char-limit="memoryUserCharLimit"
+          :memory-nudge-interval="memoryNudgeInterval"
+          :memory-snapshot="memorySnapshot"
+          @memory-enabled-change="onMemoryEnabledChange"
+          @memory-user-profile-enabled-change="onMemoryUserProfileEnabledChange"
+          @memory-char-limit-change="onMemoryCharLimitChange"
+          @memory-user-char-limit-change="onMemoryUserCharLimitChange"
+          @memory-nudge-interval-change="onMemoryNudgeIntervalChange"
+          @delete-entry="deleteMemoryEntry"
+          @clear-target="clearMemoryTarget"
         />
 
         <SettingsPlatformTab

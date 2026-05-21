@@ -10,6 +10,7 @@ import (
 	agentssvc "slimebot/internal/services/agents"
 	chatsvc "slimebot/internal/services/chat"
 	configsvc "slimebot/internal/services/config"
+	memorysvc "slimebot/internal/services/memory"
 	sessionsvc "slimebot/internal/services/session"
 	settingssvc "slimebot/internal/services/settings"
 	"slimebot/internal/updater"
@@ -32,6 +33,12 @@ type sessionService interface {
 type settingsService interface {
 	Get(ctx context.Context) (*settingssvc.AppSettings, error)
 	Update(ctx context.Context, input settingssvc.UpdateSettingsInput) error
+}
+
+type memoryService interface {
+	Snapshot(ctx context.Context) (memorysvc.Snapshot, error)
+	Clear(ctx context.Context, target memorysvc.Target) (memorysvc.TargetState, error)
+	RemoveIndex(ctx context.Context, target memorysvc.Target, index int) (memorysvc.TargetState, error)
 }
 
 type agentsInstructionsService interface {
@@ -91,6 +98,7 @@ type HTTPController struct {
 	skillRuntime skillRuntimeService
 	chatUploads  chatUploadService
 	settings     settingsService
+	memory       memoryService
 	agents       agentsInstructionsService
 	auth         authService
 	sessions     sessionService
@@ -142,4 +150,8 @@ func (h *HTTPController) SetAgentsInstructionsService(service agentsInstructions
 
 func (h *HTTPController) SetUpdateService(service updateService) {
 	h.update = service
+}
+
+func (h *HTTPController) SetMemoryService(service memoryService) {
+	h.memory = service
 }

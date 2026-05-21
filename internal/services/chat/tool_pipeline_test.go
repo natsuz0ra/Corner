@@ -169,10 +169,11 @@ func TestBuildToolDefs_FileToolSchemas(t *testing.T) {
 		"file_read__read":      {},
 		"file_edit__edit":      {},
 		"file_write__write":    {},
+		"glob__find":           {"pattern"},
+		"grep__search":         {"pattern"},
 		"process__list":        {},
 		"process__status":      {},
 		"process__stop":        {},
-		"search_files__search": {},
 		"skills__list":         {},
 		"skills__view":         {},
 		"todo__list":           {},
@@ -220,18 +221,40 @@ func TestBuildToolDefs_FileReadDescriptionPrefersBatchRanges(t *testing.T) {
 	}
 }
 
-func TestBuildToolDefs_SearchFilesSchemaIncludesPerFileLimit(t *testing.T) {
+func TestBuildToolDefs_GrepAndGlobSchemasExposePagination(t *testing.T) {
 	defs := BuildToolDefs()
-	def := findToolDef(defs, "search_files__search")
-	if def == nil {
-		t.Fatal("expected search_files__search tool definition")
+	grepDef := findToolDef(defs, "grep__search")
+	if grepDef == nil {
+		t.Fatal("expected grep__search tool definition")
 	}
-	properties, ok := def.Parameters["properties"].(map[string]any)
+	if !strings.Contains(grepDef.Description, "use glob__find instead when the user is looking for a filename") {
+		t.Fatalf("grep__search description should steer filename searches to glob: %q", grepDef.Description)
+	}
+	grepProps, ok := grepDef.Parameters["properties"].(map[string]any)
 	if !ok {
-		t.Fatalf("search_files parameters.properties has unexpected type: %#v", def.Parameters["properties"])
+		t.Fatalf("grep parameters.properties has unexpected type: %#v", grepDef.Parameters["properties"])
 	}
-	if _, ok := properties["max_matches_per_file"]; !ok {
-		t.Fatalf("search_files__search missing max_matches_per_file property: %#v", properties)
+	for _, prop := range []string{"pattern", "output_mode", "head_limit", "offset"} {
+		if _, ok := grepProps[prop]; !ok {
+			t.Fatalf("grep__search missing %s property: %#v", prop, grepProps)
+		}
+	}
+
+	globDef := findToolDef(defs, "glob__find")
+	if globDef == nil {
+		t.Fatal("expected glob__find tool definition")
+	}
+	if !strings.Contains(globDef.Description, "set path to ~/Downloads") {
+		t.Fatalf("glob__find description should mention Downloads path handling: %q", globDef.Description)
+	}
+	globProps, ok := globDef.Parameters["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("glob parameters.properties has unexpected type: %#v", globDef.Parameters["properties"])
+	}
+	for _, prop := range []string{"pattern", "limit", "offset"} {
+		if _, ok := globProps[prop]; !ok {
+			t.Fatalf("glob__find missing %s property: %#v", prop, globProps)
+		}
 	}
 }
 

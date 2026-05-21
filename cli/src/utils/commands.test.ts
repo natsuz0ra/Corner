@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { SUPPORTED_COMMANDS } from "../types.js";
+import type { CliCommandHandlers } from "../controllers/commands.js";
+import { runCliCommand } from "../controllers/commands.js";
 import { completeCommand, getVisibleCommandHints, matchCommandHints, moveCommandHintCursor } from "./commands.js";
 
 test("matchCommandHints returns all commands for slash input", () => {
@@ -14,8 +16,42 @@ test("matchCommandHints returns all commands for slash input", () => {
 test("matchCommandHints returns matching command prefixes", () => {
   assert.deepEqual(
     matchCommandHints("/m").map((hint) => hint.command),
-    ["/model", "/mcp"],
+    ["/model", "/memory", "/mcp"],
   );
+});
+
+test("matchCommandHints includes memory command", () => {
+  assert.deepEqual(
+    matchCommandHints("/mem").map((hint) => hint.command),
+    ["/memory"],
+  );
+});
+
+test("memory command routes to console loader and keeps reset shortcut", async () => {
+  const calls: string[] = [];
+  const handlers: CliCommandHandlers = {
+    newSession: () => calls.push("new"),
+    loadSessions: async () => { calls.push("sessions"); },
+    loadModels: async () => { calls.push("models"); },
+    loadSubagentModels: async () => { calls.push("subagent"); },
+    toggleApprovalMode: async () => { calls.push("approval"); },
+    toggleThinkingLevel: () => calls.push("effort"),
+    setThinkingLevel: (level) => calls.push(`effort:${level}`),
+    loadSandboxSettings: async () => { calls.push("sandbox"); },
+    loadMemory: async () => { calls.push("memory"); },
+    resetMemory: async (target) => { calls.push(`reset:${target}`); },
+    loadUpdate: async () => { calls.push("update"); },
+    loadSkills: async () => { calls.push("skills"); },
+    loadMCPConfigs: async () => { calls.push("mcp"); },
+    showHelp: () => calls.push("help"),
+    togglePlanMode: () => calls.push("plan"),
+    unknownCommand: (cmd) => calls.push(`unknown:${cmd}`),
+  };
+
+  await runCliCommand("/memory", handlers);
+  await runCliCommand("/memory reset user", handlers);
+
+  assert.deepEqual(calls, ["memory", "reset:user"]);
 });
 
 test("matchCommandHints includes sandbox command", () => {
@@ -38,7 +74,7 @@ test("matchCommandHints ignores completed commands with trailing content", () =>
 });
 
 test("completeCommand fills the selected matching command", () => {
-  assert.equal(completeCommand("/m", 1), "/mcp");
+  assert.equal(completeCommand("/m", 2), "/mcp");
 });
 
 test("completeCommand safely clamps out-of-range selected indexes", () => {

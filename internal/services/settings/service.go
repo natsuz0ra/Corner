@@ -9,6 +9,7 @@ import (
 	"slimebot/internal/domain"
 	"slimebot/internal/runtime"
 	sandboxpolicy "slimebot/internal/sandbox"
+	"strconv"
 	"strings"
 )
 
@@ -30,6 +31,11 @@ type AppSettings struct {
 	CLISandboxWritableRoots         []string
 	CLISandboxNetworkEnabled        bool
 	CLISandboxNetworkAllowedDomains []string
+	MemoryEnabled                   bool
+	MemoryUserProfileEnabled        bool
+	MemoryCharLimit                 int
+	MemoryUserCharLimit             int
+	MemoryNudgeInterval             int
 }
 
 // UpdateSettingsInput is the domain input for partial settings updates.
@@ -50,6 +56,11 @@ type UpdateSettingsInput struct {
 	CLISandboxWritableRoots         *[]string
 	CLISandboxNetworkEnabled        *bool
 	CLISandboxNetworkAllowedDomains *[]string
+	MemoryEnabled                   *bool
+	MemoryUserProfileEnabled        *bool
+	MemoryCharLimit                 *int
+	MemoryUserCharLimit             *int
+	MemoryNudgeInterval             *int
 }
 
 type SettingsService struct {
@@ -144,6 +155,26 @@ func (s *SettingsService) Get(ctx context.Context) (*AppSettings, error) {
 	if err != nil {
 		return nil, err
 	}
+	memoryEnabled, err := s.getBoolStringSetting(ctx, constants.SettingMemoryEnabled, true)
+	if err != nil {
+		return nil, err
+	}
+	memoryUserProfileEnabled, err := s.getBoolStringSetting(ctx, constants.SettingMemoryUserProfileEnabled, true)
+	if err != nil {
+		return nil, err
+	}
+	memoryCharLimit, err := s.getIntStringSetting(ctx, constants.SettingMemoryCharLimit, 2200, 200, 20000)
+	if err != nil {
+		return nil, err
+	}
+	memoryUserCharLimit, err := s.getIntStringSetting(ctx, constants.SettingMemoryUserCharLimit, 1375, 200, 20000)
+	if err != nil {
+		return nil, err
+	}
+	memoryNudgeInterval, err := s.getIntStringSetting(ctx, constants.SettingMemoryNudgeInterval, 10, 1, 100)
+	if err != nil {
+		return nil, err
+	}
 	return &AppSettings{
 		Language:                        language,
 		DefaultModel:                    defaultModel,
@@ -161,6 +192,11 @@ func (s *SettingsService) Get(ctx context.Context) (*AppSettings, error) {
 		CLISandboxWritableRoots:         cliSandboxWritableRoots,
 		CLISandboxNetworkEnabled:        cliSandboxNetworkEnabled,
 		CLISandboxNetworkAllowedDomains: cliSandboxNetworkAllowedDomains,
+		MemoryEnabled:                   memoryEnabled,
+		MemoryUserProfileEnabled:        memoryUserProfileEnabled,
+		MemoryCharLimit:                 memoryCharLimit,
+		MemoryUserCharLimit:             memoryUserCharLimit,
+		MemoryNudgeInterval:             memoryNudgeInterval,
 	}, nil
 }
 
@@ -269,6 +305,40 @@ func (s *SettingsService) Update(ctx context.Context, input UpdateSettingsInput)
 			return err
 		}
 	}
+	if input.MemoryEnabled != nil {
+		if err := s.store.SetSetting(ctx, constants.SettingMemoryEnabled, fmt.Sprintf("%t", *input.MemoryEnabled)); err != nil {
+			return err
+		}
+	}
+	if input.MemoryUserProfileEnabled != nil {
+		if err := s.store.SetSetting(ctx, constants.SettingMemoryUserProfileEnabled, fmt.Sprintf("%t", *input.MemoryUserProfileEnabled)); err != nil {
+			return err
+		}
+	}
+	if input.MemoryCharLimit != nil {
+		if err := validateRange("memory char limit", *input.MemoryCharLimit, 200, 20000); err != nil {
+			return err
+		}
+		if err := s.store.SetSetting(ctx, constants.SettingMemoryCharLimit, strconv.Itoa(*input.MemoryCharLimit)); err != nil {
+			return err
+		}
+	}
+	if input.MemoryUserCharLimit != nil {
+		if err := validateRange("memory user char limit", *input.MemoryUserCharLimit, 200, 20000); err != nil {
+			return err
+		}
+		if err := s.store.SetSetting(ctx, constants.SettingMemoryUserCharLimit, strconv.Itoa(*input.MemoryUserCharLimit)); err != nil {
+			return err
+		}
+	}
+	if input.MemoryNudgeInterval != nil {
+		if err := validateRange("memory nudge interval", *input.MemoryNudgeInterval, 1, 100); err != nil {
+			return err
+		}
+		if err := s.store.SetSetting(ctx, constants.SettingMemoryNudgeInterval, strconv.Itoa(*input.MemoryNudgeInterval)); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -340,4 +410,29 @@ func (s *SettingsService) getBoolStringSetting(ctx context.Context, key string, 
 	default:
 		return false, fmt.Errorf("invalid boolean setting %s: %s", key, raw)
 	}
+}
+
+func (s *SettingsService) getIntStringSetting(ctx context.Context, key string, fallback int, min int, max int) (int, error) {
+	raw, err := s.store.GetSetting(ctx, key)
+	if err != nil {
+		return 0, err
+	}
+	if strings.TrimSpace(raw) == "" {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return 0, fmt.Errorf("invalid integer setting %s: %s", key, raw)
+	}
+	if err := validateRange(key, value, min, max); err != nil {
+		return 0, err
+	}
+	return value, nil
+}
+
+func validateRange(name string, value int, min int, max int) error {
+	if value < min || value > max {
+		return fmt.Errorf("%s must be between %d and %d", name, min, max)
+	}
+	return nil
 }

@@ -36,6 +36,8 @@ export interface CliCommandHandlers {
   toggleThinkingLevel: () => void;
   setThinkingLevel: (level: string) => void;
   loadSandboxSettings: () => Promise<void>;
+  loadMemory: () => Promise<void>;
+  resetMemory: (target: string) => Promise<void>;
   loadUpdate: () => Promise<void>;
   loadSkills: () => Promise<void>;
   loadMCPConfigs: () => Promise<void>;
@@ -76,6 +78,14 @@ export async function runCliCommand(raw: string, handlers: CliCommandHandlers): 
   }
   if (cmd === "/sandbox") {
     await handlers.loadSandboxSettings();
+    return;
+  }
+  if (cmd === "/memory") {
+    await handlers.loadMemory();
+    return;
+  }
+  if (cmd.startsWith("/memory reset ")) {
+    await handlers.resetMemory(cmd.slice("/memory reset ".length).trim());
     return;
   }
   if (cmd === "/update") {

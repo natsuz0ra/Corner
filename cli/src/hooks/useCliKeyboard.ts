@@ -4,6 +4,7 @@ import type React from "react";
 import type { AppAction, AppState, MCPTemplate, MenuItem, ModelProvider } from "../types.js";
 import { handleChatShortcut } from "../controllers/commands.js";
 import { adjustContextSize, clampContextSize } from "../utils/contextSize.js";
+import { sanitizeMemoryConsoleDraft } from "../utils/memoryConsole.js";
 import { MCP_TEMPLATES } from "../types.js";
 import type { CLISocket } from "../ws/socket.js";
 
@@ -24,6 +25,9 @@ interface UseCliKeyboardProps {
   handleMenuToggle: (item: MenuItem | undefined) => Promise<void>;
   loadUpdate: () => Promise<void>;
   applyUpdate: () => Promise<void>;
+  loadMemory: () => Promise<void>;
+  handleMemoryConsoleSelect: () => Promise<void>;
+  saveMemoryConsoleDraft: () => Promise<void>;
   loadMCPConfigs: () => Promise<void>;
   loadModels: () => Promise<void>;
   saveMCPConfig: () => Promise<void>;
@@ -181,6 +185,9 @@ export function useCliKeyboard({
   handleMenuToggle,
   loadUpdate,
   applyUpdate,
+  loadMemory,
+  handleMemoryConsoleSelect,
+  saveMemoryConsoleDraft,
   loadMCPConfigs,
   loadModels,
   saveMCPConfig,
@@ -352,6 +359,58 @@ export function useCliKeyboard({
       }
       if (input === "u" || input === "U") {
         void applyUpdate();
+      }
+      return;
+    }
+
+    if (state.view === "memory-console") {
+      if (state.memoryMode === "edit") {
+        if (key.escape) {
+          dispatch({ type: "MEMORY_CONSOLE_SET_MODE", mode: "actions", message: "" });
+          return;
+        }
+        if (key.return) {
+          void saveMemoryConsoleDraft();
+          return;
+        }
+        if (key.backspace || key.delete) {
+          dispatch({ type: "MEMORY_CONSOLE_SET_DRAFT", draft: state.memoryDraft.slice(0, -1) });
+          return;
+        }
+        if (!key.ctrl && !key.meta && input) {
+          const nextDraft = sanitizeMemoryConsoleDraft(state.memoryDraft + input);
+          if (nextDraft !== state.memoryDraft) {
+            dispatch({ type: "MEMORY_CONSOLE_SET_DRAFT", draft: nextDraft });
+          }
+        }
+        return;
+      }
+      if (key.escape) {
+        if (state.memoryMode === "actions") {
+          dispatch({ type: "SET_VIEW", view: "chat" });
+        } else {
+          dispatch({ type: "MEMORY_CONSOLE_SET_MODE", mode: "actions", message: "" });
+        }
+        return;
+      }
+      if (input === "r" || input === "R") {
+        dispatch({ type: "MEMORY_CONSOLE_SET_MODE", mode: "reset", message: "" });
+        return;
+      }
+      if (input === "c" || input === "C") {
+        void loadMemory();
+        return;
+      }
+      if (key.upArrow) {
+        dispatch({ type: "MEMORY_CONSOLE_NAV", delta: -1 });
+        return;
+      }
+      if (key.downArrow) {
+        dispatch({ type: "MEMORY_CONSOLE_NAV", delta: 1 });
+        return;
+      }
+      if (key.return) {
+        void handleMemoryConsoleSelect();
       }
       return;
     }

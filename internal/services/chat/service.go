@@ -11,6 +11,7 @@ import (
 	"slimebot/internal/mcp"
 	agentssvc "slimebot/internal/services/agents"
 	llmsvc "slimebot/internal/services/llm"
+	memorysvc "slimebot/internal/services/memory"
 	plansvc "slimebot/internal/services/plan"
 	skillsvc "slimebot/internal/services/skill"
 )
@@ -26,6 +27,7 @@ type ChatService struct {
 	settingsStore   domain.SettingsStore
 	providerFactory *llmsvc.Factory
 	agent           *AgentService
+	memory          *memorysvc.Service
 	skillRuntime    *skillsvc.SkillRuntimeService
 	planService     *plansvc.PlanService
 	uploads         *ChatUploadService
@@ -47,6 +49,10 @@ type ChatService struct {
 	platformModelAt time.Time
 
 	contextHistoryRounds int
+
+	memoryReviewMu      sync.Mutex
+	memoryReviewTurns   map[string]int
+	memoryReviewTouched map[string]time.Time
 }
 
 // chatStreamAccumulator collects streamed text and the first push error, if any.
@@ -81,11 +87,20 @@ func NewChatService(store domain.ChatStore, settingsStore domain.SettingsStore, 
 		titleGen:             newTitleGenerator(providerFactory, store),
 		skillsBySess:         make(map[string]map[string]struct{}),
 		skillTouchedAt:       make(map[string]time.Time),
+		memoryReviewTurns:    make(map[string]int),
+		memoryReviewTouched:  make(map[string]time.Time),
 		contextHistoryRounds: constants.DefaultContextHistoryRounds,
 	}
 	s.agent = NewAgentService(providerFactory, mcpManager, skillRuntime)
 	s.agent.SetSubagentHost(s)
 	return s
+}
+
+func (s *ChatService) SetMemoryService(service *memorysvc.Service) {
+	s.memory = service
+	if s.agent != nil {
+		s.agent.SetMemoryService(service)
+	}
 }
 
 // SetContextHistoryRounds sets conversation history size in rounds (one round=user+assistant).

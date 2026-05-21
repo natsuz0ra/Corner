@@ -1,7 +1,8 @@
 export type ApprovalMode = 'standard' | 'auto_review' | 'auto'
 export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high' | 'max'
 export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
-export type SettingsTabKey = 'basic' | 'llm' | 'mcp' | 'skills' | 'agents' | 'platform' | 'about'
+export type SettingsTabKey = 'basic' | 'llm' | 'mcp' | 'skills' | 'agents' | 'memory' | 'platform' | 'about'
+export type MemoryTarget = 'memory' | 'user'
 
 export interface AppSettings {
   language: 'zh-CN' | 'en-US'
@@ -20,6 +21,29 @@ export interface AppSettings {
   cliSandboxWritableRoots?: string[]
   cliSandboxNetworkEnabled?: boolean
   cliSandboxNetworkAllowedDomains?: string[]
+  memoryEnabled?: boolean
+  memoryUserProfileEnabled?: boolean
+  memoryCharLimit?: number
+  memoryUserCharLimit?: number
+  memoryNudgeInterval?: number
+}
+
+export interface MemoryTargetState {
+  target: MemoryTarget
+  entries: string[]
+  usageChars: number
+  charLimit: number
+  entryCount: number
+  enabled: boolean
+}
+
+export interface MemorySnapshot {
+  memory: MemoryTargetState
+  user: MemoryTargetState
+  memoryEnabled: boolean
+  memoryUserProfileEnabled: boolean
+  memoryNudgeInterval: number
+  memoryDirectory: string
 }
 
 export interface LLMConfig {

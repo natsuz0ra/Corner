@@ -40,6 +40,8 @@ const BUILTIN_TIMELINE_TOOL_NAMES = new Set([
   "http_request",
   "process",
   "run_subagent",
+  "glob",
+  "grep",
   "search_file",
   "search_files",
   "skills",

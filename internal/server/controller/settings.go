@@ -30,6 +30,11 @@ func (h *HTTPController) GetSettings(c WebContext) {
 		"cliSandboxWritableRoots":         settings.CLISandboxWritableRoots,
 		"cliSandboxNetworkEnabled":        settings.CLISandboxNetworkEnabled,
 		"cliSandboxNetworkAllowedDomains": settings.CLISandboxNetworkAllowedDomains,
+		"memoryEnabled":                   settings.MemoryEnabled,
+		"memoryUserProfileEnabled":        settings.MemoryUserProfileEnabled,
+		"memoryCharLimit":                 settings.MemoryCharLimit,
+		"memoryUserCharLimit":             settings.MemoryUserCharLimit,
+		"memoryNudgeInterval":             settings.MemoryNudgeInterval,
 	})
 }
 
@@ -52,6 +57,11 @@ func (h *HTTPController) UpdateSettings(c WebContext) {
 		CLISandboxWritableRoots         *[]string `json:"cliSandboxWritableRoots"`
 		CLISandboxNetworkEnabled        *bool     `json:"cliSandboxNetworkEnabled"`
 		CLISandboxNetworkAllowedDomains *[]string `json:"cliSandboxNetworkAllowedDomains"`
+		MemoryEnabled                   *bool     `json:"memoryEnabled"`
+		MemoryUserProfileEnabled        *bool     `json:"memoryUserProfileEnabled"`
+		MemoryCharLimit                 *int      `json:"memoryCharLimit"`
+		MemoryUserCharLimit             *int      `json:"memoryUserCharLimit"`
+		MemoryNudgeInterval             *int      `json:"memoryNudgeInterval"`
 	}
 	if !bindJSONOrBadRequest(c, &req, "Invalid request payload format.") {
 		return
@@ -73,6 +83,11 @@ func (h *HTTPController) UpdateSettings(c WebContext) {
 		CLISandboxWritableRoots:         req.CLISandboxWritableRoots,
 		CLISandboxNetworkEnabled:        req.CLISandboxNetworkEnabled,
 		CLISandboxNetworkAllowedDomains: req.CLISandboxNetworkAllowedDomains,
+		MemoryEnabled:                   req.MemoryEnabled,
+		MemoryUserProfileEnabled:        req.MemoryUserProfileEnabled,
+		MemoryCharLimit:                 req.MemoryCharLimit,
+		MemoryUserCharLimit:             req.MemoryUserCharLimit,
+		MemoryNudgeInterval:             req.MemoryNudgeInterval,
 	})
 	if err != nil {
 		jsonInternalError(c, err)

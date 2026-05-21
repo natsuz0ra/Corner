@@ -11,6 +11,8 @@ import type {
   MCPConfig,
   Skill,
   Settings,
+  MemorySnapshot,
+  MemoryTarget,
   ContextUsage,
   UpdateCheckResult,
   UpdateJobStatus,
@@ -97,6 +99,14 @@ export class APIClient {
       method: "PUT",
       body: JSON.stringify(data),
     }).then(() => {});
+  }
+
+  getMemory(): Promise<MemorySnapshot> {
+    return this.request("/api/memory");
+  }
+
+  clearMemory(target: MemoryTarget | "all"): Promise<void> {
+    return this.request(`/api/memory/${target}`, { method: "DELETE" }).then(() => {});
   }
 
   // ===== Updates =====

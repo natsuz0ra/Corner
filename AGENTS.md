@@ -8,6 +8,8 @@ Top-level navigation:
 
 ```text
 .
+├─ .github/
+│  └─ workflows/             # GitHub Actions CI/release workflows
 ├─ cmd/                      # Go entrypoints
 │  ├─ server/                # HTTP/WebSocket server bootstrap
 │  └─ cli/                   # Headless CLI bridge bootstrap
@@ -17,6 +19,7 @@ Top-level navigation:
 ├─ prompts/                  # Embedded prompts and templates
 ├─ scripts/                  # Release packaging and install scripts
 ├─ docs/                     # Manual deployment and longer-form docs
+├─ third_party/              # Third-party runtime binaries copied into release packages
 ├─ web/                      # Built frontend assets served by backend
 └─ assets/                   # README screenshots and images
 ```
@@ -54,6 +57,7 @@ internal/
 │  ├─ chat/                  # Chat orchestration
 │  ├─ config/                # Config service logic
 │  ├─ llm/                   # LLM abstraction/service
+│  ├─ memory/                # Long-term file memory store/service
 │  ├─ openai/                # OpenAI provider integration
 │  ├─ plan/                  # Planning workflow logic
 │  ├─ session/               # Session lifecycle/state
@@ -107,15 +111,20 @@ Quick index (feature -> first place to inspect):
 - WebSocket server flow: `internal/server/ws/`
 - Sandbox policy and command isolation: `internal/sandbox/`
 - LLM abstraction/provider wiring: `internal/services/llm/`, `internal/services/openai/`, `internal/services/anthropic/`
+- Long-term memory store/service: `internal/services/memory/`, `internal/tools/memory.go`
 - Tool implementations: `internal/tools/`
 - Update checking/apply flow: `internal/updater/`, `internal/server/controller/update.go`
 - Build/version metadata: `internal/version/`
 - Web settings page UI: `frontend/src/components/settings/`, `frontend/src/composables/settings/`, `frontend/src/pages/`
+- Web memory settings: `frontend/src/components/settings/SettingsMemoryTab.vue`, `frontend/src/api/memory.ts`
 - Web update center: `frontend/src/components/settings/SettingsAboutTab.vue`, `frontend/src/api/update.ts`
 - CLI interaction flow: `cmd/cli/`, `cli/src/controllers/`, `cli/src/components/`, `cli/src/ws/`
+- CLI memory command: `/memory` routing in `cli/src/controllers/commands.ts`, API in `cli/src/api/client.ts`
 - CLI update view: `cli/src/components/UpdateView.tsx`, `/update` command routing in `cli/src/controllers/commands.ts`
 - Prompt templates: `prompts/`
 - Release/install packaging: `scripts/`
+- GitHub Release automation: `.github/workflows/release.yml`
+- Bundled ripgrep binaries for release packages: `third_party/ripgrep/`
 - Manual deployment docs: `docs/`
 
 Notes:

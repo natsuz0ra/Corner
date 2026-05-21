@@ -12,6 +12,7 @@ import (
 	"slimebot/internal/domain"
 	agentssvc "slimebot/internal/services/agents"
 	llmsvc "slimebot/internal/services/llm"
+	memorysvc "slimebot/internal/services/memory"
 )
 
 type stubAgentsInstructions struct {
@@ -135,6 +136,34 @@ func TestBuildContextMessages_ServerMode_NoWorkingDir(t *testing.T) {
 				t.Fatal("server mode should not include working directory")
 			}
 		}
+	}
+}
+
+func TestBuildContextMessages_IncludesMemoryInDynamicTail(t *testing.T) {
+	repo := newTestRepo(t)
+	memoryService := memorysvc.NewService(memorysvc.NewStore(t.TempDir()), memorysvc.NewStaticSettings(memorysvc.DefaultConfig()))
+	if _, err := memoryService.Add(context.Background(), memorysvc.TargetMemory, "当前项目使用 go test ./... 回归。"); err != nil {
+		t.Fatalf("Add memory failed: %v", err)
+	}
+	if _, err := memoryService.Add(context.Background(), memorysvc.TargetUser, "用户偏好中文回复。"); err != nil {
+		t.Fatalf("Add user failed: %v", err)
+	}
+	svc := NewChatService(repo, nil, nil, nil, nil)
+	svc.SetMemoryService(memoryService)
+	ctx := context.Background()
+
+	msgs, err := svc.BuildContextMessages(ctx, "session-memory", llmsvc.ModelRuntimeConfig{})
+	if err != nil {
+		t.Fatalf("BuildContextMessages failed: %v", err)
+	}
+	if len(msgs) < 2 {
+		t.Fatalf("expected dynamic tail message, got %#v", msgs)
+	}
+	if !strings.Contains(msgs[1].Content, "MEMORY (your personal notes)") || !strings.Contains(msgs[1].Content, "USER PROFILE (who the user is)") {
+		t.Fatalf("memory should be injected into dynamic tail, got %q", msgs[1].Content)
+	}
+	if strings.Contains(msgs[0].Content, "go test ./...") {
+		t.Fatalf("memory should not be mixed into stable prompt: %q", msgs[0].Content)
 	}
 }
 

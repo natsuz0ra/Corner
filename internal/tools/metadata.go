@@ -73,8 +73,12 @@ var metadataByTool = map[string]ToolMetadata{
 		Name:              "file_read",
 		AllowedInPlanMode: true,
 	},
-	"search_files": {
-		Name:              "search_files",
+	"grep": {
+		Name:              "grep",
+		AllowedInPlanMode: true,
+	},
+	"glob": {
+		Name:              "glob",
 		AllowedInPlanMode: true,
 	},
 	"skills": {

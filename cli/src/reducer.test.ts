@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createInitialState, reducer } from "./reducer";
-import type { AppAction, AppState } from "./types";
+import type { AppAction, AppState, MemorySnapshot } from "./types";
 
 function initState() {
 	return createInitialState(
@@ -14,6 +14,17 @@ function initState() {
 
 function reduce(state: AppState, action: AppAction): AppState {
 	return reducer(state, action);
+}
+
+function memorySnapshot(): MemorySnapshot {
+	return {
+		memoryEnabled: true,
+		memoryUserProfileEnabled: true,
+		memoryNudgeInterval: 10,
+		memoryDirectory: "/tmp/memory",
+		memory: { target: "memory", entries: [], usageChars: 0, charLimit: 2200, entryCount: 0, enabled: true },
+		user: { target: "user", entries: [], usageChars: 0, charLimit: 1375, entryCount: 0, enabled: true },
+	};
 }
 
 test("createInitialState initializes empty input value", () => {
@@ -107,6 +118,54 @@ test("TOGGLE_TOOL_OUTPUT switches tool output expanded on and off", () => {
 
 	state = reduce(state, { type: "TOGGLE_TOOL_OUTPUT" });
 	assert.equal(state.toolOutputExpanded, false);
+});
+
+test("memory console stores snapshot and clamps navigation", () => {
+	let state = reduce(initState(), {
+		type: "SET_MEMORY_CONSOLE",
+		snapshot: memorySnapshot(),
+		loading: false,
+		message: "",
+	});
+	assert.equal(state.view, "memory-console");
+	assert.equal(state.memorySnapshot?.memory.charLimit, 2200);
+
+	state = reduce(state, { type: "MEMORY_CONSOLE_NAV", delta: 99 });
+	assert.equal(state.memoryCursor, 7);
+	state = reduce(state, { type: "MEMORY_CONSOLE_NAV", delta: -99 });
+	assert.equal(state.memoryCursor, 0);
+});
+
+test("memory console edit and reset modes keep bounded state", () => {
+	let state = reduce(initState(), {
+		type: "MEMORY_CONSOLE_START_EDIT",
+		field: "memoryCharLimit",
+		draft: "2200",
+	});
+	assert.equal(state.view, "chat");
+	assert.equal(state.memoryMode, "edit");
+	assert.equal(state.memoryEditingField, "memoryCharLimit");
+
+	state = reduce(state, { type: "MEMORY_CONSOLE_SET_DRAFT", draft: "3000" });
+	assert.equal(state.memoryDraft, "3000");
+
+	state = reduce(state, { type: "MEMORY_CONSOLE_SET_MODE", mode: "reset" });
+	assert.equal(state.memoryMode, "reset");
+	assert.equal(state.memoryEditingField, null);
+	assert.equal(state.memoryDraft, "");
+
+	state = reduce(state, { type: "MEMORY_CONSOLE_NAV", delta: 99 });
+	assert.equal(state.memoryCursor, 3);
+});
+
+test("memory console can switch into entry view mode", () => {
+	const state = reduce(initState(), {
+		type: "MEMORY_CONSOLE_VIEW_TARGET",
+		target: "user",
+	});
+	assert.equal(state.memoryMode, "view");
+	assert.equal(state.memoryViewTarget, "user");
+	assert.equal(state.memoryCursor, 0);
 });
 
 test("CONTEXT_USAGE stores latest usage", () => {

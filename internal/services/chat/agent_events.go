@@ -137,13 +137,14 @@ type AgentCallbacks struct {
 
 // AgentLoopOptions configures nested agent execution.
 type AgentLoopOptions struct {
-	Depth           int
-	ApprovalMode    string
-	PlanMode        bool
-	PlanStarted     *bool
-	PlanComplete    *bool
-	SubagentModelID string
-	LatestUsage     *llmsvc.TokenUsage
-	OnProviderUsage func(usage llmsvc.TokenUsage) error
-	SandboxPolicy   *sandboxpolicy.Policy
+	Depth                int
+	ApprovalMode         string
+	PlanMode             bool
+	PlanStarted          *bool
+	PlanComplete         *bool
+	SubagentModelID      string
+	LatestUsage          *llmsvc.TokenUsage
+	OnProviderUsage      func(usage llmsvc.TokenUsage) error
+	SandboxPolicy        *sandboxpolicy.Policy
+	AllowedToolFunctions map[string]struct{}
 }

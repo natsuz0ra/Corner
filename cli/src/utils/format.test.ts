@@ -99,6 +99,14 @@ test("formatToolCallSummary uses core tool parameters", () => {
     "query: SlimeBot latest",
   );
   assert.equal(
+    formatToolCallSummary("grep", "search", { pattern: "BuildToolDefs", path: "internal/tools", glob: "*.go" }),
+    "BuildToolDefs in internal/tools (*.go)",
+  );
+  assert.equal(
+    formatToolCallSummary("glob", "find", { pattern: "**/*.go", path: "internal/tools" }),
+    "**/*.go in internal/tools",
+  );
+  assert.equal(
     formatToolCallSummary("http_request", "request", { method: "post", url: "https://example.test/api" }),
     "POST https://example.test/api",
   );
@@ -165,6 +173,14 @@ test("filterToolParamsForDetail removes params already shown in summary", () => 
   assert.deepEqual(
     filterToolParamsForDetail("web_search", "search", { query: "SlimeBot latest" }),
     {},
+  );
+  assert.deepEqual(
+    filterToolParamsForDetail("grep", "search", { pattern: "BuildToolDefs", path: "internal/tools", glob: "*.go", head_limit: 20 }),
+    { head_limit: 20 },
+  );
+  assert.deepEqual(
+    filterToolParamsForDetail("glob", "find", { pattern: "**/*.go", path: "internal/tools", limit: 20 }),
+    { limit: 20 },
   );
   assert.deepEqual(
     filterToolParamsForDetail("run_subagent", "delegate", {

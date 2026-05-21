@@ -154,6 +154,76 @@ func TestSettingsService_GetIncludesSandboxDefaults(t *testing.T) {
 	}
 }
 
+func TestSettingsService_GetIncludesMemoryDefaults(t *testing.T) {
+	store := &memorySettingsStore{values: map[string]string{}}
+	svc := NewSettingsService(store)
+
+	settings, err := svc.Get(context.Background())
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if !settings.MemoryEnabled {
+		t.Fatal("memory should default to enabled")
+	}
+	if !settings.MemoryUserProfileEnabled {
+		t.Fatal("user profile memory should default to enabled")
+	}
+	if settings.MemoryCharLimit != 2200 {
+		t.Fatalf("memory char limit = %d, want 2200", settings.MemoryCharLimit)
+	}
+	if settings.MemoryUserCharLimit != 1375 {
+		t.Fatalf("user char limit = %d, want 1375", settings.MemoryUserCharLimit)
+	}
+	if settings.MemoryNudgeInterval != 10 {
+		t.Fatalf("nudge interval = %d, want 10", settings.MemoryNudgeInterval)
+	}
+}
+
+func TestSettingsService_UpdateValidatesMemorySettings(t *testing.T) {
+	store := &memorySettingsStore{values: map[string]string{}}
+	svc := NewSettingsService(store)
+	enabled := false
+	userEnabled := true
+	charLimit := 3000
+	userLimit := 1500
+	interval := 5
+
+	err := svc.Update(context.Background(), UpdateSettingsInput{
+		MemoryEnabled:            &enabled,
+		MemoryUserProfileEnabled: &userEnabled,
+		MemoryCharLimit:          &charLimit,
+		MemoryUserCharLimit:      &userLimit,
+		MemoryNudgeInterval:      &interval,
+	})
+	if err != nil {
+		t.Fatalf("Update memory settings failed: %v", err)
+	}
+	if store.values[constants.SettingMemoryEnabled] != "false" {
+		t.Fatalf("memory enabled = %q", store.values[constants.SettingMemoryEnabled])
+	}
+	if store.values[constants.SettingMemoryUserProfileEnabled] != "true" {
+		t.Fatalf("user profile enabled = %q", store.values[constants.SettingMemoryUserProfileEnabled])
+	}
+	if store.values[constants.SettingMemoryCharLimit] != "3000" {
+		t.Fatalf("memory char limit = %q", store.values[constants.SettingMemoryCharLimit])
+	}
+	if store.values[constants.SettingMemoryUserCharLimit] != "1500" {
+		t.Fatalf("user char limit = %q", store.values[constants.SettingMemoryUserCharLimit])
+	}
+	if store.values[constants.SettingMemoryNudgeInterval] != "5" {
+		t.Fatalf("nudge interval = %q", store.values[constants.SettingMemoryNudgeInterval])
+	}
+
+	badLimit := 199
+	if err := svc.Update(context.Background(), UpdateSettingsInput{MemoryCharLimit: &badLimit}); err == nil {
+		t.Fatal("expected invalid memory char limit error")
+	}
+	badInterval := 101
+	if err := svc.Update(context.Background(), UpdateSettingsInput{MemoryNudgeInterval: &badInterval}); err == nil {
+		t.Fatal("expected invalid nudge interval error")
+	}
+}
+
 func TestSettingsService_UpdateValidatesSandboxMode(t *testing.T) {
 	store := &memorySettingsStore{values: map[string]string{}}
 	svc := NewSettingsService(store)

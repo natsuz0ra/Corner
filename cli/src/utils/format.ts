@@ -11,6 +11,8 @@ const BUILTIN_TOOL_NAMES = new Set([
   "http_request",
   "process",
   "run_subagent",
+  "glob",
+  "grep",
   "search_file",
   "search_files",
   "skills",
@@ -70,6 +72,19 @@ export function getToolSummaryParamKeys(
   if (tool === "web_search" && normalizedParam(params, "query") !== "") {
     return ["query"];
   }
+  if (tool === "grep") {
+    const keys: string[] = [];
+    if (normalizedParam(params, "pattern") !== "") keys.push("pattern");
+    if (normalizedParam(params, "path") !== "") keys.push("path");
+    if (normalizedParam(params, "glob") !== "") keys.push("glob");
+    if (keys.length > 0) return keys;
+  }
+  if (tool === "glob") {
+    const keys: string[] = [];
+    if (normalizedParam(params, "pattern") !== "") keys.push("pattern");
+    if (normalizedParam(params, "path") !== "") keys.push("path");
+    if (keys.length > 0) return keys;
+  }
   if (tool === "run_subagent") {
     const keys: string[] = [];
     if (normalizedParam(params, "title") !== "") keys.push("title");
@@ -113,6 +128,22 @@ export function formatToolCallSummary(
   if (tool === "web_search") {
     const query = normalizedParam(params, "query");
     return query ? `query: ${query}` : "";
+  }
+  if (tool === "grep") {
+    const pattern = normalizedParam(params, "pattern");
+    if (!pattern) return "";
+    const path = normalizedParam(params, "path");
+    const glob = normalizedParam(params, "glob");
+    let summary = pattern;
+    if (path) summary += ` in ${path}`;
+    if (glob) summary += ` (${glob})`;
+    return summary;
+  }
+  if (tool === "glob") {
+    const pattern = normalizedParam(params, "pattern");
+    if (!pattern) return "";
+    const path = normalizedParam(params, "path");
+    return path ? `${pattern} in ${path}` : pattern;
   }
   if (tool === "run_subagent") {
     const title = normalizedParam(params, "title");
@@ -248,6 +279,8 @@ export function isLightweightToolName(toolName?: string): boolean {
     name === "web_extract" ||
     name === "web_search" ||
     name === "file_read" ||
+    name === "grep" ||
+    name === "glob" ||
     name === "search_files" ||
     name === "search_file";
 }
@@ -286,6 +319,18 @@ export function buildLightweightToolDisplay(entry: TimelineEntry): LightweightTo
   if (toolName === "web_search") {
     label = "Search";
     target = normalizedParam(params, "query") || "web";
+  } else if (toolName === "grep") {
+    label = "Grep";
+    target = normalizedParam(params, "pattern") || "content";
+    const path = normalizedParam(params, "path");
+    const glob = normalizedParam(params, "glob");
+    if (path) target += ` in ${path}`;
+    if (glob) target += ` (${glob})`;
+  } else if (toolName === "glob") {
+    label = "Glob";
+    target = normalizedParam(params, "pattern") || "files";
+    const path = normalizedParam(params, "path");
+    if (path) target += ` in ${path}`;
   } else if (toolName === "search_files" || toolName === "search_file") {
     label = "Search files";
     target = normalizedParam(params, "query") || normalizedParam(params, "pattern") || "files";

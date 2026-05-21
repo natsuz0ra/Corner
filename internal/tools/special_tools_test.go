@@ -227,10 +227,13 @@ func TestBuildRegistryToolDefsAliasesAndSkipsStableSpecialTools(t *testing.T) {
 	if containsToolDefName(defs, "todo__update") {
 		t.Fatalf("todo__update should not be exposed: %#v", specialToolNames(defs))
 	}
-	for _, name := range []string{TodoUpdateFunctionName, "exec__run", "file_read__read", "search_files__search"} {
+	for _, name := range []string{TodoUpdateFunctionName, "exec__run", "file_read__read", "grep__search", "glob__find"} {
 		if !containsToolDefName(defs, name) {
 			t.Fatalf("expected registry tool %s in %#v", name, specialToolNames(defs))
 		}
+	}
+	if containsToolDefName(defs, "search_files__search") {
+		t.Fatalf("search_files__search should not be exposed: %#v", specialToolNames(defs))
 	}
 	for _, name := range []string{"activate_skill__activate", "run_subagent__run"} {
 		if containsToolDefName(defs, name) {
@@ -264,16 +267,28 @@ func TestBuildRegistryToolDefsPreservesKeySchemas(t *testing.T) {
 		t.Fatalf("exec__run required = %#v, want [command]", execDef.Parameters["required"])
 	}
 
-	searchDef := findSpecialToolDef(defs, "search_files__search")
-	if searchDef == nil {
-		t.Fatal("expected search_files__search tool definition")
+	grepDef := findSpecialToolDef(defs, "grep__search")
+	if grepDef == nil {
+		t.Fatal("expected grep__search tool definition")
 	}
-	searchProps, ok := searchDef.Parameters["properties"].(map[string]any)
+	grepProps, ok := grepDef.Parameters["properties"].(map[string]any)
 	if !ok {
-		t.Fatalf("search_files parameters.properties has unexpected type: %#v", searchDef.Parameters["properties"])
+		t.Fatalf("grep parameters.properties has unexpected type: %#v", grepDef.Parameters["properties"])
 	}
-	if _, ok := searchProps["max_matches_per_file"]; !ok {
-		t.Fatalf("search_files__search missing max_matches_per_file property: %#v", searchProps)
+	if _, ok := grepProps["head_limit"]; !ok {
+		t.Fatalf("grep__search missing head_limit property: %#v", grepProps)
+	}
+
+	globDef := findSpecialToolDef(defs, "glob__find")
+	if globDef == nil {
+		t.Fatal("expected glob__find tool definition")
+	}
+	globProps, ok := globDef.Parameters["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("glob parameters.properties has unexpected type: %#v", globDef.Parameters["properties"])
+	}
+	if _, ok := globProps["limit"]; !ok {
+		t.Fatalf("glob__find missing limit property: %#v", globProps)
 	}
 }
 

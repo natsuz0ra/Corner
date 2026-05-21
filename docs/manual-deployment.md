@@ -56,6 +56,15 @@ Create local Release archives:
 make package
 ```
 
+Official releases should be packaged by GitHub Actions. Push a tag that matches `vX.Y.Z`, and `.github/workflows/release.yml` runs the same packaging script on GitHub and publishes a stable Release.
+
+```bash
+git tag v1.27.0
+git push origin v1.27.0
+```
+
+The workflow can also be started manually with an existing tag to republish assets for a specific version. Tag validation only accepts `vX.Y.Z`, so tags such as `v1.27.0-test` are not published as stable Releases.
+
 Release archives include `install.sh` / `install.ps1` and `uninstall.sh` / `uninstall.ps1`. The install scripts honor `SLIMEBOT_INSTALL_DIR` and `SLIMEBOT_BIN_DIR`; the uninstall scripts use the same variables plus `SLIMEBOT_HOME` for the user data directory.
 
 The packaging script also writes standalone `dist/install.sh`, `dist/install.ps1`, `dist/uninstall.sh`, and `dist/uninstall.ps1` assets. When the install scripts are run outside an extracted Release archive, they resolve the latest GitHub Release, download the matching platform archive, and then run the installer inside that archive. Set `SLIMEBOT_VERSION=v1.26.1` to install a specific release tag, or `SLIMEBOT_REPO=owner/repo` for forks. The uninstall scripts can be run remotely without downloading a Release archive; they remove the local install using the configured install paths.
@@ -198,4 +207,9 @@ VITE_WS_URL=ws://localhost:6247
 
 ## Memory Model
 
-Memory is a SQLite-backed compact summary for each chat session. If the full history fits under the selected model config's `contextSize`, SlimeBot sends the full history. If it exceeds the window, SlimeBot asks the current model to generate a compact summary, stores it in `session_context_summaries`, and injects it later as a hidden `<context_summary>`.
+SlimeBot has two memory layers:
+
+- Session context compression is a SQLite-backed compact summary for each chat session. If full history exceeds the selected model config's `contextSize`, SlimeBot asks the current model to generate a compact summary, stores it in `session_context_summaries`, and injects it later as a hidden `<context_summary>`.
+- Long-term file memory stores durable assistant notes in `~/.slimebot/memories/MEMORY.md` and durable user profile facts in `~/.slimebot/memories/USER.md`. The built-in `memory` tool can update these files silently during normal Web/CLI conversations, and the next turn injects the latest snapshot into the model context.
+
+Long-term memory can be managed from the Web settings Memory tab or from CLI with `/memory` and `/memory reset memory|user|all`.
