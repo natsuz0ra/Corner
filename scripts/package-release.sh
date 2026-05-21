@@ -36,6 +36,20 @@ assert_cli_bundle_self_contained() {
       exit 1
     fi
   done
+
+  if grep -Fq "packages/ink/node_modules/react" "$bundle"; then
+    echo "CLI bundle contains a nested Ink React copy." >&2
+    echo "Update cli/tsup.config.ts aliases so Ink and the app share one React instance." >&2
+    exit 1
+  fi
+
+  local react_module_count
+  react_module_count="$(grep -F '"node_modules/react/index.js"(exports, module)' "$bundle" | wc -l | tr -d '[:space:]')"
+  if [[ "${react_module_count}" != "1" ]]; then
+    echo "CLI bundle must contain exactly one React module marker; found ${react_module_count}." >&2
+    echo "Duplicate React copies break Ink hooks at runtime." >&2
+    exit 1
+  fi
 }
 
 ripgrep_binary_name() {
