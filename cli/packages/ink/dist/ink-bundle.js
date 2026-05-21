@@ -14144,9 +14144,6 @@ var getInstance = (stdout, createInstance) => {
   }
   return instance;
 };
-
-// src/entry-exports.ts
-import { default as default2, UncontrolledTextInput } from "ink-text-input";
 export {
   AlternateScreen,
   Ansi,
@@ -14158,8 +14155,6 @@ export {
   ScrollBox_default as ScrollBox,
   Spacer,
   Text,
-  default2 as TextInput,
-  UncontrolledTextInput,
   createRoot,
   evictInkCaches,
   forceRedraw,
