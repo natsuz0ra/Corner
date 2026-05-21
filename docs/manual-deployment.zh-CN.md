@@ -59,11 +59,11 @@ make package
 正式发版推荐通过 GitHub Actions 完成：推送符合 `vX.Y.Z` 格式的 tag 后，`.github/workflows/release.yml` 会在 GitHub 上运行同一套打包脚本并创建稳定 Release。
 
 ```bash
-git tag v1.27.1
-git push origin v1.27.1
+git tag v1.28.0
+git push origin v1.28.0
 ```
 
-该 workflow 也支持手动触发并输入已有 tag，用于补发指定版本的 Release 资产。tag 格式校验只接受 `vX.Y.Z`，例如 `v1.27.1-test` 不会发布为稳定 Release。
+该 workflow 也支持手动触发并输入已有 tag，用于补发指定版本的 Release 资产。tag 格式校验只接受 `vX.Y.Z`，例如 `v1.28.0-test` 不会发布为稳定 Release。
 
 Release 压缩包包含 `install.sh` / `install.ps1` 和 `uninstall.sh` / `uninstall.ps1`。安装脚本支持 `SLIMEBOT_INSTALL_DIR` 与 `SLIMEBOT_BIN_DIR`；卸载脚本使用同样的变量，并额外支持 `SLIMEBOT_HOME` 指定用户数据目录。
 
