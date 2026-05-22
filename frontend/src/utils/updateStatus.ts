@@ -33,6 +33,9 @@ export function normalizeUpdateCheck(payload: Partial<UpdateCheckResult> | null 
 }
 
 export function normalizeUpdateJob(payload: Partial<UpdateJobStatus> | null | undefined): UpdateJobStatus {
+  const downloadedBytes = normalizeNonNegativeNumber(payload?.downloadedBytes)
+  const totalBytes = normalizeNonNegativeNumber(payload?.totalBytes)
+  const progressPercent = Math.min(100, Math.max(0, Math.trunc(normalizeNonNegativeNumber(payload?.progressPercent))))
   return {
     phase: normalizeUpdatePhase(payload?.phase),
     current: payload?.current || '',
@@ -40,8 +43,15 @@ export function normalizeUpdateJob(payload: Partial<UpdateJobStatus> | null | un
     message: payload?.message || '',
     error: payload?.error || '',
     manualHint: payload?.manualHint || '',
+    downloadedBytes,
+    totalBytes,
+    progressPercent,
     updatedAt: payload?.updatedAt || '',
   }
+}
+
+function normalizeNonNegativeNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
 }
 
 export function isUpdateJobActive(phase: UpdatePhase): boolean {

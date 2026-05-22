@@ -28,5 +28,8 @@ export interface UpdateJobStatus {
   message: string
   error: string
   manualHint: string
+  downloadedBytes: number
+  totalBytes: number
+  progressPercent: number
   updatedAt: string
 }

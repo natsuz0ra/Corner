@@ -3,6 +3,8 @@ package updater
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -108,12 +110,15 @@ func TestStatusStoreRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStatusStore(filepath.Join(dir, "update-status.json"))
 	want := JobStatus{
-		Phase:      PhaseDownloading,
-		Current:    "v1.26.1",
-		Target:     "v1.26.2",
-		Message:    "Downloading",
-		UpdatedAt:  time.Date(2026, 5, 17, 1, 2, 3, 0, time.UTC),
-		ManualHint: "slimebot update --version v1.26.2",
+		Phase:           PhaseDownloading,
+		Current:         "v1.26.1",
+		Target:          "v1.26.2",
+		Message:         "Downloading",
+		UpdatedAt:       time.Date(2026, 5, 17, 1, 2, 3, 0, time.UTC),
+		ManualHint:      "slimebot update --version v1.26.2",
+		DownloadedBytes: 512,
+		TotalBytes:      1024,
+		ProgressPercent: 50,
 	}
 
 	if err := store.Write(context.Background(), want); err != nil {
@@ -123,7 +128,8 @@ func TestStatusStoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read failed: %v", err)
 	}
-	if got.Phase != want.Phase || got.Target != want.Target || got.ManualHint != want.ManualHint {
+	if got.Phase != want.Phase || got.Target != want.Target || got.ManualHint != want.ManualHint ||
+		got.DownloadedBytes != want.DownloadedBytes || got.TotalBytes != want.TotalBytes || got.ProgressPercent != want.ProgressPercent {
 		t.Fatalf("unexpected status: %+v", got)
 	}
 
@@ -134,5 +140,54 @@ func TestStatusStoreRoundTrip(t *testing.T) {
 	var decoded map[string]any
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatalf("status is not JSON: %v", err)
+	}
+}
+
+func TestDownloadToFileReportsProgress(t *testing.T) {
+	body := []byte("0123456789")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "10")
+		_, _ = w.Write(body)
+	}))
+	defer server.Close()
+
+	var samples []downloadProgress
+	dest := filepath.Join(t.TempDir(), "asset.bin")
+	err := downloadToFile(context.Background(), server.Client(), server.URL, dest, func(progress downloadProgress) {
+		samples = append(samples, progress)
+	})
+	if err != nil {
+		t.Fatalf("downloadToFile failed: %v", err)
+	}
+	if len(samples) == 0 {
+		t.Fatal("expected progress samples")
+	}
+	last := samples[len(samples)-1]
+	if last.DownloadedBytes != int64(len(body)) || last.TotalBytes != int64(len(body)) || last.ProgressPercent != 100 {
+		t.Fatalf("unexpected final progress: %+v", last)
+	}
+}
+
+func TestDownloadToFileReportsUnknownTotalBytes(t *testing.T) {
+	body := []byte("abc")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Del("Content-Length")
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		_, _ = w.Write(body)
+	}))
+	defer server.Close()
+
+	var last downloadProgress
+	dest := filepath.Join(t.TempDir(), "asset.bin")
+	err := downloadToFile(context.Background(), server.Client(), server.URL, dest, func(progress downloadProgress) {
+		last = progress
+	})
+	if err != nil {
+		t.Fatalf("downloadToFile failed: %v", err)
+	}
+	if last.DownloadedBytes != int64(len(body)) || last.TotalBytes != 0 || last.ProgressPercent != 0 {
+		t.Fatalf("unexpected unknown-size progress: %+v", last)
 	}
 }

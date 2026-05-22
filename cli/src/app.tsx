@@ -511,7 +511,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
   const loadUpdate = useCallback(async () => {
     dispatch({ type: "SET_VIEW", view: "update" } as AppAction);
-    dispatch({ type: "SET_UPDATE_STATE", loading: true } as AppAction);
+    dispatch({ type: "SET_UPDATE_STATE", loading: true, confirming: false } as AppAction);
     try {
       const check = await apiRef.current.getUpdateCheck(true);
       const job = await apiRef.current.getUpdateJob();
@@ -536,20 +536,38 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       appendSystem("No applicable update is available.");
       return;
     }
-    dispatch({ type: "SET_UPDATE_STATE", applying: true } as AppAction);
+    dispatch({ type: "SET_UPDATE_STATE", applying: true, confirming: false } as AppAction);
     try {
       const job = await apiRef.current.applyUpdate(state.updateCheck.latest);
       dispatch({ type: "SET_UPDATE_STATE", job, applying: true } as AppAction);
-      appendSystem(`Update started for ${state.updateCheck.latest}. Restart slimebot after the helper finishes.`);
-      setTimeout(() => {
-        socketRef.current?.close();
-        exit();
-      }, 800);
+      appendSystem(`Update started for ${state.updateCheck.latest}. The update view will keep showing progress while the service is reachable.`);
     } catch (error) {
       dispatch({ type: "SET_UPDATE_STATE", applying: false } as AppAction);
       appendSystem(`Failed to start update: ${(error as Error).message}`);
     }
-  }, [appendSystem, exit, state.updateApplying, state.updateCheck]);
+  }, [appendSystem, state.updateApplying, state.updateCheck]);
+
+  useEffect(() => {
+    if (!state.updateApplying) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const job = await apiRef.current.getUpdateJob();
+        if (cancelled) return;
+        dispatch({ type: "SET_UPDATE_STATE", job, applying: isUpdateActive(job) } as AppAction);
+      } catch {
+        if (!cancelled) {
+          dispatch({ type: "SET_UPDATE_STATE", applying: false } as AppAction);
+        }
+      }
+    };
+    const timer = setInterval(() => { void poll(); }, 1500);
+    void poll();
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [state.updateApplying]);
 
   const showHelp = useCallback(() => {
     const items: MenuItem[] = [
@@ -1200,6 +1218,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           job={state.updateJob}
           loading={state.updateLoading}
           applying={state.updateApplying}
+          confirming={state.updateConfirming}
           columns={width}
         />
       )}

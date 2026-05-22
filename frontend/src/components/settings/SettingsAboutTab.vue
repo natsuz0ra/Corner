@@ -20,6 +20,7 @@ const checkResult = ref<UpdateCheckResult | null>(null)
 const job = ref<UpdateJobStatus>(normalizeUpdateJob(null))
 const checking = ref(false)
 const applying = ref(false)
+const confirmUpdate = ref(false)
 const errorMessage = ref('')
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -45,6 +46,28 @@ const statusText = computed(() => {
   return t('updateAvailable')
 })
 const manualHint = computed(() => job.value.manualHint || checkResult.value?.manualHint || '')
+const showProgress = computed(() => isUpdateJobActive(job.value.phase) || job.value.phase === 'succeeded' || job.value.phase === 'failed')
+const progressPercent = computed(() => job.value.totalBytes > 0 ? job.value.progressPercent : 0)
+const progressStyle = computed(() => ({ width: `${job.value.totalBytes > 0 ? progressPercent.value : 42}%` }))
+const progressLabel = computed(() => {
+  if (job.value.phase === 'downloading') {
+    if (job.value.totalBytes > 0) {
+      return t('updateDownloadProgress', {
+        percent: progressPercent.value,
+        downloaded: formatBytes(job.value.downloadedBytes),
+        total: formatBytes(job.value.totalBytes),
+      })
+    }
+    if (job.value.downloadedBytes > 0) {
+      return t('updateDownloadUnknownTotal', { downloaded: formatBytes(job.value.downloadedBytes) })
+    }
+  }
+  if (job.value.phase === 'installing') return t('updateInstalling')
+  if (job.value.phase === 'restarting') return t('updateRestarting')
+  if (job.value.phase === 'succeeded') return t('updateSucceeded')
+  if (job.value.phase === 'failed') return job.value.error || t('updateFailed')
+  return job.value.message || ''
+})
 const versionLine = computed(() => {
   if (!checkResult.value?.latest) return version
   return `${checkResult.value.current || version} → ${checkResult.value.latest}`
@@ -77,6 +100,7 @@ function startPolling() {
 
 async function checkUpdate(force = true) {
   checking.value = true
+  confirmUpdate.value = false
   errorMessage.value = ''
   try {
     checkResult.value = await updateAPI.check(force)
@@ -92,7 +116,12 @@ async function checkUpdate(force = true) {
 
 async function applyUpdate() {
   if (!checkResult.value?.latest || !canApplyUpdate.value) return
+  if (!confirmUpdate.value) {
+    confirmUpdate.value = true
+    return
+  }
   applying.value = true
+  confirmUpdate.value = false
   errorMessage.value = ''
   try {
     job.value = await updateAPI.apply(checkResult.value.latest)
@@ -102,6 +131,16 @@ async function applyUpdate() {
     errorMessage.value = response.response?.data?.error || t('updateApplyFailed')
     applying.value = false
   }
+}
+
+function cancelUpdateConfirm() {
+  confirmUpdate.value = false
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KiB`
+  return `${(value / 1024 / 1024).toFixed(1)} MiB`
 }
 
 onMounted(() => {
@@ -175,6 +214,27 @@ onUnmounted(stopPolling)
       <div v-if="manualHint" class="update-manual">
         <span>{{ t('updateManualHint') }}</span>
         <code>{{ manualHint }}</code>
+      </div>
+
+      <div v-if="confirmUpdate" class="update-confirm">
+        <strong>{{ t('updateConfirmTitle') }}</strong>
+        <span>{{ t('updateConfirmDesc') }}</span>
+        <div class="update-confirm-actions">
+          <button type="button" class="update-btn update-btn-secondary" @click="cancelUpdateConfirm">
+            <span>{{ t('cancel') }}</span>
+          </button>
+          <button type="button" class="update-btn update-btn-primary" @click="applyUpdate">
+            <MdiIcon :path="mdiDownload" :size="15" />
+            <span>{{ t('confirm') }}</span>
+          </button>
+        </div>
+      </div>
+
+      <div v-if="showProgress" class="update-progress" :data-indeterminate="job.totalBytes <= 0 && job.phase === 'downloading'">
+        <div class="update-progress-bar">
+          <span :style="progressStyle"></span>
+        </div>
+        <div class="update-progress-label">{{ progressLabel }}</div>
       </div>
 
       <div class="update-actions">
@@ -383,6 +443,71 @@ onUnmounted(stopPolling)
   font-family: var(--font-mono);
 }
 
+.update-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  color: var(--text-secondary);
+  background: var(--primary-alpha-08);
+  border: 1px solid var(--primary-alpha-15);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.update-confirm strong {
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.update-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.update-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.update-progress-bar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--hover-bg);
+  border: 1px solid var(--card-border);
+}
+
+.update-progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--sb-brand);
+  transition: width 0.2s ease;
+}
+
+.update-progress[data-indeterminate="true"] .update-progress-bar span {
+  animation: update-progress-pulse 1.2s ease-in-out infinite alternate;
+}
+
+.update-progress-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+@keyframes update-progress-pulse {
+  from {
+    transform: translateX(-30%);
+  }
+  to {
+    transform: translateX(140%);
+  }
+}
+
 .update-btn {
   min-height: 34px;
   display: inline-flex;
@@ -440,6 +565,10 @@ onUnmounted(stopPolling)
 
   .update-btn {
     width: 100%;
+  }
+
+  .update-confirm-actions {
+    flex-direction: column;
   }
 }
 </style>

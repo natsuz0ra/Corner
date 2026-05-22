@@ -8,6 +8,7 @@ interface UpdateViewProps {
 	job: UpdateJobStatus | null;
 	loading: boolean;
 	applying: boolean;
+	confirming?: boolean;
 	columns?: number;
 }
 
@@ -41,6 +42,8 @@ export function formatUpdateSummaryLines({ check, job }: SummaryInput): string[]
 	}
 	if (job && job.phase && job.phase !== "idle") {
 		lines.push(`Job: ${job.phase}${job.message ? ` · ${job.message}` : ""}`);
+		const progress = formatUpdateProgressLine(job);
+		if (progress) lines.push(progress);
 		if (job.error) lines.push(`Error: ${job.error}`);
 	}
 	return lines;
@@ -54,16 +57,29 @@ export function formatUpdateReleaseNotesLines(releaseNotes = "", columns = 80): 
 	return [...rendered.slice(0, MAX_RELEASE_NOTE_LINES), "..."];
 }
 
-export function formatUpdateHint(canApply: boolean, active: boolean): string {
+export function formatUpdateProgressLine(job: Partial<UpdateJobStatus> | null): string {
+	if (!job || (job.phase && job.phase !== "downloading")) return "";
+	const downloaded = Math.max(0, Math.trunc(job.downloadedBytes || 0));
+	const total = Math.max(0, Math.trunc(job.totalBytes || 0));
+	if (total > 0) {
+		const percent = Math.min(100, Math.max(0, Math.trunc(job.progressPercent ?? downloaded * 100 / total)));
+		return `Download: ${renderProgressBar(percent, 18)} ${percent}% (${formatBytes(downloaded)}/${formatBytes(total)})`;
+	}
+	if (downloaded > 0) return `Download: ${formatBytes(downloaded)} downloaded`;
+	return "Download: in progress";
+}
+
+export function formatUpdateHint(canApply: boolean, active: boolean, confirming = false): string {
 	if (active) return "Updating... | Esc return";
+	if (confirming) return "Y confirm | N cancel | Esc return";
 	return canApply ? "C check again | U update | Esc return" : "C check again | Esc return";
 }
 
-export function UpdateView({ check, job, loading, applying, columns = 80 }: UpdateViewProps): React.ReactElement {
+export function UpdateView({ check, job, loading, applying, confirming = false, columns = 80 }: UpdateViewProps): React.ReactElement {
 	const active = applying || isUpdateActive(job);
 	const canApply = Boolean(check?.canApply) && !active && !loading;
 	const titleColor = check?.updateAvailable ? "#facc15" : "#67e8f9";
-	const hint = formatUpdateHint(canApply, active);
+	const hint = formatUpdateHint(canApply, active, confirming);
 	const lines = formatUpdateSummaryLines({ check, job });
 	const releaseNoteLines = formatUpdateReleaseNotesLines(check?.releaseNotes || "", columns);
 
@@ -86,14 +102,34 @@ export function UpdateView({ check, job, loading, applying, columns = 80 }: Upda
 					))}
 				</>
 			)}
-			{check?.updateAvailable && check.canApply && !active && (
+			{confirming && (
 				<>
 					<Text> </Text>
-					<Text color="#94a3b8">Press U to start the detached updater. The current TUI exits after the helper starts.</Text>
+					<Text color="#facc15">Confirm update? SlimeBot may restart while installing.</Text>
 				</>
+			)}
+			{check?.updateAvailable && check.canApply && !active && !confirming && (
+				<>
+					<Text> </Text>
+					<Text color="#94a3b8">Press U to review and confirm the update.</Text>
+				</>
+			)}
+			{active && job?.phase && (job.phase === "installing" || job.phase === "restarting") && (
+				<Text color="#94a3b8">The service may restart and disconnect this TUI.</Text>
 			)}
 			<Text> </Text>
 			<Text color="#64748b">{loading ? "Checking for updates..." : hint}</Text>
 		</Box>
 	);
+}
+
+function renderProgressBar(percent: number, width: number): string {
+	const filled = Math.max(0, Math.min(width, Math.trunc(percent * width / 100)));
+	return `[${"=".repeat(filled)}${"-".repeat(width - filled)}]`;
+}
+
+function formatBytes(value: number): string {
+	if (value < 1024) return `${value} B`;
+	if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KiB`;
+	return `${(value / 1024 / 1024).toFixed(1)} MiB`;
 }

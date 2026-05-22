@@ -5,6 +5,7 @@ import test from 'node:test'
 import {
   isUpdateJobActive,
   normalizeUpdateCheck,
+  normalizeUpdateJob,
   updatePhaseTone,
 } from '../src/utils/updateStatus'
 import { renderMarkdown } from '../src/utils/markdown'
@@ -30,6 +31,19 @@ test('update phase helpers classify active and terminal states', () => {
   assert.equal(updatePhaseTone('succeeded'), 'success')
 })
 
+test('normalizeUpdateJob keeps download progress fields', () => {
+  const got = normalizeUpdateJob({
+    phase: 'downloading',
+    downloadedBytes: 512,
+    totalBytes: 1024,
+    progressPercent: 50,
+  })
+
+  assert.equal(got.downloadedBytes, 512)
+  assert.equal(got.totalBytes, 1024)
+  assert.equal(got.progressPercent, 50)
+})
+
 test('about settings tab renders update center hooks', () => {
   const source = readFileSync(resolve(import.meta.dirname, '../src/components/settings/SettingsAboutTab.vue'), 'utf8')
 
@@ -37,6 +51,9 @@ test('about settings tab renders update center hooks', () => {
   assert.match(source, /updateCenterTitle/)
   assert.match(source, /checkUpdate/)
   assert.match(source, /applyUpdate/)
+  assert.match(source, /confirmUpdate/)
+  assert.match(source, /update-progress/)
+  assert.match(source, /progressPercent/)
   assert.match(source, /manualHint/)
   assert.match(source, /renderMarkdown\(notes\)/)
   assert.match(source, /v-html="releaseNotes"/)
@@ -80,4 +97,6 @@ test('i18n contains update center labels in both languages', () => {
   assert.match(source, /updateCenterTitle: 'Update Center'/)
   assert.match(source, /updateRestarting/)
   assert.match(source, /updateManualHint/)
+  assert.match(source, /updateConfirmTitle/)
+  assert.match(source, /updateDownloadProgress/)
 })

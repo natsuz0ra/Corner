@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { stripAnsi } from "../utils/terminal";
-import { formatUpdateHint, formatUpdateReleaseNotesLines, formatUpdateSummaryLines } from "./UpdateView";
+import { formatUpdateHint, formatUpdateProgressLine, formatUpdateReleaseNotesLines, formatUpdateSummaryLines } from "./UpdateView";
 
 test("formatUpdateSummaryLines shows available update and release url", () => {
 	const lines = formatUpdateSummaryLines({
@@ -23,9 +23,15 @@ test("formatUpdateSummaryLines shows available update and release url", () => {
 });
 
 test("formatUpdateHint switches update shortcut by availability", () => {
-	assert.equal(formatUpdateHint(true, false), "C check again | U update | Esc return");
+	assert.equal(formatUpdateHint(true, false, false), "C check again | U update | Esc return");
+	assert.equal(formatUpdateHint(true, false, true), "Y confirm | N cancel | Esc return");
 	assert.equal(formatUpdateHint(false, false), "C check again | Esc return");
 	assert.equal(formatUpdateHint(true, true), "Updating... | Esc return");
+});
+
+test("formatUpdateProgressLine renders known and unknown download size", () => {
+	assert.match(formatUpdateProgressLine({ downloadedBytes: 512, totalBytes: 1024, progressPercent: 50 }), /50%/);
+	assert.match(formatUpdateProgressLine({ downloadedBytes: 512, totalBytes: 0, progressPercent: 0 }), /512 B downloaded/);
 });
 
 test("formatUpdateSummaryLines leaves markdown release notes out of metadata lines", () => {

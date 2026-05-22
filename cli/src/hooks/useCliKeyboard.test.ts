@@ -8,6 +8,7 @@ import {
   getModelEditorFieldNavigationAction,
   getQuestionAnswerConfirmEnterAction,
   getQuestionAnswerQuestionKeyActions,
+  getUpdateKeyAction,
   shouldLetQuestionAnswerViewHandleInput,
 } from "./useCliKeyboard.js";
 
@@ -192,6 +193,17 @@ test("streaming chat shortcut does not grab Ctrl+C stop handling", () => {
 
   assert.equal(handleStreamingChatShortcut(state, "c", key({ ctrl: true }), dispatch as any), false);
   assert.deepEqual(actions, []);
+});
+
+test("update keyboard asks for confirmation before applying", () => {
+  assert.deepEqual(getUpdateKeyAction("u", key(), false), { kind: "confirm" });
+  assert.deepEqual(getUpdateKeyAction("Y", key(), true), { kind: "apply" });
+  assert.deepEqual(getUpdateKeyAction("n", key(), true), { kind: "cancelConfirm" });
+});
+
+test("update keyboard escape cancels confirmation before returning", () => {
+  assert.deepEqual(getUpdateKeyAction("", key({ escape: true }), true), { kind: "cancelConfirm" });
+  assert.deepEqual(getUpdateKeyAction("", key({ escape: true }), false), { kind: "return" });
 });
 
 test("question answer confirm enter edits selected answer before submit row", () => {

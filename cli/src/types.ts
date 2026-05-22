@@ -125,6 +125,9 @@ export interface UpdateJobStatus {
   message?: string;
   error?: string;
   manualHint?: string;
+  downloadedBytes?: number;
+  totalBytes?: number;
+  progressPercent?: number;
   updatedAt?: string;
 }
 
@@ -440,6 +443,7 @@ export interface AppState {
   updateJob: UpdateJobStatus | null;
   updateLoading: boolean;
   updateApplying: boolean;
+  updateConfirming: boolean;
 
   // Memory console
   memorySnapshot: MemorySnapshot | null;
@@ -589,7 +593,7 @@ export type AppAction =
   | { type: "PLAN_BODY"; planBody: string; narration?: string }
   | { type: "PLAN_START" }
   | { type: "TODO_UPDATE"; items: RuntimeTodoItem[]; note?: string; updatedAt?: number }
-  | { type: "SET_UPDATE_STATE"; check?: UpdateCheckResult | null; job?: UpdateJobStatus | null; loading?: boolean; applying?: boolean }
+  | { type: "SET_UPDATE_STATE"; check?: UpdateCheckResult | null; job?: UpdateJobStatus | null; loading?: boolean; applying?: boolean; confirming?: boolean }
   | { type: "SET_MEMORY_CONSOLE"; snapshot?: MemorySnapshot | null; loading?: boolean; message?: string }
   | { type: "MEMORY_CONSOLE_NAV"; delta: number }
   | { type: "MEMORY_CONSOLE_SET_MODE"; mode: MemoryConsoleMode; cursor?: number; message?: string }

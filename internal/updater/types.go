@@ -46,13 +46,16 @@ type CheckResult struct {
 }
 
 type JobStatus struct {
-	Phase      Phase     `json:"phase"`
-	Current    string    `json:"current"`
-	Target     string    `json:"target"`
-	Message    string    `json:"message"`
-	Error      string    `json:"error,omitempty"`
-	ManualHint string    `json:"manualHint,omitempty"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	Phase           Phase     `json:"phase"`
+	Current         string    `json:"current"`
+	Target          string    `json:"target"`
+	Message         string    `json:"message"`
+	Error           string    `json:"error,omitempty"`
+	ManualHint      string    `json:"manualHint,omitempty"`
+	DownloadedBytes int64     `json:"downloadedBytes,omitempty"`
+	TotalBytes      int64     `json:"totalBytes,omitempty"`
+	ProgressPercent int       `json:"progressPercent,omitempty"`
+	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
 type ApplyRequest struct {
