@@ -81,8 +81,9 @@ func RunCommandWithIO(ctx context.Context, args []string, stdin io.Reader, stdou
 		return err
 	}
 	_, _ = fmt.Fprintf(stdout, "Update started: %s\n", status.Target)
-	printJobStatus(stdout, status)
-	return waitForCommandUpdate(ctx, stdout, service)
+	printer := newCommandStatusPrinter(stdout)
+	printer.Print(status)
+	return waitForCommandUpdate(ctx, printer, service)
 }
 
 func printCheckResult(w io.Writer, result CheckResult) {
@@ -118,7 +119,7 @@ func confirmUpdate(stdin io.Reader, stdout io.Writer) bool {
 	return answer == "y" || answer == "yes"
 }
 
-func waitForCommandUpdate(ctx context.Context, stdout io.Writer, service CommandService) error {
+func waitForCommandUpdate(ctx context.Context, printer *commandStatusPrinter, service CommandService) error {
 	ticker := time.NewTicker(commandStatusPollInterval)
 	defer ticker.Stop()
 	for {
@@ -130,7 +131,7 @@ func waitForCommandUpdate(ctx context.Context, stdout io.Writer, service Command
 			if err != nil {
 				return err
 			}
-			printJobStatus(stdout, status)
+			printer.Print(status)
 			if status.Phase == PhaseSucceeded {
 				return nil
 			}
@@ -148,22 +149,50 @@ func waitForCommandUpdate(ctx context.Context, stdout io.Writer, service Command
 }
 
 func printJobStatus(stdout io.Writer, status JobStatus) {
+	newCommandStatusPrinter(stdout).Print(status)
+}
+
+type commandStatusPrinter struct {
+	stdout     io.Writer
+	lastKey    string
+	activeLine bool
+}
+
+func newCommandStatusPrinter(stdout io.Writer) *commandStatusPrinter {
+	return &commandStatusPrinter{stdout: stdout}
+}
+
+func (p *commandStatusPrinter) Print(status JobStatus) {
 	if status.Phase == "" || status.Phase == PhaseIdle {
 		return
 	}
+	key := commandStatusKey(status)
+	if key == p.lastKey {
+		return
+	}
+	p.lastKey = key
 	message := status.Message
 	if message == "" {
 		message = string(status.Phase)
 	}
 	if status.Phase == PhaseDownloading {
-		_, _ = fmt.Fprintf(stdout, "%s %s\n", message, formatCommandProgress(status))
+		_, _ = fmt.Fprintf(p.stdout, "\r%s %s", message, formatCommandProgress(status))
+		p.activeLine = true
 		return
+	}
+	if p.activeLine {
+		_, _ = fmt.Fprint(p.stdout, "\n")
+		p.activeLine = false
 	}
 	if status.Error != "" {
-		_, _ = fmt.Fprintf(stdout, "%s: %s\n", message, status.Error)
+		_, _ = fmt.Fprintf(p.stdout, "%s: %s\n", message, status.Error)
 		return
 	}
-	_, _ = fmt.Fprintln(stdout, message)
+	_, _ = fmt.Fprintln(p.stdout, message)
+}
+
+func commandStatusKey(status JobStatus) string {
+	return fmt.Sprintf("%s|%s|%s|%d|%d|%d", status.Phase, status.Message, status.Error, status.DownloadedBytes, status.TotalBytes, status.ProgressPercent)
 }
 
 func formatCommandProgress(status JobStatus) string {

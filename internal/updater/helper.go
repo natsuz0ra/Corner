@@ -24,6 +24,8 @@ type downloadProgress struct {
 	ProgressPercent int
 }
 
+const downloadCompleteDisplayDelay = 700 * time.Millisecond
+
 func RunHelper(ctx context.Context, opts HelperOptions) error {
 	statusPath := strings.TrimSpace(opts.StatusPath)
 	if statusPath == "" {
@@ -95,7 +97,9 @@ func RunHelper(ctx context.Context, opts HelperOptions) error {
 	writeStatus(PhaseDownloading, "Downloading update package", "")
 	archivePath := filepath.Join(tmpDir, asset.Name)
 	lastWrite := time.Time{}
+	lastProgress := downloadProgress{}
 	if err := downloadToFile(ctx, service.httpClient, asset.DownloadURL, archivePath, func(progress downloadProgress) {
+		lastProgress = progress
 		now := time.Now()
 		if now.Sub(lastWrite) < 200*time.Millisecond && progress.ProgressPercent < 100 {
 			return
@@ -104,6 +108,10 @@ func RunHelper(ctx context.Context, opts HelperOptions) error {
 		writeStatus(PhaseDownloading, "Downloading update package", "", progress)
 	}); err != nil {
 		return fail("Failed to download update package", err)
+	}
+	if lastProgress.ProgressPercent == 100 {
+		writeStatus(PhaseDownloading, "Downloading update package", "", lastProgress)
+		time.Sleep(downloadCompleteDisplayDelay)
 	}
 
 	writeStatus(PhaseInstalling, "Installing update package", "")

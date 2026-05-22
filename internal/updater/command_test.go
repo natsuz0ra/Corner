@@ -142,3 +142,28 @@ func TestRunCommandYesSkipsPromptAndWaitsForCompletion(t *testing.T) {
 		t.Fatalf("unexpected output: %q", out)
 	}
 }
+
+func TestPrintJobStatusesRefreshesDownloadLineAndSuppressesDuplicates(t *testing.T) {
+	var stdout bytes.Buffer
+	printer := newCommandStatusPrinter(&stdout)
+
+	printer.Print(JobStatus{Phase: PhaseDownloading, Message: "Downloading", DownloadedBytes: 1, TotalBytes: 10, ProgressPercent: 10})
+	printer.Print(JobStatus{Phase: PhaseDownloading, Message: "Downloading", DownloadedBytes: 5, TotalBytes: 10, ProgressPercent: 50})
+	printer.Print(JobStatus{Phase: PhaseDownloading, Message: "Downloading", DownloadedBytes: 10, TotalBytes: 10, ProgressPercent: 100})
+	printer.Print(JobStatus{Phase: PhaseInstalling, Message: "Installing"})
+	printer.Print(JobStatus{Phase: PhaseInstalling, Message: "Installing"})
+	printer.Print(JobStatus{Phase: PhaseRestarting, Message: "Restarting"})
+	printer.Print(JobStatus{Phase: PhaseRestarting, Message: "Restarting"})
+	printer.Print(JobStatus{Phase: PhaseSucceeded, Message: "Done"})
+
+	out := stdout.String()
+	if strings.Count(out, "\rDownloading") != 3 || !strings.Contains(out, "100%") {
+		t.Fatalf("download progress should refresh in place, got %q", out)
+	}
+	if strings.Count(out, "Installing\n") != 1 || strings.Count(out, "Restarting\n") != 1 {
+		t.Fatalf("duplicate terminal statuses should be suppressed, got %q", out)
+	}
+	if !strings.Contains(out, "\nInstalling\n") || !strings.Contains(out, "Done\n") {
+		t.Fatalf("phase changes should end on readable lines, got %q", out)
+	}
+}
