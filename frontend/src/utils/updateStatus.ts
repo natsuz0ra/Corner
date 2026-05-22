@@ -58,6 +58,26 @@ export function isUpdateJobActive(phase: UpdatePhase): boolean {
   return phase === 'checking' || phase === 'downloading' || phase === 'installing' || phase === 'restarting'
 }
 
+export function updateJobStatusLabelKey(phase: UpdatePhase): string {
+  if (phase === 'checking') return 'updateChecking'
+  if (phase === 'downloading') return 'updateDownloading'
+  if (phase === 'installing') return 'updateInstalling'
+  if (phase === 'restarting') return 'updateRestarting'
+  if (phase === 'succeeded') return 'updateSucceeded'
+  if (phase === 'failed') return 'updateFailed'
+  return ''
+}
+
+export function updateJobProgressPercent(job: UpdateJobStatus): number {
+  if (job.phase === 'downloading') {
+    return job.totalBytes > 0 ? job.progressPercent : 42
+  }
+  if (job.phase === 'installing' || job.phase === 'restarting' || job.phase === 'succeeded' || job.phase === 'failed') {
+    return 100
+  }
+  return 0
+}
+
 export function updatePhaseTone(phase: UpdatePhase): UpdateTone {
   if (phase === 'succeeded') return 'success'
   if (phase === 'failed') return 'danger'

@@ -16,6 +16,7 @@ import SettingsSkillsTab from '@/components/settings/SettingsSkillsTab.vue'
 import SettingsAgentsTab from '@/components/settings/SettingsAgentsTab.vue'
 import SettingsMemoryTab from '@/components/settings/SettingsMemoryTab.vue'
 import SettingsPlatformTab from '@/components/settings/SettingsPlatformTab.vue'
+import SettingsUpdateTab from '@/components/settings/SettingsUpdateTab.vue'
 import SettingsAboutTab from '@/components/settings/SettingsAboutTab.vue'
 import AccountEditDialog from '@/components/settings/AccountEditDialog.vue'
 import { llmAPI } from '@/api/llm'
@@ -67,6 +68,7 @@ const settingsTabs: { key: SettingsTabKey; labelKey: string }[] = [
   { key: 'agents', labelKey: 'agentsSettings' },
   { key: 'memory', labelKey: 'memorySettings' },
   { key: 'platform', labelKey: 'messagePlatformSettings' },
+  { key: 'update', labelKey: 'updateSettings' },
   { key: 'about', labelKey: 'aboutSettings' },
 ]
 
@@ -378,7 +380,7 @@ async function saveAgentsInstructions() {
 onMounted(loadData)
 
 watch(tab, (nextTab) => {
-  if (nextTab === 'about') {
+  if (nextTab === 'update') {
     props.markUpdateNoticeRead()
   }
 })
@@ -420,7 +422,7 @@ watch(tab, (nextTab) => {
             style="background: #6366f1"
           />
           <span class="settings-tab-label">{{ t(item.labelKey) }}</span>
-          <span v-if="item.key === 'about' && hasUpdateNotice" class="update-notice-dot" aria-hidden="true" />
+          <span v-if="item.key === 'update' && hasUpdateNotice" class="update-notice-dot" aria-hidden="true" />
         </button>
       </aside>
 
@@ -523,7 +525,9 @@ watch(tab, (nextTab) => {
           @open-bind="openMessagePlatformDialog"
         />
 
-        <SettingsAboutTab v-if="tab === 'about'" @update-check-loaded="props.setUpdateCheckResult" />
+        <SettingsUpdateTab v-if="tab === 'update'" @update-check-loaded="props.setUpdateCheckResult" />
+
+        <SettingsAboutTab v-if="tab === 'about'" />
       </section>
     </div>
   </div>
