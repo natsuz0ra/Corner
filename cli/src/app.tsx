@@ -18,7 +18,7 @@ import MemoryConsoleView from "./components/MemoryConsoleView.js";
 import { ModelEditor } from "./components/ModelEditor.js";
 import { TextInput } from "./components/TextInput.js";
 import { Timeline } from "./components/Timeline.js";
-import { UpdateView, isUpdateActive } from "./components/UpdateView.js";
+import { UpdateView, getInitialUpdateJobForView, isUpdateActive } from "./components/UpdateView.js";
 import { getChatFooterHint, handleChatShortcut, runCliCommand } from "./controllers/commands.js";
 import { useCliKeyboard } from "./hooks/useCliKeyboard.js";
 import { clampContextSize, formatContextSize, formatContextUsageStatus } from "./utils/contextSize.js";
@@ -515,7 +515,8 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     try {
       const check = await apiRef.current.getUpdateCheck(true);
       const job = await apiRef.current.getUpdateJob();
-      dispatch({ type: "SET_UPDATE_STATE", check, job, loading: false, applying: isUpdateActive(job) } as AppAction);
+      const visibleJob = getInitialUpdateJobForView(job);
+      dispatch({ type: "SET_UPDATE_STATE", check, job: visibleJob, loading: false, applying: isUpdateActive(visibleJob) } as AppAction);
     } catch (error) {
       dispatch({ type: "SET_UPDATE_STATE", loading: false, applying: false } as AppAction);
       appendSystem(`Failed to load update status: ${(error as Error).message}`);
