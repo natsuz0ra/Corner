@@ -62,6 +62,8 @@ const (
 	ApprovalModeStandard   = "standard"
 	ApprovalModeAutoReview = "auto_review"
 	ApprovalModeAuto       = "auto"
+	// ApprovalModeScheduledAuto is internal-only: scheduled tasks run unattended.
+	ApprovalModeScheduledAuto = "scheduled_auto"
 
 	SettingThinkingLevel                   = "thinkingLevel"
 	SettingMessagePlatformThinkingLevel    = "messagePlatformThinkingLevel"
@@ -87,7 +89,8 @@ const (
 	PlanStatusApproved = "approved"
 	PlanStatusRejected = "rejected"
 
-	MemoryToolName = "memory"
+	MemoryToolName   = "memory"
+	ScheduleToolName = "schedule"
 
 	// WebSocket
 	WSChatTimeout     = 600 * time.Second

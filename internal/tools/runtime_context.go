@@ -4,6 +4,7 @@ import (
 	"context"
 
 	memorysvc "slimebot/internal/services/memory"
+	schedulesvc "slimebot/internal/services/schedule"
 	skillsvc "slimebot/internal/services/skill"
 )
 
@@ -13,6 +14,8 @@ type subagentRunnerContextKey struct{}
 type todoStateContextKey struct{}
 type processManagerContextKey struct{}
 type memoryServiceContextKey struct{}
+type scheduleServiceContextKey struct{}
+type currentSessionIDContextKey struct{}
 
 // SubagentRunRequest is the tool-layer input passed to the chat agent runner.
 type SubagentRunRequest struct {
@@ -139,4 +142,40 @@ func memoryServiceFromContext(ctx context.Context) (*memorysvc.Service, bool) {
 	}
 	service, ok := ctx.Value(memoryServiceContextKey{}).(*memorysvc.Service)
 	return service, ok && service != nil
+}
+
+func WithScheduleService(ctx context.Context, service *schedulesvc.Service) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if service == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, scheduleServiceContextKey{}, service)
+}
+
+func scheduleServiceFromContext(ctx context.Context) (*schedulesvc.Service, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+	service, ok := ctx.Value(scheduleServiceContextKey{}).(*schedulesvc.Service)
+	return service, ok && service != nil
+}
+
+func WithCurrentSessionID(ctx context.Context, sessionID string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if sessionID == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, currentSessionIDContextKey{}, sessionID)
+}
+
+func currentSessionIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	sessionID, _ := ctx.Value(currentSessionIDContextKey{}).(string)
+	return sessionID
 }

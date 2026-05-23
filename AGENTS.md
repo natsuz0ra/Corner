@@ -60,6 +60,7 @@ internal/
 │  ├─ memory/                # Long-term file memory store/service
 │  ├─ openai/                # OpenAI provider integration
 │  ├─ plan/                  # Planning workflow logic
+│  ├─ schedule/              # Scheduled chat task CRUD and scheduler
 │  ├─ session/               # Session lifecycle/state
 │  ├─ settings/              # User/system settings
 │  └─ skill/                 # Skill loading/execution
@@ -112,6 +113,7 @@ Quick index (feature -> first place to inspect):
 - Sandbox policy and command isolation: `internal/sandbox/`
 - LLM abstraction/provider wiring: `internal/services/llm/`, `internal/services/openai/`, `internal/services/anthropic/`
 - Long-term memory store/service: `internal/services/memory/`, `internal/tools/memory.go`
+- Scheduled chat tasks: `internal/services/schedule/`, `internal/tools/schedule.go`
 - Tool implementations: `internal/tools/`
 - Update checking/apply flow: `internal/updater/`, `internal/server/controller/update.go`
 - Build/version metadata: `internal/version/`

@@ -50,6 +50,10 @@ var metadataByTool = map[string]ToolMetadata{
 		Name:              constants.ExecToolName,
 		ApprovalSensitive: true,
 	},
+	constants.ScheduleToolName: {
+		Name:              constants.ScheduleToolName,
+		ApprovalSensitive: true,
+	},
 	"file_edit": {
 		Name:              "file_edit",
 		ApprovalSensitive: true,

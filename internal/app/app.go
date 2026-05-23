@@ -16,6 +16,7 @@ import (
 	"slimebot/internal/server/controller"
 	"slimebot/internal/server/router"
 	"slimebot/internal/server/ws"
+	schedulesvc "slimebot/internal/services/schedule"
 	"slimebot/web"
 )
 
@@ -24,6 +25,7 @@ type App struct {
 	httpServer     *http.Server
 	listener       net.Listener
 	telegramWorker *telegram.Worker
+	scheduleRunner *schedulesvc.Scheduler
 	core           *Core
 	cliToken       string
 	startCancelMu  sync.Mutex
@@ -81,8 +83,10 @@ func New(cfg config.Config) (*App, error) {
 			IdleTimeout:       120 * time.Second,
 		},
 		telegramWorker: telegramWorker,
+		scheduleRunner: schedulesvc.NewScheduler(core.ScheduleService, 30*time.Second),
 		core:           core,
 	}
+	core.ScheduleService.SetRunner(scheduleChatRunner{core: core})
 	core.WarmupInBackground(context.Background())
 
 	rc := buildRunContext(false)
@@ -174,6 +178,9 @@ func (a *App) Addr() string {
 func (a *App) Run(ctx context.Context) error {
 	if a.telegramWorker != nil {
 		a.telegramWorker.Start(ctx)
+	}
+	if a.scheduleRunner != nil {
+		a.scheduleRunner.Start(ctx)
 	}
 	err := a.startHTTPServer(ctx)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
