@@ -649,7 +649,7 @@ watch(tab, (nextTab) => {
         <div class="rounded-xl overflow-hidden" style="border: 1px solid var(--primary-alpha-20)">
           <CodeMirror
             v-model="mcpForm.config"
-            class="json-codemirror"
+            class="json-codemirror mcp-codemirror"
             :extensions="mcpEditorExtensions"
             :indent-with-tab="true"
             :tab-size="2"

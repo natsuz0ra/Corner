@@ -625,6 +625,18 @@ button.account-edit-btn:hover {
   color: var(--text-primary);
 }
 
+.mcp-codemirror .cm-content,
+.mcp-codemirror .cm-line,
+.mcp-codemirror .cm-token,
+.mcp-codemirror .cm-editor {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-weight: 600;
+}
+
+.mcp-codemirror .cm-content * {
+  font-weight: 600;
+}
+
 .agents-editor-card {
   --agents-editor-bg: color-mix(in srgb, var(--bg-main) 96%, var(--sb-brand) 4%);
   --agents-editor-gutter-bg: color-mix(in srgb, var(--bg-main) 91%, var(--sb-brand) 9%);
