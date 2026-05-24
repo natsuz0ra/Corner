@@ -4,6 +4,7 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import { lineNumbers } from '@codemirror/view'
 import { mcpAPI } from '@/api/mcp'
 import type { MCPConfig } from '@/types/settings'
+import { formatMCPPreview } from '@/utils/mcpPreview'
 
 type ToastLike = {
   error(message: string): void
@@ -108,15 +109,7 @@ export function useSettingsMCP(options: {
   }
 
   function mcpPreview(item: MCPConfig) {
-    try {
-      const cfg = JSON.parse(item.config || '{}') as Record<string, unknown>
-      const transport = String(cfg.transport || 'stdio')
-      if (transport === 'stdio')
-        return t('mcpStdioPreview', { transport, command: cfg.command || '-' })
-      return `${transport} | ${cfg.url || '-'}`
-    } catch {
-      return t('mcpJsonInvalid')
-    }
+    return formatMCPPreview(item.config, t)
   }
 
   return {

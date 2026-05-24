@@ -18,6 +18,14 @@ import (
 	"time"
 )
 
+type downloadProgress struct {
+	DownloadedBytes int64
+	TotalBytes      int64
+	ProgressPercent int
+}
+
+const downloadCompleteDisplayDelay = 700 * time.Millisecond
+
 func RunHelper(ctx context.Context, opts HelperOptions) error {
 	statusPath := strings.TrimSpace(opts.StatusPath)
 	if statusPath == "" {
@@ -33,15 +41,22 @@ func RunHelper(ctx context.Context, opts HelperOptions) error {
 	if repo == "" {
 		repo = DefaultRepo
 	}
-	writeStatus := func(phase Phase, message string, errText string) {
+	writeStatus := func(phase Phase, message string, errText string, progress ...downloadProgress) {
+		var p downloadProgress
+		if len(progress) > 0 {
+			p = progress[0]
+		}
 		_ = store.Write(context.Background(), JobStatus{
-			Phase:      phase,
-			Current:    current,
-			Target:     target,
-			Message:    message,
-			Error:      errText,
-			ManualHint: ManualUpdateHint(target),
-			UpdatedAt:  time.Now().UTC(),
+			Phase:           phase,
+			Current:         current,
+			Target:          target,
+			Message:         message,
+			Error:           errText,
+			ManualHint:      ManualUpdateHint(target),
+			DownloadedBytes: p.DownloadedBytes,
+			TotalBytes:      p.TotalBytes,
+			ProgressPercent: p.ProgressPercent,
+			UpdatedAt:       time.Now().UTC(),
 		})
 	}
 	fail := func(message string, err error) error {
@@ -81,8 +96,22 @@ func RunHelper(ctx context.Context, opts HelperOptions) error {
 
 	writeStatus(PhaseDownloading, "Downloading update package", "")
 	archivePath := filepath.Join(tmpDir, asset.Name)
-	if err := downloadToFile(ctx, service.httpClient, asset.DownloadURL, archivePath); err != nil {
+	lastWrite := time.Time{}
+	lastProgress := downloadProgress{}
+	if err := downloadToFile(ctx, service.httpClient, asset.DownloadURL, archivePath, func(progress downloadProgress) {
+		lastProgress = progress
+		now := time.Now()
+		if now.Sub(lastWrite) < 200*time.Millisecond && progress.ProgressPercent < 100 {
+			return
+		}
+		lastWrite = now
+		writeStatus(PhaseDownloading, "Downloading update package", "", progress)
+	}); err != nil {
 		return fail("Failed to download update package", err)
+	}
+	if lastProgress.ProgressPercent == 100 {
+		writeStatus(PhaseDownloading, "Downloading update package", "", lastProgress)
+		time.Sleep(downloadCompleteDisplayDelay)
 	}
 
 	writeStatus(PhaseInstalling, "Installing update package", "")
@@ -128,7 +157,7 @@ func processExists(pid int) bool {
 	return process.Signal(syscall.Signal(0)) == nil
 }
 
-func downloadToFile(ctx context.Context, client *http.Client, url string, path string) error {
+func downloadToFile(ctx context.Context, client *http.Client, url string, path string, onProgress func(downloadProgress)) error {
 	if strings.TrimSpace(url) == "" {
 		return fmt.Errorf("download url is empty")
 	}
@@ -149,8 +178,49 @@ func downloadToFile(ctx context.Context, client *http.Client, url string, path s
 		return err
 	}
 	defer out.Close()
-	_, err = io.Copy(out, resp.Body)
-	return err
+	total := resp.ContentLength
+	if total < 0 {
+		total = 0
+	}
+	var downloaded int64
+	buf := make([]byte, 32*1024)
+	for {
+		n, readErr := resp.Body.Read(buf)
+		if n > 0 {
+			written, writeErr := out.Write(buf[:n])
+			downloaded += int64(written)
+			if onProgress != nil {
+				onProgress(buildDownloadProgress(downloaded, total))
+			}
+			if writeErr != nil {
+				return writeErr
+			}
+			if written != n {
+				return io.ErrShortWrite
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
+	if onProgress != nil {
+		onProgress(buildDownloadProgress(downloaded, total))
+	}
+	return nil
+}
+
+func buildDownloadProgress(downloaded int64, total int64) downloadProgress {
+	percent := 0
+	if total > 0 {
+		percent = int(downloaded * 100 / total)
+		if percent > 100 {
+			percent = 100
+		}
+	}
+	return downloadProgress{DownloadedBytes: downloaded, TotalBytes: total, ProgressPercent: percent}
 }
 
 func extractArchive(archivePath, destDir string) (string, error) {

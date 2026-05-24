@@ -287,6 +287,7 @@ func TestDetermineToolApprovalPolicy_AutoReviewForSensitiveBuiltins(t *testing.T
 		{name: "file read auto review", toolName: "file_read", approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyNone},
 		{name: "mcp auto review requires review", toolName: "github", isMCP: true, approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyAutoReview},
 		{name: "mcp auto still requires manual", toolName: "github", isMCP: true, approvalMode: constants.ApprovalModeAuto, want: toolApprovalPolicyManual},
+		{name: "mcp scheduled auto skips approval", toolName: "github", isMCP: true, approvalMode: constants.ApprovalModeScheduledAuto, want: toolApprovalPolicyNone},
 		{name: "exec auto execute", toolName: constants.ExecToolName, approvalMode: constants.ApprovalModeAuto, want: toolApprovalPolicyNone},
 		{name: "ask questions always manual", toolName: constants.AskQuestionsTool, approvalMode: constants.ApprovalModeAutoReview, want: toolApprovalPolicyManual},
 	}

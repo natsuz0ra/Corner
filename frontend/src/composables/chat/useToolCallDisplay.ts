@@ -1,5 +1,5 @@
 import { computed, type MaybeRefOrGetter, toValue } from 'vue'
-import { mdiBookOpenOutline, mdiCogPlayOutline, mdiConsoleLine, mdiFileDocumentOutline, mdiFileEditOutline, mdiFilePlusOutline, mdiFileSearchOutline, mdiFormatListChecks, mdiHelpCircleOutline, mdiServerNetwork, mdiSourceBranch, mdiWeb, mdiWebBox } from '@mdi/js'
+import { mdiBookOpenOutline, mdiCalendarClockOutline, mdiCogPlayOutline, mdiConsoleLine, mdiFileDocumentOutline, mdiFileEditOutline, mdiFilePlusOutline, mdiFileSearchOutline, mdiFormatListChecks, mdiHelpCircleOutline, mdiServerNetwork, mdiSourceBranch, mdiWeb, mdiWebBox } from '@mdi/js'
 import type { ToolCallItem } from '../../api/chat'
 import { buildToolCallSummary } from '../../utils/toolDisplay'
 
@@ -14,6 +14,7 @@ export function getToolCallIcon(toolName: string) {
   if (toolName === 'skills') return mdiBookOpenOutline
   if (toolName === 'todo') return mdiFormatListChecks
   if (toolName === 'process') return mdiCogPlayOutline
+  if (toolName === 'schedule') return mdiCalendarClockOutline
   if (toolName === 'ask_questions') return mdiHelpCircleOutline
   if (toolName === 'file_read') return mdiFileDocumentOutline
   if (toolName === 'file_edit') return mdiFileEditOutline
@@ -32,6 +33,7 @@ export function getToolCallLabel(toolName: string, t: Translate) {
   if (toolName === 'skills') return t('toolSkills')
   if (toolName === 'todo') return t('toolTodo')
   if (toolName === 'process') return t('toolProcess')
+  if (toolName === 'schedule') return t('toolSchedule')
   if (toolName === 'run_subagent') return t('toolRunSubagent')
   if (toolName === 'ask_questions') return t('toolAskQuestions')
   if (toolName === 'file_read') return t('toolFileRead')

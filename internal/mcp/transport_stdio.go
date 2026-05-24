@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,6 +16,7 @@ type stdioClient struct {
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
+	reader *bufio.Reader
 
 	mu sync.Mutex
 	id int64
@@ -47,6 +47,7 @@ func newStdioClient(cfg *ServerConfig) (Client, error) {
 		cmd:    cmd,
 		stdin:  stdin,
 		stdout: stdout,
+		reader: bufio.NewReader(stdout),
 	}
 	if err := client.initialize(context.Background()); err != nil {
 		_ = client.Close()
@@ -72,8 +73,7 @@ func (c *stdioClient) initialize(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("initialize failed: %w", err)
 	}
-	_, err = c.request(ctx, "notifications/initialized", map[string]any{})
-	return err
+	return c.notify("notifications/initialized", map[string]any{})
 }
 
 // request sends one JSON-RPC over stdio and reads the matching response.
@@ -91,15 +91,17 @@ func (c *stdioClient) request(ctx context.Context, method string, params map[str
 	if err != nil {
 		return nil, err
 	}
-	header := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(body))
-	if _, err := io.WriteString(c.stdin, header); err != nil {
-		return nil, err
-	}
 	if _, err := c.stdin.Write(body); err != nil {
 		return nil, err
 	}
+	if _, err := io.WriteString(c.stdin, "\n"); err != nil {
+		return nil, err
+	}
 
-	respRaw, err := readRPCMessage(ctx, c.stdout)
+	if c.reader == nil {
+		c.reader = bufio.NewReader(c.stdout)
+	}
+	respRaw, err := readRPCMessage(ctx, c.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -115,14 +117,39 @@ func (c *stdioClient) request(ctx context.Context, method string, params map[str
 	return result, nil
 }
 
+// notify sends one JSON-RPC notification over stdio without waiting for a response.
+func (c *stdioClient) notify(method string, params map[string]any) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	payload := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  method,
+		"params":  params,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	if _, err := c.stdin.Write(body); err != nil {
+		return err
+	}
+	_, err = io.WriteString(c.stdin, "\n")
+	return err
+}
+
 func readRPCMessage(ctx context.Context, r io.Reader) ([]byte, error) {
+	reader, ok := r.(*bufio.Reader)
+	if !ok {
+		reader = bufio.NewReader(r)
+	}
 	type rpcResult struct {
 		data []byte
 		err  error
 	}
 	ch := make(chan rpcResult, 1)
 	go func() {
-		data, err := readRPCMessageBlocking(r)
+		data, err := readRPCMessageBlocking(reader)
 		ch <- rpcResult{data: data, err: err}
 	}()
 	select {
@@ -133,36 +160,18 @@ func readRPCMessage(ctx context.Context, r io.Reader) ([]byte, error) {
 	}
 }
 
-func readRPCMessageBlocking(r io.Reader) ([]byte, error) {
-	reader := bufio.NewReader(r)
-	contentLength := 0
+func readRPCMessageBlocking(reader *bufio.Reader) ([]byte, error) {
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			return nil, err
 		}
 		line = strings.TrimSpace(line)
-		if line == "" {
-			break
+		if line == "" || !strings.HasPrefix(line, "{") {
+			continue
 		}
-		if strings.HasPrefix(strings.ToLower(line), "content-length:") {
-			value := strings.TrimSpace(strings.TrimPrefix(line, "Content-Length:"))
-			value = strings.TrimSpace(strings.TrimPrefix(value, "content-length:"))
-			n, err := strconv.Atoi(value)
-			if err != nil {
-				return nil, fmt.Errorf("invalid content-length: %w", err)
-			}
-			contentLength = n
-		}
+		return []byte(line), nil
 	}
-	if contentLength <= 0 {
-		return nil, fmt.Errorf("missing content-length")
-	}
-	buf := make([]byte, contentLength)
-	if _, err := io.ReadFull(reader, buf); err != nil {
-		return nil, err
-	}
-	return buf, nil
 }
 
 // ListTools fetches tools from the MCP server into the internal Tool shape.

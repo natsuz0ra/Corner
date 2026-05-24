@@ -13,6 +13,13 @@ export type ApprovalKeyAction =
   | { kind: "mark"; toolCallId: string }
   | { kind: "settle"; items: Array<{ toolCallId: string; approved: boolean }> };
 
+export type UpdateKeyAction =
+  | { kind: "return" }
+  | { kind: "check" }
+  | { kind: "confirm" }
+  | { kind: "apply" }
+  | { kind: "cancelConfirm" };
+
 interface UseCliKeyboardProps {
   state: AppState;
   dispatch: React.Dispatch<AppAction>;
@@ -171,6 +178,20 @@ export function handleStreamingChatShortcut(
     return false;
   }
   return handleChatShortcut(input, key, dispatch);
+}
+
+export function getUpdateKeyAction(input: string, key: Key, confirming: boolean): UpdateKeyAction | null {
+  if (key.escape) {
+    return confirming ? { kind: "cancelConfirm" } : { kind: "return" };
+  }
+  if (confirming) {
+    if (input === "y" || input === "Y") return { kind: "apply" };
+    if (input === "n" || input === "N") return { kind: "cancelConfirm" };
+    return null;
+  }
+  if (input === "c" || input === "C") return { kind: "check" };
+  if (input === "u" || input === "U") return { kind: "confirm" };
+  return null;
 }
 
 export function useCliKeyboard({
@@ -349,15 +370,25 @@ export function useCliKeyboard({
     }
 
     if (state.view === "update") {
-      if (key.escape) {
+      const action = getUpdateKeyAction(input, key, state.updateConfirming);
+      if (action?.kind === "return") {
         dispatch({ type: "SET_VIEW", view: "chat" });
         return;
       }
-      if (input === "c" || input === "C") {
+      if (action?.kind === "check") {
         void loadUpdate();
         return;
       }
-      if (input === "u" || input === "U") {
+      if (action?.kind === "confirm") {
+        dispatch({ type: "SET_UPDATE_STATE", confirming: true });
+        return;
+      }
+      if (action?.kind === "cancelConfirm") {
+        dispatch({ type: "SET_UPDATE_STATE", confirming: false });
+        return;
+      }
+      if (action?.kind === "apply") {
+        dispatch({ type: "SET_UPDATE_STATE", confirming: false });
         void applyUpdate();
       }
       return;

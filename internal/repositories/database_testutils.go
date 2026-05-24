@@ -28,6 +28,8 @@ func NewSQLiteDBTest(t testing.TB, namespace string) *gorm.DB {
 		&domain.SessionContextSummary{},
 		&domain.MCPConfig{},
 		&domain.MessagePlatformConfig{},
+		&domain.ScheduledTask{},
+		&domain.ScheduledTaskRun{},
 	); err != nil {
 		t.Fatalf("auto migrate failed: %v", err)
 	}

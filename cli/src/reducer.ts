@@ -175,6 +175,7 @@ export function createInitialState(
     updateJob: null,
     updateLoading: false,
     updateApplying: false,
+    updateConfirming: false,
     memorySnapshot: null,
     memoryLoading: false,
     memoryCursor: 0,
@@ -457,6 +458,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
         ...clearRuntimeTodos(),
         updateLoading: false,
         updateApplying: false,
+        updateConfirming: false,
         contextUsage: null,
         thinkingDetailContent: "",
         view: "chat",
@@ -928,6 +930,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
         updateJob: action.job !== undefined ? action.job : state.updateJob,
         updateLoading: action.loading !== undefined ? action.loading : state.updateLoading,
         updateApplying: action.applying !== undefined ? action.applying : state.updateApplying,
+        updateConfirming: action.confirming !== undefined ? action.confirming : state.updateConfirming,
       };
 
     case "SET_MEMORY_CONSOLE":

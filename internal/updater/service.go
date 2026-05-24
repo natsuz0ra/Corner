@@ -97,6 +97,9 @@ func ManualUpdateHint(version string) string {
 }
 
 func (s *Service) Check(ctx context.Context, _ bool) (CheckResult, error) {
+	if fakeUpdateEnabled() {
+		return s.fakeCheck(), nil
+	}
 	release, err := s.fetchLatestRelease(ctx)
 	if err != nil {
 		return CheckResult{}, err
@@ -145,6 +148,9 @@ func (s *Service) Status(ctx context.Context) (JobStatus, error) {
 }
 
 func (s *Service) Apply(ctx context.Context, req ApplyRequest) (JobStatus, error) {
+	if fakeUpdateEnabled() {
+		return s.fakeApply(ctx, req)
+	}
 	target := strings.TrimSpace(req.TargetVersion)
 	current := strings.TrimSpace(s.currentVersion)
 	if current == "" {
@@ -219,6 +225,86 @@ func StartHelperProcess(_ context.Context, opts HelperOptions) error {
 func (s *Service) fetchLatestRelease(ctx context.Context) (Release, error) {
 	endpoint := fmt.Sprintf("%s/repos/%s/releases/latest", s.apiBaseURL, strings.Trim(s.repo, "/"))
 	return s.fetchRelease(ctx, endpoint)
+}
+
+func fakeUpdateEnabled() bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv("SLIMEBOT_FAKE_UPDATE")))
+	return value == "1" || value == "true" || value == "yes"
+}
+
+func (s *Service) fakeCheck() CheckResult {
+	current := strings.TrimSpace(s.currentVersion)
+	if current == "" || current == "dev" {
+		current = "v1.28.0"
+	}
+	latest := "v9.99.9"
+	return CheckResult{
+		Current:         current,
+		Latest:          latest,
+		UpdateAvailable: true,
+		CanApply:        true,
+		ReleaseName:     "SlimeBot " + latest,
+		ReleaseNotes:    "## What's New\n- Improved the update confirmation flow.\n- Added download progress indicators.\n- Added clearer status prompts during installation.",
+		ReleaseURL:      "https://github.com/natsuz0ra/SlimeBot/releases/tag/" + latest,
+		PublishedAt:     time.Now().UTC(),
+		AssetName:       AssetNameForPlatform(latest, s.goos, s.goarch),
+		ManualHint:      ManualUpdateHint(latest),
+	}
+}
+
+func (s *Service) fakeApply(ctx context.Context, req ApplyRequest) (JobStatus, error) {
+	current := strings.TrimSpace(s.currentVersion)
+	if current == "" || current == "dev" {
+		current = "v1.28.0"
+	}
+	target := strings.TrimSpace(req.TargetVersion)
+	if target == "" {
+		target = "v9.99.9"
+	}
+	status := JobStatus{
+		Phase:      PhaseChecking,
+		Current:    current,
+		Target:     target,
+		Message:    "Update started",
+		ManualHint: ManualUpdateHint(target),
+		UpdatedAt:  time.Now().UTC(),
+	}
+	if err := s.status.Write(ctx, status); err != nil {
+		return JobStatus{}, err
+	}
+	go s.runFakeUpdate(current, target)
+	return status, nil
+}
+
+func (s *Service) runFakeUpdate(current string, target string) {
+	total := int64(32 * 1024 * 1024)
+	write := func(status JobStatus) {
+		status.Current = current
+		status.Target = target
+		status.ManualHint = ManualUpdateHint(target)
+		status.UpdatedAt = time.Now().UTC()
+		_ = s.status.Write(context.Background(), status)
+	}
+	for percent := 0; percent <= 100; percent += 10 {
+		downloaded := total * int64(percent) / 100
+		write(JobStatus{
+			Phase:           PhaseDownloading,
+			Message:         "Downloading update package",
+			DownloadedBytes: downloaded,
+			TotalBytes:      total,
+			ProgressPercent: percent,
+		})
+		if percent == 100 {
+			time.Sleep(downloadCompleteDisplayDelay)
+		} else {
+			time.Sleep(350 * time.Millisecond)
+		}
+	}
+	write(JobStatus{Phase: PhaseInstalling, Message: "Installing update package"})
+	time.Sleep(900 * time.Millisecond)
+	write(JobStatus{Phase: PhaseRestarting, Message: "Restarting SlimeBot service"})
+	time.Sleep(900 * time.Millisecond)
+	write(JobStatus{Phase: PhaseSucceeded, Message: "Update installed successfully"})
 }
 
 func (s *Service) fetchReleaseByTag(ctx context.Context, tag string) (Release, error) {

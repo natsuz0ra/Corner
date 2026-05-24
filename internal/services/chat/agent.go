@@ -16,6 +16,7 @@ import (
 	sandboxpolicy "slimebot/internal/sandbox"
 	llmsvc "slimebot/internal/services/llm"
 	memorysvc "slimebot/internal/services/memory"
+	schedulesvc "slimebot/internal/services/schedule"
 	skillsvc "slimebot/internal/services/skill"
 	"slimebot/internal/tools"
 )
@@ -27,6 +28,7 @@ type AgentService struct {
 	providerFactory *llmsvc.Factory
 	mcp             *mcp.Manager
 	memory          *memorysvc.Service
+	schedule        *schedulesvc.Service
 	skillRuntime    *skillsvc.SkillRuntimeService
 	subagentHost    SubagentHost
 	toolCacheMu     sync.Mutex
@@ -70,6 +72,13 @@ func (a *AgentService) SetSubagentHost(h SubagentHost) {
 
 func (a *AgentService) SetMemoryService(service *memorysvc.Service) {
 	a.memory = service
+	a.toolCacheMu.Lock()
+	a.toolCache = make(map[string]cachedToolDefs)
+	a.toolCacheMu.Unlock()
+}
+
+func (a *AgentService) SetScheduleService(service *schedulesvc.Service) {
+	a.schedule = service
 	a.toolCacheMu.Lock()
 	a.toolCache = make(map[string]cachedToolDefs)
 	a.toolCacheMu.Unlock()
@@ -729,6 +738,8 @@ func (a *AgentService) RunAgentLoop(
 					execCtx = tools.WithProcessManager(execCtx, processManager)
 					execCtx = tools.WithSkillRuntime(execCtx, a.skillRuntime)
 					execCtx = tools.WithMemoryService(execCtx, a.memory)
+					execCtx = tools.WithScheduleService(execCtx, a.schedule)
+					execCtx = tools.WithCurrentSessionID(execCtx, sessionID)
 					execResult := a.executeInvocation(execCtx, tcCopy, invocationCopy, paramsCopy, sessionID, mcpConfigs)
 					if isSuccessfulBuiltinTodoUpdate(invocationCopy, execResult) && callbacks.OnTodoUpdate != nil {
 						update, parseErr := parseTodoUpdateParams(paramsCopy)
@@ -943,6 +954,9 @@ func requiresToolApproval(toolName string, isMCP bool, approvalMode string) bool
 func determineToolApprovalPolicy(toolName string, isMCP bool, approvalMode string) toolApprovalPolicy {
 	if toolName == constants.AskQuestionsTool {
 		return toolApprovalPolicyManual
+	}
+	if approvalMode == constants.ApprovalModeScheduledAuto {
+		return toolApprovalPolicyNone
 	}
 	if isMCP {
 		if approvalMode == constants.ApprovalModeAutoReview {

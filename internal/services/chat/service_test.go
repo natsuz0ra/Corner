@@ -142,6 +142,35 @@ func TestHandleChatStream_FinishesThinkingBeforeAnswerChunk(t *testing.T) {
 	}
 }
 
+func TestHandleChatStream_AllowsEmptyCallbacks(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	session, err := repo.CreateSession(ctx, "s")
+	if err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+	model, err := repo.CreateLLMConfig(context.Background(), domain.LLMConfig{
+		Name:     "fake",
+		Provider: llmsvc.ProviderOpenAI,
+		BaseURL:  "http://fake",
+		APIKey:   "key",
+		Model:    "fake-model",
+	})
+	if err != nil {
+		t.Fatalf("create model failed: %v", err)
+	}
+	provider := &captureMessagesProvider{}
+	svc := NewChatService(repo, nil, llmsvc.NewFactory(provider), nil, nil)
+
+	result, err := svc.HandleChatStream(ctx, session.ID, "request-empty-callbacks", "hello", "", model.ID, nil, "off", false, "", "", AgentCallbacks{})
+	if err != nil {
+		t.Fatalf("HandleChatStream failed: %v", err)
+	}
+	if result == nil || result.Answer != "answer" {
+		t.Fatalf("result answer = %#v, want answer", result)
+	}
+}
+
 func TestHandleChatStream_UsesDisplayContentForStoredUserMessage(t *testing.T) {
 	repo := newTestRepo(t)
 	ctx := context.Background()

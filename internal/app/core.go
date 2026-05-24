@@ -22,6 +22,7 @@ import (
 	memorysvc "slimebot/internal/services/memory"
 	oaisvc "slimebot/internal/services/openai"
 	plansvc "slimebot/internal/services/plan"
+	schedulesvc "slimebot/internal/services/schedule"
 	sessionsvc "slimebot/internal/services/session"
 	settingssvc "slimebot/internal/services/settings"
 	skillsvc "slimebot/internal/services/skill"
@@ -37,6 +38,7 @@ type Core struct {
 	AuthService      *authsvc.AuthService
 	ChatService      *chatsvc.ChatService
 	MemoryService    *memorysvc.Service
+	ScheduleService  *schedulesvc.Service
 	SessionService   *sessionsvc.SessionService
 	SettingsService  *settingssvc.SettingsService
 	AgentsService    *agentssvc.Service
@@ -98,8 +100,10 @@ func NewCore(cfg config.Config) (*Core, error) {
 
 	chatUpload := chatsvc.NewChatUploadService(cfg.ChatUploadRoot)
 	memoryService := memorysvc.NewServiceFromSettings(repo)
+	scheduleService := schedulesvc.NewService(repo, nil, schedulesvc.Options{})
 	chatService := chatsvc.NewChatService(repo, repo, providerFactory, mcpManager, skillRuntime)
 	chatService.SetMemoryService(memoryService)
+	chatService.SetScheduleService(scheduleService)
 	chatService.SetAgentsInstructions(agentsService)
 	chatService.SetUploadService(chatUpload)
 	chatService.SetContextHistoryRounds(cfg.ContextHistoryRounds)
@@ -118,6 +122,7 @@ func NewCore(cfg config.Config) (*Core, error) {
 		AuthService:      authService,
 		ChatService:      chatService,
 		MemoryService:    memoryService,
+		ScheduleService:  scheduleService,
 		SessionService:   sessionService,
 		SettingsService:  settingsService,
 		AgentsService:    agentsService,

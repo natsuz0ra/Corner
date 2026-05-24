@@ -430,8 +430,10 @@ func (s *ChatService) executeChatTurn(
 			accumulator.narrationBuilder.WriteString(body)
 			// Narration: buffer AND stream in real-time (fall through to OnChunk)
 		}
-		if err := callbacks.OnChunk(body); err != nil {
-			accumulator.pushErr = err
+		if callbacks.OnChunk != nil {
+			if err := callbacks.OnChunk(body); err != nil {
+				accumulator.pushErr = err
+			}
 		}
 		return nil
 	}

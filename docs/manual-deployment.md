@@ -59,11 +59,11 @@ make package
 Official releases should be packaged by GitHub Actions. Push a tag that matches `vX.Y.Z`, and `.github/workflows/release.yml` runs the same packaging script on GitHub and publishes a stable Release.
 
 ```bash
-git tag v1.27.1
-git push origin v1.27.1
+git tag v1.28.0
+git push origin v1.28.0
 ```
 
-The workflow can also be started manually with an existing tag to republish assets for a specific version. Tag validation only accepts `vX.Y.Z`, so tags such as `v1.27.1-test` are not published as stable Releases.
+The workflow can also be started manually with an existing tag to republish assets for a specific version. Tag validation only accepts `vX.Y.Z`, so tags such as `v1.28.0-test` are not published as stable Releases.
 
 Release archives include `install.sh` / `install.ps1` and `uninstall.sh` / `uninstall.ps1`. The install scripts honor `SLIMEBOT_INSTALL_DIR` and `SLIMEBOT_BIN_DIR`; the uninstall scripts use the same variables plus `SLIMEBOT_HOME` for the user data directory.
 

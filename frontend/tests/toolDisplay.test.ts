@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import test from 'node:test'
 import type { ToolCallItem } from '../src/api/chat'
+import { getToolCallLabel } from '../src/composables/chat/useToolCallDisplay'
 import {
   buildLightweightToolGroupSummary,
   buildLightweightToolTimelineRows,
@@ -34,6 +35,15 @@ test('buildToolCallSummary uses exec description', () => {
   const item = tool({ params: { command: 'go test ./...', description: 'Run Go tests' } })
 
   assert.equal(buildToolCallSummary(item), 'Run Go tests')
+})
+
+test('schedule tool label is translated', () => {
+  const labels: Record<string, string> = {
+    toolSchedule: '定时任务',
+  }
+
+  assert.equal(getToolCallLabel('schedule', (key) => labels[key] || key), '定时任务')
+  assert.equal(getToolCallLabel('unknown_tool', (key) => labels[key] || key), 'unknown_tool')
 })
 
 test('buildToolCallSummary uses query and http request fields', () => {

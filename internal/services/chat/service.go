@@ -13,6 +13,7 @@ import (
 	llmsvc "slimebot/internal/services/llm"
 	memorysvc "slimebot/internal/services/memory"
 	plansvc "slimebot/internal/services/plan"
+	schedulesvc "slimebot/internal/services/schedule"
 	skillsvc "slimebot/internal/services/skill"
 )
 
@@ -28,6 +29,7 @@ type ChatService struct {
 	providerFactory *llmsvc.Factory
 	agent           *AgentService
 	memory          *memorysvc.Service
+	schedule        *schedulesvc.Service
 	skillRuntime    *skillsvc.SkillRuntimeService
 	planService     *plansvc.PlanService
 	uploads         *ChatUploadService
@@ -100,6 +102,13 @@ func (s *ChatService) SetMemoryService(service *memorysvc.Service) {
 	s.memory = service
 	if s.agent != nil {
 		s.agent.SetMemoryService(service)
+	}
+}
+
+func (s *ChatService) SetScheduleService(service *schedulesvc.Service) {
+	s.schedule = service
+	if s.agent != nil {
+		s.agent.SetScheduleService(service)
 	}
 }
 
