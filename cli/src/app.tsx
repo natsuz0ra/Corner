@@ -13,7 +13,7 @@ import { Banner } from "./components/Banner.js";
 import { CommandHints } from "./components/CommandHints.js";
 import { MCPEditor } from "./components/MCPEditor.js";
 import { MCPTemplatePicker } from "./components/MCPTemplatePicker.js";
-import { CLI_HINT_COLOR, MenuView } from "./components/MenuView.js";
+import { CLI_HINT_COLOR, MenuView, MENU_VISIBLE_LIMIT } from "./components/MenuView.js";
 import MemoryConsoleView from "./components/MemoryConsoleView.js";
 import { ModelEditor } from "./components/ModelEditor.js";
 import { TextInput } from "./components/TextInput.js";
@@ -1131,6 +1131,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           items={state.menuItems}
           cursor={state.menuCursor}
           hint={state.menuHint}
+          maxVisibleItems={state.menuKind === "session" ? MENU_VISIBLE_LIMIT : undefined}
         />
       )}
 

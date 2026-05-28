@@ -12,12 +12,14 @@ interface MenuViewProps {
 	items: MenuItem[];
 	cursor: number;
 	hint: string;
+	maxVisibleItems?: number;
 }
 
 const MAX_MENU_TITLE_LENGTH = 25;
 const MAX_MENU_DESC_LENGTH = 80;
 
 export const MENU_TITLE_GAP_LINES = 1;
+export const MENU_VISIBLE_LIMIT = 5;
 export const CLI_HINT_COLOR = "#64748b";
 export const MENU_ITEM_COLORS = {
 	title: "#67e8f9",
@@ -76,14 +78,48 @@ function menuItemKey(item: MenuItem): string {
 	return `${item.title}:${item.desc}`;
 }
 
+function clampMenuCursor(cursor: number, length: number): number {
+	if (length <= 0) return 0;
+	return Math.max(0, Math.min(length - 1, cursor));
+}
+
+export function getVisibleMenuItems(
+	items: MenuItem[],
+	cursor: number,
+	maxVisible = items.length,
+): { items: MenuItem[]; startIndex: number } {
+	if (items.length === 0 || maxVisible <= 0) {
+		return { items: [], startIndex: 0 };
+	}
+
+	const visibleCount = Math.min(maxVisible, items.length);
+	const selected = clampMenuCursor(cursor, items.length);
+	const maxStart = items.length - visibleCount;
+	const startIndex = Math.max(
+		0,
+		Math.min(selected - visibleCount + 1, maxStart),
+	);
+
+	return {
+		items: items.slice(startIndex, startIndex + visibleCount),
+		startIndex,
+	};
+}
+
 export function MenuView({
 	title,
 	items,
 	cursor,
 	hint,
+	maxVisibleItems,
 }: MenuViewProps): React.ReactElement {
 	const { stdout } = useStdout();
 	const terminalWidth = Math.max(20, stdout?.columns || 80);
+	const visible = getVisibleMenuItems(
+		items,
+		cursor,
+		maxVisibleItems ?? items.length,
+	);
 
 	return (
 		<Box flexDirection="column">
@@ -94,42 +130,46 @@ export function MenuView({
 			{items.length === 0 ? (
 				<Text color={MENU_ITEM_COLORS.empty}>(empty)</Text>
 			) : (
-				items.map((item, i) => (
-					<Box key={menuItemKey(item)} flexDirection="column">
-						<Text>
-							<Text
-								color={
-									i === cursor
-										? MENU_ITEM_COLORS.activeCursor
-										: MENU_ITEM_COLORS.inactiveCursor
-								}
-							>
-								{i === cursor ? "\u276F" : " "}
-							</Text>
-							<Text> </Text>
-							<Text
-								bold={i === cursor}
-								color={
-									i === cursor
-										? MENU_ITEM_COLORS.activeTitle
-										: MENU_ITEM_COLORS.inactiveTitle
-								}
-							>
-								{truncateMenuTitle(item.title)}
-							</Text>
-						</Text>
-						{formatMenuDescriptionLines(item.desc, terminalWidth).map(
-							(line) => (
+				visible.items.map((item, i) => {
+					const absoluteIndex = visible.startIndex + i;
+					const selected = absoluteIndex === cursor;
+					return (
+						<Box key={menuItemKey(item)} flexDirection="column">
+							<Text>
 								<Text
-									key={`${item.title}-desc-${line}`}
-									color={MENU_ITEM_COLORS.description}
+									color={
+										selected
+											? MENU_ITEM_COLORS.activeCursor
+											: MENU_ITEM_COLORS.inactiveCursor
+									}
 								>
-									{`  ${line}`}
+									{selected ? "\u276F" : " "}
 								</Text>
-							),
-						)}
-					</Box>
-				))
+								<Text> </Text>
+								<Text
+									bold={selected}
+									color={
+										selected
+											? MENU_ITEM_COLORS.activeTitle
+											: MENU_ITEM_COLORS.inactiveTitle
+									}
+								>
+									{truncateMenuTitle(item.title)}
+								</Text>
+							</Text>
+							{formatMenuDescriptionLines(item.desc, terminalWidth).map(
+								(line) => (
+									<Text
+										key={`${item.title}-desc-${line}`}
+										color={MENU_ITEM_COLORS.description}
+									>
+										{`  ${line}`}
+									</Text>
+								),
+							)}
+						</Box>
+					);
+				})
 			)}
 			{hint && (
 				<Box flexDirection="column">

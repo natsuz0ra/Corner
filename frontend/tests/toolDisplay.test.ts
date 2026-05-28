@@ -73,6 +73,20 @@ test('buildLightweightToolDisplay summarizes activity without output body', () =
   assert.equal(JSON.stringify(display).includes('do not show'), false)
 })
 
+test('buildLightweightToolDisplay hides web_extract failure body', () => {
+  const display = buildLightweightToolDisplay(tool({
+    toolName: 'web_extract',
+    command: 'extract',
+    params: { url: 'https://example.test/fail' },
+    status: 'error',
+    error: 'web_extract request failed (status 500): <html><body>secret response body</body></html>',
+  }))
+
+  assert.equal(display?.error, 'web_extract request failed (status 500).')
+  assert.equal(JSON.stringify(display).includes('secret response body'), false)
+  assert.equal(JSON.stringify(display).includes('<html>'), false)
+})
+
 test('buildLightweightToolTimelineRows merges consecutive lightweight tools only', () => {
   const calls = [
     tool({ toolCallId: 'search-1', toolName: 'web_search', command: 'search', params: { query: 'SlimeBot latest' }, status: 'completed' }),
