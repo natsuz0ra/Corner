@@ -5,7 +5,7 @@
 
 import React, { useMemo } from "react";
 import { Box, Text } from "ink";
-import { DOT } from "../utils/terminal.js";
+import { CLI_ACCENT_COLOR, CLI_ACCENT_SOFT_COLOR, DOT } from "../utils/terminal.js";
 import type { RuntimeTodoItem, TimelineEntry, ToolCallStatus } from "../types.js";
 import {
   formatToolCallSummary,
@@ -163,7 +163,7 @@ function TimelineBlock({
         {lines.map((line, i) => (
           <Text key={i}>
             {i === 0 ? (
-              <Text color="cyan">{"\u276F "}</Text>
+              <Text color={CLI_ACCENT_COLOR}>{"\u276F "}</Text>
             ) : (
               <Text>{"  "}</Text>
             )}
@@ -208,9 +208,9 @@ function TimelineBlock({
     const done = entry.thinkingDone;
     const label = formatThinkingLabel(entry);
     const numPrefix = thinkingNumber !== undefined ? `[${thinkingNumber}] ` : "";
-    const dotColor = done ? "#38bdf8" : "#22d3ee";
-    const labelColor = done ? "#7dd3fc" : "#22d3ee";
-    const indexColor = "#67e8f9";
+    const dotColor = done ? CLI_ACCENT_SOFT_COLOR : CLI_ACCENT_COLOR;
+    const labelColor = done ? CLI_ACCENT_SOFT_COLOR : CLI_ACCENT_COLOR;
+    const indexColor = CLI_ACCENT_COLOR;
     return (
       <Text>
         <Text bold color={dotColor}>
@@ -322,7 +322,7 @@ function TimelineBlock({
             </Text>
           ))}
           {subThinkingLines.map((line, index) => (
-            <Text key={`${entry.toolCallId || invocation}-subthink-${index}`} color="cyan">
+            <Text key={`${entry.toolCallId || invocation}-subthink-${index}`} color={CLI_ACCENT_COLOR}>
               {line}
             </Text>
           ))}

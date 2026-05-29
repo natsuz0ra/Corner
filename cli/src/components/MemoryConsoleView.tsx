@@ -9,11 +9,12 @@ import {
   type MemoryConsoleMode,
 } from "../utils/memoryConsole.js";
 import { wrapText } from "../utils/format.js";
+import { CLI_ACCENT_COLOR } from "../utils/terminal.js";
 import { MENU_ITEM_COLORS } from "./MenuView.js";
 
 export const MEMORY_CONSOLE_COLORS = {
-  title: "#67e8f9",
-  activeCursor: "#22d3ee",
+  title: CLI_ACCENT_COLOR,
+  activeCursor: CLI_ACCENT_COLOR,
   activeText: "#f8fafc",
   inactiveText: "#cbd5e1",
   description: "#94a3b8",

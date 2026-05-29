@@ -10,6 +10,7 @@ import { TextInput } from "./TextInput.js";
 import type { ModelProvider } from "../types.js";
 import { clampContextSize, formatContextSize, renderContextSizeBar } from "../utils/contextSize.js";
 import { stringWidth } from "../utils/stringWidth.js";
+import { CLI_ACCENT_COLOR } from "../utils/terminal.js";
 
 /** Field index map: 0=name, 1=provider, 2=baseUrl, 3=apiKey, 4=model, 5=contextSize */
 const FIELD_COUNT = 6;
@@ -184,7 +185,7 @@ export function ModelEditor({
       <Box flexDirection="column">
         <Box>
           {renderFieldLabel(5, "Context")}
-          <Text color="cyan">[{renderContextSizeBar(clamped, barWidth)}]</Text>
+          <Text color={CLI_ACCENT_COLOR}>[{renderContextSizeBar(clamped, barWidth)}]</Text>
           <Text color="gray"> {formatted}</Text>
         </Box>
         {active ? (
@@ -206,7 +207,7 @@ export function ModelEditor({
 
   return (
     <Box flexDirection="column">
-      <Text bold color="86">
+      <Text bold color={CLI_ACCENT_COLOR}>
         Model Editor
       </Text>
       {renderField(0, "Name", name, onNameChange)}

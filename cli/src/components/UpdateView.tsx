@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import type { UpdateCheckResult, UpdateJobStatus } from "../types.js";
 import { renderMarkdownLines } from "../utils/markdownRenderer.js";
+import { CLI_ACCENT_COLOR } from "../utils/terminal.js";
 
 interface UpdateViewProps {
 	check: UpdateCheckResult | null;
@@ -89,7 +90,7 @@ export function formatUpdateHint(canApply: boolean, active: boolean, confirming 
 export function UpdateView({ check, job, loading, applying, confirming = false, columns = 80 }: UpdateViewProps): React.ReactElement {
 	const active = applying || isUpdateActive(job);
 	const canApply = Boolean(check?.canApply) && !active && !loading;
-	const titleColor = check?.updateAvailable ? "#facc15" : "#67e8f9";
+	const titleColor = check?.updateAvailable ? "#facc15" : CLI_ACCENT_COLOR;
 	const hint = formatUpdateHint(canApply, active, confirming);
 	const lines = formatUpdateSummaryLines({ check, job, loading, confirming });
 	const releaseNoteLines = formatUpdateReleaseNotesLines(check?.releaseNotes || "", columns);
@@ -108,7 +109,7 @@ export function UpdateView({ check, job, loading, applying, confirming = false, 
 				<>
 					<Text> </Text>
 					{releaseNoteLines.map((line, index) => (
-						<Text key={`note-${index}-${line}`} color={index === 0 ? "#67e8f9" : "#cbd5e1"}>
+						<Text key={`note-${index}-${line}`} color={index === 0 ? CLI_ACCENT_COLOR : "#cbd5e1"}>
 							{line}
 						</Text>
 					))}
@@ -162,7 +163,7 @@ function formatDividerLine(columns: number): string {
 function formatLineColor(line: string): string {
 	if (line.startsWith("Error")) return "#f87171";
 	if (line.startsWith("Status")) return "#facc15";
-	if (line.startsWith("Progress")) return "#67e8f9";
+	if (line.startsWith("Progress")) return CLI_ACCENT_COLOR;
 	return "#cbd5e1";
 }
 

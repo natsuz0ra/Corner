@@ -5,6 +5,7 @@
 
 import { Box, Text } from "ink";
 import type React from "react";
+import { CLI_ACCENT_COLOR } from "../utils/terminal.js";
 import { TextInput } from "./TextInput.js";
 
 const PLACEHOLDER = "Type feedback to modify plan...";
@@ -15,7 +16,7 @@ export const PLAN_CONFIRM_OPTION_GAP_LINES = 0;
 export const PLAN_CONFIRM_HINT_GAP_LINES = PLAN_CONFIRM_SECTION_GAP_LINES;
 export const PLAN_CONFIRM_COLORS = {
 	title: "#a78bfa",
-	selectedCursor: "#22d3ee",
+	selectedCursor: CLI_ACCENT_COLOR,
 	selected: "#f8fafc",
 	idle: "#cbd5e1",
 	feedback: "#e2e8f0",

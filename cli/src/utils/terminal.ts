@@ -53,3 +53,5 @@ export function setTerminalTitle(title: string): void {
 }
 
 export const DOT = "\u25CF"; // ●
+export const CLI_ACCENT_COLOR = "#c084fc";
+export const CLI_ACCENT_SOFT_COLOR = "#e9d5ff";

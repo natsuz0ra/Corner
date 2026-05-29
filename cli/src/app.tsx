@@ -36,7 +36,7 @@ import {
   parseMemoryConsoleDraft,
   type MemoryConsoleEditField,
 } from "./utils/memoryConsole.js";
-import { clearScreen, setTerminalTitle } from "./utils/terminal.js";
+import { CLI_ACCENT_COLOR, clearScreen, setTerminalTitle } from "./utils/terminal.js";
 import { SHOW_CLI_THINKING } from "./utils/timelineFormat.js";
 import { CLISocket } from "./ws/socket.js";
 import type {
@@ -1310,7 +1310,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
             {getChatFooterHint(state.planMode, state.approvalMode)}
           </Text>
           <Box>
-            {state.planMode && <Text color="#22d3ee" bold>◆ Plan </Text>}
+            {state.planMode && <Text color={CLI_ACCENT_COLOR} bold>◆ Plan </Text>}
             {state.approvalMode === "auto_review" && <Text color="#eab308" bold>◆ Auto Review </Text>}
             {state.approvalMode === "auto" && <Text color="#eab308" bold>◆ Auto </Text>}
           </Box>

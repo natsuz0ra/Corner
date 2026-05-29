@@ -5,6 +5,7 @@
 
 import React from "react";
 import { Box, Text, useStdout } from "ink";
+import { CLI_ACCENT_COLOR } from "../utils/terminal.js";
 import { TextInput } from "./TextInput.js";
 import { truncateDisplayValue } from "./ModelEditor.js";
 
@@ -13,7 +14,7 @@ const JSON_DIVIDER_MIN_WIDTH = 24;
 const JSON_DIVIDER_MAX_WIDTH = 52;
 
 export const MCP_EDITOR_COLORS = {
-  title: "#67e8f9",
+  title: CLI_ACCENT_COLOR,
   mode: "#94a3b8",
   active: "#f8fafc",
   inactive: "#94a3b8",

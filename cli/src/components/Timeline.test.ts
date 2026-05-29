@@ -28,7 +28,7 @@ import {
   shouldShowWaitingPrompt,
 } from "../utils/timelineFormat";
 import { stringWidth } from "../utils/stringWidth";
-import { stripAnsi } from "../utils/terminal";
+import { CLI_ACCENT_COLOR, stripAnsi } from "../utils/terminal";
 
 test("formatToolOutputLines aligns tool output with fixed spaces", () => {
   const entry: TimelineEntry = {
@@ -784,13 +784,13 @@ test("formatRunSubagentDetailLines keeps collapsed display to one-line summaries
   assert.ok(lines.every((line) => !line.includes("final result line 4")));
 });
 
-test("getRunSubagentDetailLineColor renders content sections white and thinking cyan", () => {
+test("getRunSubagentDetailLineColor renders content sections white and thinking accent", () => {
   assert.equal(getRunSubagentDetailLineColor("   鈹溾攢 Context 鈫?repo context"), "white");
   assert.equal(getRunSubagentDetailLineColor("                 wrapped context", "white"), "white");
   assert.equal(getRunSubagentDetailLineColor("   鈹溾攢 Task 鈫?inspect display"), "white");
   assert.equal(getRunSubagentDetailLineColor("   鈹斺攢 Result 鈫?final result"), "white");
-  assert.equal(getRunSubagentDetailLineColor("   鈹溾攢 Thinking & tools: 1 tool"), "cyan");
-  assert.equal(getRunSubagentDetailLineColor("                 nested tool detail", "cyan"), "gray");
+  assert.equal(getRunSubagentDetailLineColor("   鈹溾攢 Thinking & tools: 1 tool"), CLI_ACCENT_COLOR);
+  assert.equal(getRunSubagentDetailLineColor("                 nested tool detail", CLI_ACCENT_COLOR), "gray");
   assert.equal(getRunSubagentDetailLineColor("   鈹溾攢 Params"), "gray");
 });
 

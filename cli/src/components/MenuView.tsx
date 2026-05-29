@@ -6,6 +6,7 @@ import { Box, Text, useStdout } from "ink";
 import type React from "react";
 import type { MenuItem } from "../types.js";
 import { wrapText } from "../utils/format.js";
+import { CLI_ACCENT_COLOR } from "../utils/terminal.js";
 
 interface MenuViewProps {
 	title: string;
@@ -22,8 +23,8 @@ export const MENU_TITLE_GAP_LINES = 1;
 export const MENU_VISIBLE_LIMIT = 5;
 export const CLI_HINT_COLOR = "#64748b";
 export const MENU_ITEM_COLORS = {
-	title: "#67e8f9",
-	activeCursor: "#22d3ee",
+	title: CLI_ACCENT_COLOR,
+	activeCursor: CLI_ACCENT_COLOR,
 	inactiveCursor: "#64748b",
 	activeTitle: "#f8fafc",
 	inactiveTitle: "#cbd5e1",

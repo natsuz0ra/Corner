@@ -5,6 +5,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { getVisibleCommandHints, matchCommandHints } from "../utils/commands.js";
+import { CLI_ACCENT_COLOR } from "../utils/terminal.js";
 
 interface CommandHintsProps {
   input: string;
@@ -25,8 +26,8 @@ export function CommandHints({ input, selectedIndex }: CommandHintsProps): React
         const selected = absoluteIndex === selectedIndex;
         return (
           <Text key={h.command}>
-            <Text color={selected ? "cyan" : "gray"}>{selected ? "❯ " : "  "}</Text>
-            <Text color="cyan">{h.command}</Text>
+            <Text color={selected ? CLI_ACCENT_COLOR : "gray"}>{selected ? "❯ " : "  "}</Text>
+            <Text color={CLI_ACCENT_COLOR}>{h.command}</Text>
             <Text color="gray"> - {h.description}</Text>
           </Text>
         );
