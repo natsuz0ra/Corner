@@ -55,6 +55,7 @@ type UpdateInput struct {
 
 type RunResult struct {
 	RequestID  string
+	SessionID  string
 	Success    bool
 	Answer     string
 	Error      string
@@ -360,10 +361,14 @@ func (s *Service) MarkRunComplete(ctx context.Context, taskID string, result Run
 	if requestID == "" {
 		requestID = uuid.NewString()
 	}
+	runSessionID := strings.TrimSpace(result.SessionID)
+	if runSessionID == "" {
+		runSessionID = task.SessionID
+	}
 	if err := s.store.CreateScheduledTaskRun(ctx, &domain.ScheduledTaskRun{
 		ID:         uuid.NewString(),
 		TaskID:     task.ID,
-		SessionID:  task.SessionID,
+		SessionID:  runSessionID,
 		RequestID:  requestID,
 		Status:     status,
 		Answer:     result.Answer,

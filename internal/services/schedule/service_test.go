@@ -206,6 +206,40 @@ func TestServiceMarkRunCompletesOneShotTask(t *testing.T) {
 	}
 }
 
+func TestServiceMarkRunCompleteRecordsActualRunSession(t *testing.T) {
+	store := NewMemoryStore()
+	svc := NewService(store, nil, Options{Now: fixedNow})
+	runAt := fixedNow().Add(time.Minute)
+	task := &domain.ScheduledTask{
+		ID:           "task-actual-session",
+		Name:         "每日摘要",
+		Prompt:       "总结项目状态",
+		SessionID:    "source-session",
+		ScheduleKind: string(ScheduleKindOnce),
+		RunAt:        &runAt,
+		Status:       domain.ScheduledTaskStatusRunning,
+	}
+	if err := store.CreateScheduledTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateScheduledTask failed: %v", err)
+	}
+
+	if err := svc.MarkRunComplete(context.Background(), task.ID, RunResult{
+		SessionID: "run-session",
+		RequestID: "request-1",
+		Success:   true,
+		Answer:    "完成",
+	}); err != nil {
+		t.Fatalf("MarkRunComplete failed: %v", err)
+	}
+
+	if len(store.runs) != 1 {
+		t.Fatalf("run records = %d, want 1", len(store.runs))
+	}
+	if store.runs[0].SessionID != "run-session" {
+		t.Fatalf("run session ID = %q, want run-session", store.runs[0].SessionID)
+	}
+}
+
 func fixedNow() time.Time {
 	return time.Date(2026, 5, 23, 9, 0, 0, 0, time.Local)
 }

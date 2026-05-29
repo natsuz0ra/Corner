@@ -38,6 +38,14 @@ func (r scheduleChatRunner) RunScheduledTask(ctx context.Context, task domain.Sc
 		result.FinishedAt = time.Now()
 		return result
 	}
+	session, err := r.core.Repo.CreateSession(ctx, "New Chat")
+	if err != nil {
+		result.Success = false
+		result.Error = err.Error()
+		result.FinishedAt = time.Now()
+		return result
+	}
+	result.SessionID = session.ID
 	runCtx, cancel := context.WithTimeout(ctx, constants.WSChatTimeout)
 	defer cancel()
 	approvalMode := strings.TrimSpace(task.ApprovalMode)
@@ -46,7 +54,7 @@ func (r scheduleChatRunner) RunScheduledTask(ctx context.Context, task domain.Sc
 	}
 	streamResult, err := r.core.ChatService.HandleChatStream(
 		runCtx,
-		task.SessionID,
+		session.ID,
 		requestID,
 		buildScheduledTaskPrompt(task, startedAt),
 		"定时任务："+task.Name,
@@ -56,7 +64,7 @@ func (r scheduleChatRunner) RunScheduledTask(ctx context.Context, task domain.Sc
 		false,
 		"",
 		approvalMode,
-		chatsvc.AgentCallbacks{},
+		chatsvc.AgentCallbacks{TitlePrefix: "定时："},
 	)
 	result.FinishedAt = time.Now()
 	if err != nil {

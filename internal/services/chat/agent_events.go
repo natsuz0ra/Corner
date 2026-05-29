@@ -113,6 +113,7 @@ type ContextUsage struct {
 
 // AgentCallbacks wires the agent loop to the outside world (streaming, approval, results).
 type AgentCallbacks struct {
+	TitlePrefix            string
 	OnChunk                func(chunk string) error
 	OnContextUsage         func(usage ContextUsage) error
 	OnContextCompacted     func(usage ContextUsage) error

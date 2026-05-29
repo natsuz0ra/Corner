@@ -43,7 +43,7 @@ func (s *scheduleTool) Commands() []Command {
 			Params: []CommandParam{
 				{Name: "name", Required: true, Description: "Short user-facing task name.", Example: "每日项目摘要"},
 				{Name: "prompt", Required: true, Description: "Self-contained instruction to send when the task runs.", Example: "总结项目状态并指出阻塞。"},
-				{Name: "session_id", Required: false, Description: "Optional target chat session ID. Defaults to the current chat session.", Example: "session-id"},
+				{Name: "session_id", Required: false, Description: "Optional source/owner chat session ID. Each run creates a new chat session. Defaults to the current chat session.", Example: "session-id"},
 				scheduleKind,
 				{Name: "run_at", Required: false, Description: "RFC3339 timestamp for once schedules.", Example: "2026-05-24T09:00:00+08:00"},
 				{Name: "interval_minutes", Required: false, Description: "Positive interval in minutes for interval schedules.", Example: "60", Schema: map[string]any{"type": "integer", "minimum": 1}},
@@ -66,7 +66,7 @@ func (s *scheduleTool) Commands() []Command {
 				idParam,
 				{Name: "name", Required: false, Description: "New task name.", Example: "工作日摘要"},
 				{Name: "prompt", Required: false, Description: "New task prompt.", Example: "总结今天的新消息。"},
-				{Name: "session_id", Required: false, Description: "New target session ID.", Example: "session-id"},
+				{Name: "session_id", Required: false, Description: "New source/owner session ID. Future runs still create new chat sessions.", Example: "session-id"},
 				{Name: "schedule_kind", Required: false, Description: "New schedule kind when changing schedule.", Example: "cron", Schema: map[string]any{"type": "string", "enum": []string{"once", "interval", "cron"}}},
 				{Name: "run_at", Required: false, Description: "RFC3339 timestamp for once schedules.", Example: "2026-05-24T09:00:00+08:00"},
 				{Name: "interval_minutes", Required: false, Description: "Positive interval in minutes for interval schedules.", Example: "60", Schema: map[string]any{"type": "integer", "minimum": 1}},
