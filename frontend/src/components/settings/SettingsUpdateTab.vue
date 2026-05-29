@@ -105,9 +105,13 @@ function stopPolling() {
   }
 }
 
-async function loadJob() {
+async function loadJob(pollIfActive = false) {
   job.value = await updateAPI.job()
   applying.value = isUpdateJobActive(job.value.phase)
+  if (applying.value && pollIfActive) {
+    startPolling()
+    return
+  }
   if (!applying.value) {
     stopPolling()
   }
@@ -129,7 +133,7 @@ async function checkUpdate(force = true) {
   try {
     checkResult.value = await updateAPI.check(force)
     emit('updateCheckLoaded', checkResult.value)
-    await loadJob()
+    await loadJob(true)
   } catch (err: unknown) {
     const response = err as { response?: { data?: { error?: string } } }
     errorMessage.value = response.response?.data?.error || t('updateCheckFailed')

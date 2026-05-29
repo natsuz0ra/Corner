@@ -88,6 +88,86 @@ func TestServiceDueTasksFastForwardsStaleRecurringTasks(t *testing.T) {
 	}
 }
 
+func TestServiceRestoreRunningRecurringTask(t *testing.T) {
+	db := repositories.NewSQLiteDBTest(t, "schedule_restore_recurring")
+	repo := repositories.New(db)
+	now := fixedNow()
+	svc := NewService(repo, nil, Options{Now: func() time.Time { return now }})
+
+	session, err := repo.CreateSession(context.Background(), "定时任务")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	task, err := svc.Create(context.Background(), CreateInput{
+		Name:      "轮询",
+		Prompt:    "检查一次状态",
+		SessionID: session.ID,
+		Schedule:  ScheduleSpec{Kind: ScheduleKindInterval, IntervalMinutes: 10},
+	})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	nextRun := now.Add(-time.Minute)
+	if err := repo.UpdateScheduledTask(context.Background(), task.ID, map[string]any{
+		"status":      domain.ScheduledTaskStatusRunning,
+		"next_run_at": &nextRun,
+	}); err != nil {
+		t.Fatalf("UpdateScheduledTask failed: %v", err)
+	}
+
+	if err := svc.RestoreRunningTasks(context.Background()); err != nil {
+		t.Fatalf("RestoreRunningTasks failed: %v", err)
+	}
+
+	got, err := repo.GetScheduledTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetScheduledTask failed: %v", err)
+	}
+	if got.Status != domain.ScheduledTaskStatusScheduled {
+		t.Fatalf("status = %q, want scheduled", got.Status)
+	}
+	if got.NextRunAt == nil || !got.NextRunAt.Equal(nextRun) {
+		t.Fatalf("next run = %s, want preserved %s", got.NextRunAt, nextRun)
+	}
+}
+
+func TestServiceRestoreRunningOneShotTaskIsDueAgain(t *testing.T) {
+	db := repositories.NewSQLiteDBTest(t, "schedule_restore_oneshot")
+	repo := repositories.New(db)
+	now := fixedNow()
+	svc := NewService(repo, nil, Options{Now: func() time.Time { return now }})
+
+	session, err := repo.CreateSession(context.Background(), "定时任务")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	task, err := svc.Create(context.Background(), CreateInput{
+		Name:      "一次提醒",
+		Prompt:    "提醒我喝水",
+		SessionID: session.ID,
+		Schedule:  ScheduleSpec{Kind: ScheduleKindOnce, RunAt: now.Add(-time.Minute)},
+	})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	if err := repo.UpdateScheduledTask(context.Background(), task.ID, map[string]any{
+		"status": domain.ScheduledTaskStatusRunning,
+	}); err != nil {
+		t.Fatalf("UpdateScheduledTask failed: %v", err)
+	}
+
+	if err := svc.RestoreRunningTasks(context.Background()); err != nil {
+		t.Fatalf("RestoreRunningTasks failed: %v", err)
+	}
+	due, err := svc.DueTasks(context.Background())
+	if err != nil {
+		t.Fatalf("DueTasks failed: %v", err)
+	}
+	if len(due) != 1 || due[0].ID != task.ID {
+		t.Fatalf("due tasks = %+v, want restored one-shot task", due)
+	}
+}
+
 func TestServiceMarkRunCompletesOneShotTask(t *testing.T) {
 	db := repositories.NewSQLiteDBTest(t, "schedule_oneshot")
 	repo := repositories.New(db)

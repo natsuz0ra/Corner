@@ -301,6 +301,43 @@ func (s *Service) DueTasks(ctx context.Context) ([]domain.ScheduledTask, error) 
 	return due, nil
 }
 
+func (s *Service) RestoreRunningTasks(ctx context.Context) error {
+	if s == nil || s.store == nil {
+		return fmt.Errorf("schedule service is not initialized")
+	}
+	tasks, err := s.store.ListScheduledTasks(ctx, true)
+	if err != nil {
+		return err
+	}
+	now := s.now()
+	for _, task := range tasks {
+		if task.Status != domain.ScheduledTaskStatusRunning {
+			continue
+		}
+		nextRun := task.NextRunAt
+		if nextRun == nil {
+			spec := specFromTask(task)
+			if !isRecurring(spec.Kind) && task.RunAt != nil {
+				runAt := *task.RunAt
+				nextRun = &runAt
+			} else {
+				computed, err := computeNextRun(spec, now, nil)
+				if err != nil {
+					return err
+				}
+				nextRun = computed
+			}
+		}
+		if err := s.store.UpdateScheduledTask(ctx, task.ID, map[string]any{
+			"status":      domain.ScheduledTaskStatusScheduled,
+			"next_run_at": nextRun,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Service) MarkRunComplete(ctx context.Context, taskID string, result RunResult) error {
 	task, err := s.Get(ctx, taskID)
 	if err != nil {

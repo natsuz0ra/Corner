@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"slimebot/internal/constants"
+	"slimebot/internal/domain"
 	schedulesvc "slimebot/internal/services/schedule"
 )
 
@@ -117,6 +118,7 @@ func (s *scheduleTool) Execute(ctx context.Context, command string, params map[s
 	case "trigger":
 		return scheduleOutput(service.Trigger(ctx, stringParam(params, "task_id")))
 	case "update":
+		taskID := stringParam(params, "task_id")
 		input := schedulesvc.UpdateInput{}
 		if hasParam(params, "name") {
 			value := stringParam(params, "name")
@@ -130,9 +132,12 @@ func (s *scheduleTool) Execute(ctx context.Context, command string, params map[s
 			value := stringParam(params, "session_id")
 			input.SessionID = &value
 		}
-		if hasParam(params, "schedule_kind") {
-			spec := scheduleSpecFromParams(params)
-			input.Schedule = &spec
+		spec, specErr := scheduleSpecForUpdate(ctx, service, taskID, params)
+		if specErr != nil {
+			return &ExecuteResult{Error: specErr.Error()}, nil
+		}
+		if spec != nil {
+			input.Schedule = spec
 		}
 		if hasParam(params, "model_config_id") {
 			value := stringParam(params, "model_config_id")
@@ -150,7 +155,7 @@ func (s *scheduleTool) Execute(ctx context.Context, command string, params map[s
 			value := intParam(params, "max_runs")
 			input.MaxRuns = &value
 		}
-		return scheduleOutput(service.Update(ctx, stringParam(params, "task_id"), input))
+		return scheduleOutput(service.Update(ctx, taskID, input))
 	default:
 		return &ExecuteResult{Error: fmt.Sprintf("unknown schedule command: %s", command)}, nil
 	}
@@ -185,6 +190,70 @@ func scheduleSpecFromParams(params map[string]any) schedulesvc.ScheduleSpec {
 	return spec
 }
 
+func scheduleSpecForUpdate(ctx context.Context, service *schedulesvc.Service, taskID string, params map[string]any) (*schedulesvc.ScheduleSpec, error) {
+	if !hasAnyParam(params, "schedule_kind", "run_at", "interval_minutes", "cron_expr") {
+		return nil, nil
+	}
+	task, err := service.Get(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	spec := scheduleSpecFromTask(*task)
+	if hasParam(params, "schedule_kind") {
+		spec.Kind = schedulesvc.ScheduleKind(stringParam(params, "schedule_kind"))
+	}
+	if hasParam(params, "run_at") {
+		parsed, err := time.Parse(time.RFC3339, stringParam(params, "run_at"))
+		if err != nil {
+			return nil, fmt.Errorf("run_at must be an RFC3339 timestamp")
+		}
+		spec.RunAt = parsed
+	}
+	if hasParam(params, "interval_minutes") {
+		spec.IntervalMinutes = intParam(params, "interval_minutes")
+	}
+	if hasParam(params, "cron_expr") {
+		spec.CronExpr = stringParam(params, "cron_expr")
+	}
+	if hasParam(params, "schedule_kind") && string(spec.Kind) != task.ScheduleKind {
+		if err := requireScheduleFieldsForKind(spec.Kind, params); err != nil {
+			return nil, err
+		}
+	}
+	return &spec, nil
+}
+
+func scheduleSpecFromTask(task domain.ScheduledTask) schedulesvc.ScheduleSpec {
+	spec := schedulesvc.ScheduleSpec{
+		Kind:            schedulesvc.ScheduleKind(task.ScheduleKind),
+		IntervalMinutes: task.IntervalMinutes,
+		CronExpr:        task.CronExpr,
+		Timezone:        task.Timezone,
+	}
+	if task.RunAt != nil {
+		spec.RunAt = *task.RunAt
+	}
+	return spec
+}
+
+func requireScheduleFieldsForKind(kind schedulesvc.ScheduleKind, params map[string]any) error {
+	switch kind {
+	case schedulesvc.ScheduleKindOnce:
+		if !hasParam(params, "run_at") {
+			return fmt.Errorf("run_at is required when changing to once schedule")
+		}
+	case schedulesvc.ScheduleKindInterval:
+		if !hasParam(params, "interval_minutes") {
+			return fmt.Errorf("interval_minutes is required when changing to interval schedule")
+		}
+	case schedulesvc.ScheduleKindCron:
+		if !hasParam(params, "cron_expr") {
+			return fmt.Errorf("cron_expr is required when changing to cron schedule")
+		}
+	}
+	return nil
+}
+
 func sessionIDParam(ctx context.Context, params map[string]any) string {
 	if sessionID := stringParam(params, "session_id"); sessionID != "" {
 		return sessionID
@@ -198,6 +267,15 @@ func hasParam(params map[string]any, key string) bool {
 	}
 	_, ok := params[key]
 	return ok
+}
+
+func hasAnyParam(params map[string]any, keys ...string) bool {
+	for _, key := range keys {
+		if hasParam(params, key) {
+			return true
+		}
+	}
+	return false
 }
 
 func intParam(params map[string]any, key string) int {
