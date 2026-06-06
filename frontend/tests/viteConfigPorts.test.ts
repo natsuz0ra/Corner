@@ -32,6 +32,8 @@ test('vite config defaults to less common development ports', async () => {
 
   const config = await loadViteConfig('default-ports')
 
+  assert.equal(config.server?.host, '0.0.0.0')
+  assert.equal(config.server?.allowedHosts, true)
   assert.equal(config.server?.port, 7391)
   assert.equal(config.server?.proxy?.['/api']?.target, 'http://localhost:6247')
   assert.equal(config.server?.proxy?.['/ws']?.target, 'ws://localhost:6247')
