@@ -168,6 +168,49 @@ test("memory console can switch into entry view mode", () => {
 	assert.equal(state.memoryCursor, 0);
 });
 
+test("MCP tools actions open readonly view and store result", () => {
+	let state = reduce(initState(), {
+		type: "SET_MCP_TOOLS_VIEW",
+		config: {
+			id: "mcp-1",
+			name: "github",
+			config: "{}",
+			isEnabled: true,
+			createdAt: "",
+			updatedAt: "",
+		},
+	});
+	assert.equal(state.view, "mcp-tools");
+	assert.equal(state.mcpToolsConfig?.id, "mcp-1");
+	assert.equal(state.mcpToolsLoading, true);
+
+	state = reduce(state, {
+		type: "SET_MCP_TOOLS_RESULT",
+		result: {
+			configId: "mcp-1",
+			name: "github",
+			isEnabled: true,
+			status: "loaded",
+			toolCount: 1,
+			loadedAt: "",
+			error: "",
+			tools: [{
+				name: "search",
+				functionName: "mcp_1__search",
+				description: "Search repositories",
+				parameterCount: 1,
+				requiredParameters: ["query"],
+				parameters: [],
+				inputSchema: {},
+			}],
+		},
+		error: "",
+	});
+	assert.equal(state.mcpToolsLoading, false);
+	assert.equal(state.mcpToolsResult?.toolCount, 1);
+	assert.equal(state.mcpToolsError, "");
+});
+
 test("CONTEXT_USAGE stores latest usage", () => {
 	const state = reduce(initState(), {
 		type: "CONTEXT_USAGE",

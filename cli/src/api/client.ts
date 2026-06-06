@@ -9,6 +9,7 @@ import type {
   SessionHistoryPayload,
   LLMConfig,
   MCPConfig,
+  MCPToolListResponse,
   Skill,
   Settings,
   MemorySnapshot,
@@ -187,6 +188,10 @@ export class APIClient {
 
   deleteMCPConfig(id: string): Promise<void> {
     return this.request(`/api/mcp-configs/${id}`, { method: "DELETE" }).then(() => {});
+  }
+
+  getMCPConfigTools(id: string): Promise<MCPToolListResponse> {
+    return this.request(`/api/mcp-configs/${id}/tools`);
   }
 
   // ===== Skills =====

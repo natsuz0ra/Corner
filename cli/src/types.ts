@@ -277,7 +277,7 @@ export interface ContextUsage {
 
 // ===== UI state types =====
 
-export type ViewMode = "chat" | "menu" | "mcp-editor" | "mcp-template" | "model-editor" | "approval" | "thinking-detail" | "plan-confirm" | "question-answer" | "update" | "memory-console";
+export type ViewMode = "chat" | "menu" | "mcp-editor" | "mcp-template" | "mcp-tools" | "model-editor" | "approval" | "thinking-detail" | "plan-confirm" | "question-answer" | "update" | "memory-console";
 
 export type MenuKind =
   | "session"
@@ -384,6 +384,36 @@ export interface MCPConfigItem {
   isEnabled: boolean;
 }
 
+export type MCPToolLoadStatus = "loaded" | "error" | "disabled";
+
+export interface MCPToolParameterSummary {
+  name: string;
+  type: string;
+  required: boolean;
+  description: string;
+}
+
+export interface MCPToolItem {
+  name: string;
+  functionName: string;
+  description: string;
+  parameterCount: number;
+  requiredParameters: string[];
+  parameters: MCPToolParameterSummary[];
+  inputSchema: Record<string, unknown>;
+}
+
+export interface MCPToolListResponse {
+  configId: string;
+  name: string;
+  isEnabled: boolean;
+  status: MCPToolLoadStatus;
+  toolCount: number;
+  loadedAt: string;
+  tools: MCPToolItem[];
+  error: string;
+}
+
 // ===== Command types =====
 
 export interface CommandMeta {
@@ -476,6 +506,12 @@ export interface AppState {
   mcpEditorEnabled: boolean;
   mcpEditorFocusName: boolean;
 
+  // MCP Tools view
+  mcpToolsConfig: MCPConfig | null;
+  mcpToolsResult: MCPToolListResponse | null;
+  mcpToolsLoading: boolean;
+  mcpToolsError: string;
+
   // MCP Template Picker
   mcpTemplateCursor: number;
 
@@ -559,6 +595,9 @@ export type AppAction =
   | { type: "TOGGLE_MCP_EDITOR_FOCUS" }
   | { type: "SET_MCP_TEMPLATE_VIEW" }
   | { type: "MCP_TEMPLATE_NAV"; delta: number }
+  | { type: "SET_MCP_TOOLS_VIEW"; config: MCPConfig }
+  | { type: "SET_MCP_TOOLS_LOADING"; loading: boolean }
+  | { type: "SET_MCP_TOOLS_RESULT"; result: MCPToolListResponse | null; error: string }
   | { type: "SET_MODEL_EDITOR_VIEW" }
   | { type: "SET_MODEL_EDITOR"; config: LLMConfig }
   | { type: "SET_MODEL_EDITOR_NAME"; name: string }

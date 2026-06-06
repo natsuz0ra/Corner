@@ -88,7 +88,7 @@ func NewCore(cfg config.Config) (*Core, error) {
 	agentsService := agentssvc.NewService(sbruntime.GlobalAgentsPath())
 	sessionService := sessionsvc.NewSessionService(repo)
 	llmConfigService := configsvc.NewLLMConfigService(repo, cfg.DefaultContextSize)
-	mcpConfigService := configsvc.NewMCPConfigService(repo)
+	mcpConfigService := configsvc.NewMCPConfigServiceWithTools(repo, mcpManager)
 	platformService := configsvc.NewMessagePlatformConfigService(repo)
 
 	skillStore := skillsvc.NewFileSystemSkillStore(cfg.SkillsRoot)

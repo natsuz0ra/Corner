@@ -65,6 +65,36 @@ export interface MCPConfig {
   updatedAt?: string
 }
 
+export type MCPToolLoadStatus = 'loaded' | 'error' | 'disabled'
+
+export interface MCPToolParameterSummary {
+  name: string
+  type: string
+  required: boolean
+  description: string
+}
+
+export interface MCPToolItem {
+  name: string
+  functionName: string
+  description: string
+  parameterCount: number
+  requiredParameters: string[]
+  parameters: MCPToolParameterSummary[]
+  inputSchema: Record<string, unknown>
+}
+
+export interface MCPToolListResponse {
+  configId: string
+  name: string
+  isEnabled: boolean
+  status: MCPToolLoadStatus
+  toolCount: number
+  loadedAt: string
+  tools: MCPToolItem[]
+  error: string
+}
+
 export interface SkillItem {
   id: string
   name: string

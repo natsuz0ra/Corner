@@ -11,9 +11,13 @@ import (
 
 type fakeMCPClient struct {
 	tools []Tool
+	err   error
 }
 
 func (f *fakeMCPClient) ListTools(context.Context) ([]Tool, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
 	return f.tools, nil
 }
 
@@ -91,5 +95,63 @@ func TestLoadToolsMetadataIncludesInternalAndDisplayNames(t *testing.T) {
 	}
 	if meta.ToolName != "search_repositories" {
 		t.Fatalf("ToolName = %q, want search_repositories", meta.ToolName)
+	}
+}
+
+func TestListToolsForConfigReturnsFunctionNames(t *testing.T) {
+	manager := NewManager()
+	manager.clients["config-1"] = &managedClient{
+		configID: "config-1",
+		raw:      `{"command":"fake"}`,
+		alias:    "mcp_config_1",
+		client: &fakeMCPClient{tools: []Tool{{
+			Name:        "search_repositories",
+			Description: "Search repositories",
+			InputSchema: map[string]any{"type": "object"},
+		}}},
+	}
+
+	metas, tools, err := manager.ListToolsForConfig(context.Background(), domain.MCPConfig{
+		ID:        "config-1",
+		Name:      "github",
+		Config:    `{"command":"fake"}`,
+		IsEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("ListToolsForConfig failed: %v", err)
+	}
+	if len(metas) != 1 || len(tools) != 1 {
+		t.Fatalf("expected one meta and one tool, got metas=%d tools=%d", len(metas), len(tools))
+	}
+	if metas[0].FuncName != BuildFuncName("mcp_config_1", "search_repositories") {
+		t.Fatalf("unexpected func name: %#v", metas[0])
+	}
+	if tools[0].InputSchema == nil || tools[0].InputSchema["type"] != "object" {
+		t.Fatalf("expected schema to be preserved: %#v", tools[0].InputSchema)
+	}
+}
+
+func TestListToolsForConfigDefaultsEmptySchema(t *testing.T) {
+	manager := NewManager()
+	manager.clients["config-1"] = &managedClient{
+		configID: "config-1",
+		raw:      `{"command":"fake"}`,
+		alias:    "mcp_config_1",
+		client: &fakeMCPClient{tools: []Tool{{
+			Name: "ping",
+		}}},
+	}
+
+	_, tools, err := manager.ListToolsForConfig(context.Background(), domain.MCPConfig{
+		ID:        "config-1",
+		Name:      "local",
+		Config:    `{"command":"fake"}`,
+		IsEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("ListToolsForConfig failed: %v", err)
+	}
+	if tools[0].InputSchema == nil || tools[0].InputSchema["type"] != "object" {
+		t.Fatalf("expected default object schema, got %#v", tools[0].InputSchema)
 	}
 }

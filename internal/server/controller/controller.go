@@ -59,6 +59,7 @@ type mcpConfigService interface {
 	Create(ctx context.Context, input configsvc.MCPConfigInput) (*domain.MCPConfig, error)
 	Update(ctx context.Context, id string, input configsvc.MCPConfigInput) error
 	Delete(ctx context.Context, id string) error
+	GetTools(ctx context.Context, id string) (*configsvc.MCPToolListResponse, error)
 }
 
 type messagePlatformConfigService interface {

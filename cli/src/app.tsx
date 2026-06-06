@@ -13,6 +13,7 @@ import { Banner } from "./components/Banner.js";
 import { CommandHints } from "./components/CommandHints.js";
 import { MCPEditor } from "./components/MCPEditor.js";
 import { MCPTemplatePicker } from "./components/MCPTemplatePicker.js";
+import { MCPToolsView } from "./components/MCPToolsView.js";
 import { CLI_HINT_COLOR, MenuView, MENU_VISIBLE_LIMIT } from "./components/MenuView.js";
 import MemoryConsoleView from "./components/MemoryConsoleView.js";
 import { ModelEditor } from "./components/ModelEditor.js";
@@ -355,7 +356,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         kind: "mcp",
         title: "MCP Menu",
         items,
-        hint: "Arrow keys to navigate | Enter or E to edit | A to add | Space to toggle | D to delete | Esc to close",
+        hint: "Arrow keys to navigate | Enter or E to edit | T tools | A to add | Space to toggle | D to delete | Esc to close",
       } as AppAction);
     } catch (error) {
       appendSystem(`Failed to load MCP configs: ${(error as Error).message}`);
@@ -771,6 +772,28 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     }
   }, [appendSystem, loadMCPConfigs, state.menuKind]);
 
+  const loadMCPToolsForConfig = useCallback(async (mcp: MCPConfig) => {
+    dispatch({ type: "SET_MCP_TOOLS_LOADING", loading: true } as AppAction);
+    try {
+      const result = await apiRef.current.getMCPConfigTools(mcp.id);
+      dispatch({ type: "SET_MCP_TOOLS_RESULT", result, error: "" } as AppAction);
+    } catch (error) {
+      dispatch({ type: "SET_MCP_TOOLS_RESULT", result: null, error: (error as Error).message } as AppAction);
+    }
+  }, []);
+
+  const handleMenuTools = useCallback((item: MenuItem | undefined) => {
+    if (state.menuKind !== "mcp" || !item) return;
+    const mcp = item.data as MCPConfig;
+    dispatch({ type: "SET_MCP_TOOLS_VIEW", config: mcp } as AppAction);
+    void loadMCPToolsForConfig(mcp);
+  }, [loadMCPToolsForConfig, state.menuKind]);
+
+  const refreshMCPTools = useCallback(() => {
+    if (!state.mcpToolsConfig) return;
+    void loadMCPToolsForConfig(state.mcpToolsConfig);
+  }, [loadMCPToolsForConfig, state.mcpToolsConfig]);
+
   const selectMCPTemplate = useCallback((template: MCPTemplate) => {
     dispatch({
       type: "SET_MCP_EDITOR",
@@ -989,6 +1012,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     handleMenuAdd,
     handleMenuEdit,
     handleMenuToggle,
+    handleMenuTools,
     loadUpdate,
     applyUpdate,
     loadMemory,
@@ -996,6 +1020,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
     saveMemoryConsoleDraft,
     loadMCPConfigs,
     loadModels,
+    refreshMCPTools,
     saveMCPConfig,
     saveModelConfig,
     selectMCPTemplate,
@@ -1265,6 +1290,15 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
 
       {state.view === "mcp-template" && (
         <MCPTemplatePicker cursor={state.mcpTemplateCursor} />
+      )}
+
+      {state.view === "mcp-tools" && (
+        <MCPToolsView
+          config={state.mcpToolsConfig}
+          result={state.mcpToolsResult}
+          loading={state.mcpToolsLoading}
+          error={state.mcpToolsError}
+        />
       )}
 
       {state.view === "model-editor" && (

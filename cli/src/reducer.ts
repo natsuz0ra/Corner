@@ -197,6 +197,10 @@ export function createInitialState(
     mcpEditorConfig: "",
     mcpEditorEnabled: true,
     mcpEditorFocusName: true,
+    mcpToolsConfig: null,
+    mcpToolsResult: null,
+    mcpToolsLoading: false,
+    mcpToolsError: "",
     mcpTemplateCursor: 0,
     modelEditorId: "",
     modelEditorName: "",
@@ -542,6 +546,27 @@ export function reducer(state: AppState, action: AppAction): AppState {
       const newCursor = Math.max(0, Math.min(count - 1, state.mcpTemplateCursor + action.delta));
       return { ...state, mcpTemplateCursor: newCursor };
     }
+
+    case "SET_MCP_TOOLS_VIEW":
+      return {
+        ...state,
+        view: "mcp-tools",
+        mcpToolsConfig: action.config,
+        mcpToolsResult: null,
+        mcpToolsLoading: true,
+        mcpToolsError: "",
+      };
+
+    case "SET_MCP_TOOLS_LOADING":
+      return { ...state, mcpToolsLoading: action.loading };
+
+    case "SET_MCP_TOOLS_RESULT":
+      return {
+        ...state,
+        mcpToolsResult: action.result,
+        mcpToolsLoading: false,
+        mcpToolsError: action.error,
+      };
 
     case "SET_MODEL_EDITOR_VIEW":
       return {
