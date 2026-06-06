@@ -1,5 +1,6 @@
 import type { AssistantReplyBatch, AssistantReplyTimelineItem } from './replyBatchBuilder'
 import type { ToolCallStatus } from '@/types/chat'
+import { createClientId } from './uuid'
 
 type ThinkingTimelineItem = Extract<AssistantReplyTimelineItem, { kind: 'thinking' }>
 
@@ -142,7 +143,7 @@ export function markOpenToolCallsError(batch: AssistantReplyBatch, error = 'Exec
     toolCall.finishedAt = toolCall.finishedAt || finishedAt
     if (!toolCall.parentToolCallId && !existingResultIds.has(toolCall.toolCallId)) {
       batch.timeline.push({
-        id: crypto.randomUUID(),
+        id: createClientId(),
         kind: 'tool_result',
         toolCallId: toolCall.toolCallId,
       })
@@ -160,7 +161,7 @@ export function markToolCallError(batch: AssistantReplyBatch, toolCallId: string
   const hasResult = batch.timeline.some((entry) => entry.kind === 'tool_result' && entry.toolCallId === toolCallId)
   if (!toolCall.parentToolCallId && !hasResult) {
     batch.timeline.push({
-      id: crypto.randomUUID(),
+      id: createClientId(),
       kind: 'tool_result',
       toolCallId,
     })
@@ -182,7 +183,7 @@ export function appendTextChunkToBatch(batch: AssistantReplyBatch, chunk: string
     return
   }
   batch.timeline.push({
-    id: crypto.randomUUID(),
+    id: createClientId(),
     kind: 'text',
     content: chunk,
   })
@@ -198,7 +199,7 @@ export function appendPlanBodyToBatch(batch: AssistantReplyBatch, planBody: stri
     return
   }
   batch.timeline.push({
-    id: crypto.randomUUID(),
+    id: createClientId(),
     kind: 'plan',
     content: planBody,
   })
@@ -213,7 +214,7 @@ export function appendPlanChunkToBatch(batch: AssistantReplyBatch, chunk: string
     return
   }
   batch.timeline.push({
-    id: crypto.randomUUID(),
+    id: createClientId(),
     kind: 'plan',
     content: chunk,
     generating: true,

@@ -1,6 +1,7 @@
 import type { SessionHistoryPayload, SessionHistoryReplyTimingItem, SessionHistoryThinkingItem, SessionHistoryToolCallItem, ToolCallItem } from '@/api/chat'
 import type { ToolCallStatus } from '@/types/chat'
 import { hasContentMarkers, parseContentMarkers } from './contentMarkers'
+import { createClientId } from './uuid'
 
 export type AssistantReplyTimelineItem =
   | {
@@ -112,7 +113,8 @@ export function getCollapsedReplyTimeline(timeline: AssistantReplyTimelineItem[]
     }
   }
 
-  return timeline.filter((entry, index) => entry.kind === 'plan' || entry.kind === 'notice' || index === lastTextIndex)
+  const collapsed = timeline.filter((entry, index) => entry.kind === 'plan' || entry.kind === 'notice' || index === lastTextIndex)
+  return collapsed.length > 0 ? collapsed : timeline
 }
 
 export function hasCollapsibleReplyContent(timeline: AssistantReplyTimelineItem[], toolCalls: ToolCallItem[]) {
@@ -157,7 +159,7 @@ export function buildLegacyTimeline(toolCalls: ToolCallItem[], content: string, 
   for (const item of thinkingRecords) {
     if (item.parentToolCallId || item.subagentRunId) continue
     timeline.push({
-      id: crypto.randomUUID(),
+      id: createClientId(),
       kind: 'thinking',
       content: item.content || '',
       done: item.status !== 'streaming',
@@ -166,13 +168,13 @@ export function buildLegacyTimeline(toolCalls: ToolCallItem[], content: string, 
   }
   for (const item of toolCalls) {
     if (item.parentToolCallId) continue
-    timeline.push({ id: crypto.randomUUID(), kind: 'tool_start', toolCallId: item.toolCallId })
+    timeline.push({ id: createClientId(), kind: 'tool_start', toolCallId: item.toolCallId })
     if (item.status !== 'pending' && item.status !== 'executing') {
-      timeline.push({ id: crypto.randomUUID(), kind: 'tool_result', toolCallId: item.toolCallId })
+      timeline.push({ id: createClientId(), kind: 'tool_result', toolCallId: item.toolCallId })
     }
   }
   if (content.trim() !== '') {
-    timeline.push({ id: crypto.randomUUID(), kind: 'text', content })
+    timeline.push({ id: createClientId(), kind: 'text', content })
   }
   return timeline
 }
@@ -192,7 +194,7 @@ export function buildInterleavedTimeline(
   const pushPlan = () => {
     const planContent = planParts.join('')
     if (planContent.trim() !== '') {
-      timeline.push({ id: crypto.randomUUID(), kind: 'plan', content: planContent })
+      timeline.push({ id: createClientId(), kind: 'plan', content: planContent })
     }
     planParts.length = 0
   }
@@ -213,20 +215,20 @@ export function buildInterleavedTimeline(
       continue
     }
     if (seg.type === 'text') {
-      timeline.push({ id: crypto.randomUUID(), kind: 'text', content: seg.content })
+      timeline.push({ id: createClientId(), kind: 'text', content: seg.content })
     } else if (seg.type === 'tool_call_marker' && seg.toolCallId) {
       const tc = toolCallMap.get(seg.toolCallId)
       if (tc && !tc.parentToolCallId) {
-        timeline.push({ id: crypto.randomUUID(), kind: 'tool_start', toolCallId: tc.toolCallId })
+        timeline.push({ id: createClientId(), kind: 'tool_start', toolCallId: tc.toolCallId })
         if (tc.status !== 'pending' && tc.status !== 'executing') {
-          timeline.push({ id: crypto.randomUUID(), kind: 'tool_result', toolCallId: tc.toolCallId })
+          timeline.push({ id: createClientId(), kind: 'tool_result', toolCallId: tc.toolCallId })
         }
       }
     } else if (seg.type === 'thinking_marker' && seg.thinkingId) {
       const thinking = thinkingMap.get(seg.thinkingId)
       if (thinking) {
         timeline.push({
-          id: crypto.randomUUID(),
+          id: createClientId(),
           kind: 'thinking',
           content: thinking.content || '',
           done: thinking.status !== 'streaming',
@@ -241,9 +243,9 @@ export function buildInterleavedTimeline(
   const markerIds = new Set(segments.filter(s => s.toolCallId).map(s => s.toolCallId))
   for (const tc of toolCalls) {
     if (!tc.parentToolCallId && !markerIds.has(tc.toolCallId)) {
-      timeline.push({ id: crypto.randomUUID(), kind: 'tool_start', toolCallId: tc.toolCallId })
+      timeline.push({ id: createClientId(), kind: 'tool_start', toolCallId: tc.toolCallId })
       if (tc.status !== 'pending' && tc.status !== 'executing') {
-        timeline.push({ id: crypto.randomUUID(), kind: 'tool_result', toolCallId: tc.toolCallId })
+        timeline.push({ id: createClientId(), kind: 'tool_result', toolCallId: tc.toolCallId })
       }
     }
   }
@@ -252,7 +254,7 @@ export function buildInterleavedTimeline(
     if (thinking.parentToolCallId || thinking.subagentRunId) continue
     if (!thinkingMarkerIds.has(thinking.thinkingId)) {
       timeline.unshift({
-        id: crypto.randomUUID(),
+        id: createClientId(),
         kind: 'thinking',
         content: thinking.content || '',
         done: thinking.status !== 'streaming',
@@ -333,7 +335,7 @@ export function buildReplyBatchesFromHistory(sessionId: string, history: Session
       : buildLegacyTimeline(toolCalls, message.content, normalizedHistoryThinking)
 
     nextBatches.push({
-      id: crypto.randomUUID(),
+      id: createClientId(),
       sessionId: sessionId,
       assistantMessageId: message.id,
       toolCalls,
