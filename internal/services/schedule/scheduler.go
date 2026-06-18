@@ -26,6 +26,9 @@ func (s *Scheduler) Start(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(s.interval)
 		defer ticker.Stop()
+		if err := s.service.RestoreRunningTasks(ctx); err != nil {
+			logging.Warn("scheduled_tasks_restore_running_failed", "err", err)
+		}
 		s.tick(ctx)
 		for {
 			select {

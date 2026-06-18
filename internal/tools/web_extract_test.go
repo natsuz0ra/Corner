@@ -37,6 +37,28 @@ func TestWebExtractRejectsNonHTTPURL(t *testing.T) {
 	}
 }
 
+func TestWebExtractHTTPErrorOmitsResponseBody(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusInternalServerError,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`<html><body>secret upstream failure body</body></html>`)),
+			Request:    req,
+		}, nil
+	})}
+
+	res, err := (&webExtractTool{client: client}).extract(context.Background(), map[string]any{"url": "https://example.test/fail"})
+	if err != nil {
+		t.Fatalf("extract failed: %v", err)
+	}
+	if res == nil || !strings.Contains(res.Error, "status 500") {
+		t.Fatalf("expected status code in error, got %#v", res)
+	}
+	if strings.Contains(res.Error, "secret upstream failure body") || strings.Contains(res.Error, "<html>") {
+		t.Fatalf("response body should not be included in error:\n%s", res.Error)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {

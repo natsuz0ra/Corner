@@ -31,3 +31,4 @@ CLAUDE.md
 .omx/
 .opencode/
 third_party/ripgrep/*/
+.cache/

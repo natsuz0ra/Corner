@@ -30,6 +30,7 @@ interface UseCliKeyboardProps {
   handleMenuAdd: () => void;
   handleMenuEdit: (item: MenuItem | undefined) => void;
   handleMenuToggle: (item: MenuItem | undefined) => Promise<void>;
+  handleMenuTools: (item: MenuItem | undefined) => void;
   loadUpdate: () => Promise<void>;
   applyUpdate: () => Promise<void>;
   loadMemory: () => Promise<void>;
@@ -37,6 +38,7 @@ interface UseCliKeyboardProps {
   saveMemoryConsoleDraft: () => Promise<void>;
   loadMCPConfigs: () => Promise<void>;
   loadModels: () => Promise<void>;
+  refreshMCPTools: () => void;
   saveMCPConfig: () => Promise<void>;
   saveModelConfig: () => Promise<void>;
   selectMCPTemplate: (template: MCPTemplate) => void;
@@ -204,6 +206,7 @@ export function useCliKeyboard({
   handleMenuAdd,
   handleMenuEdit,
   handleMenuToggle,
+  handleMenuTools,
   loadUpdate,
   applyUpdate,
   loadMemory,
@@ -211,6 +214,7 @@ export function useCliKeyboard({
   saveMemoryConsoleDraft,
   loadMCPConfigs,
   loadModels,
+  refreshMCPTools,
   saveMCPConfig,
   saveModelConfig,
   selectMCPTemplate,
@@ -476,8 +480,23 @@ export function useCliKeyboard({
         handleMenuEdit(current);
         return;
       }
+      if (input === "t" || input === "T") {
+        handleMenuTools(current);
+        return;
+      }
       if (input === " ") {
         void handleMenuToggle(current);
+      }
+      return;
+    }
+
+    if (state.view === "mcp-tools") {
+      if (key.escape) {
+        void loadMCPConfigs();
+        return;
+      }
+      if (input === "r" || input === "R") {
+        refreshMCPTools();
       }
       return;
     }

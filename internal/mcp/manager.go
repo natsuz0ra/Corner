@@ -171,6 +171,45 @@ func (m *Manager) LoadTools(ctx context.Context, configs []domain.MCPConfig) ([]
 	return metas, defs, nil
 }
 
+// ListToolsForConfig loads tools for one MCP config and returns both display tools
+// and the model-facing metadata used to call them.
+func (m *Manager) ListToolsForConfig(ctx context.Context, item domain.MCPConfig) ([]ToolMeta, []Tool, error) {
+	m.mu.Lock()
+	entry, err := m.ensureClientLocked(item)
+	m.mu.Unlock()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	entry.clientMu.Lock()
+	tools, err := entry.client.ListTools(ctx)
+	entry.clientMu.Unlock()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	serverName := strings.TrimSpace(item.Name)
+	if serverName == "" {
+		serverName = entry.alias
+	}
+	metas := make([]ToolMeta, 0, len(tools))
+	for i := range tools {
+		if tools[i].InputSchema == nil {
+			tools[i].InputSchema = map[string]any{
+				"type":       "object",
+				"properties": map[string]any{},
+			}
+		}
+		metas = append(metas, ToolMeta{
+			FuncName:    BuildFuncName(entry.alias, tools[i].Name),
+			ServerAlias: entry.alias,
+			ServerName:  serverName,
+			ToolName:    tools[i].Name,
+		})
+	}
+	return metas, tools, nil
+}
+
 // ensureClientLocked returns a live client for the config, reconnecting if config changed.
 func (m *Manager) ensureClientLocked(item domain.MCPConfig) (*managedClient, error) {
 	existing, ok := m.clients[item.ID]

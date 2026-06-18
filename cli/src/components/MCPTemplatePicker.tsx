@@ -7,12 +7,13 @@ import React from "react";
 import { Box, Text } from "ink";
 import { MCP_TEMPLATES } from "../types.js";
 import type { MCPTemplate } from "../types.js";
+import { CLI_ACCENT_COLOR } from "../utils/terminal.js";
 
 export const MCP_TEMPLATE_TITLE_GAP_LINES = 1;
 export const MCP_TEMPLATE_HINT = "Arrow keys to navigate | Enter to select | Esc to cancel";
 export const MCP_TEMPLATE_COLORS = {
-  title: "#67e8f9",
-  cursor: "#22d3ee",
+  title: CLI_ACCENT_COLOR,
+  cursor: CLI_ACCENT_COLOR,
   idleCursor: "#64748b",
   selectedTitle: "#f8fafc",
   idleTitle: "#cbd5e1",

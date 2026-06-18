@@ -5,7 +5,7 @@
 
 import chalk from "chalk";
 import { marked, type Token, type Tokens } from "marked";
-import { stripAnsi } from "./terminal.js";
+import { CLI_ACCENT_COLOR, stripAnsi } from "./terminal.js";
 
 const EOL = "\n";
 let configured = false;
@@ -69,7 +69,7 @@ export function formatToken(
     case "code":
       return `${token.text}${EOL}`;
     case "codespan":
-      return chalk.cyan(token.text);
+      return chalk.hex(CLI_ACCENT_COLOR)(token.text);
     case "paragraph":
       return `${(token.tokens ?? []).map((child) => formatToken(child, 0, null, token, compact)).join("")}${compact ? "" : EOL}`;
     case "blockquote": {

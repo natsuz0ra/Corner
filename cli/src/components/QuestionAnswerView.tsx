@@ -1,10 +1,11 @@
 import { Box, Text, useInput } from "ink";
 import { wrapText } from "../utils/format.js";
+import { CLI_ACCENT_COLOR } from "../utils/terminal.js";
 import { MENU_ITEM_COLORS } from "./MenuView.js";
 
 export const QUESTION_ANSWER_COLORS = {
-  title: "#67e8f9",
-  activeCursor: "#22d3ee",
+  title: CLI_ACCENT_COLOR,
+  activeCursor: CLI_ACCENT_COLOR,
   activeText: "#f8fafc",
   inactiveText: "#cbd5e1",
   description: "#94a3b8",

@@ -18,6 +18,7 @@ import { appendPlanBodyToBatch, appendPlanChunkToBatch, appendSubagentThinkingCh
 import { getBatchApprovalToolCallIds, markToolApprovalDecision } from '@/utils/toolApprovals'
 import { materializeStoppedMessages } from '@/utils/chatMessages'
 import { applyEditedUserMessage, findLatestEditableUserMessageId } from '@/utils/messageEditing'
+import { createClientId } from '@/utils/uuid'
 
 const HISTORY_PAGE_SIZE = 10
 const MAX_SESSION_PAGE_SIZE = 100
@@ -94,7 +95,7 @@ export const useChatStore = defineStore('chat', () => {
     const lastNotice = [...batch.timeline].reverse().find((entry) => entry.kind === 'notice')
     if (lastNotice?.kind === 'notice' && lastNotice.content === content) return
     batch.timeline.push({
-      id: crypto.randomUUID(),
+      id: createClientId(),
       kind: 'notice',
       content,
     })
@@ -225,7 +226,7 @@ export const useChatStore = defineStore('chat', () => {
   function pushFailedUserMessage(content: string) {
     const sessionId = currentSessionId.value
     if (!sessionId) return
-    const messageId = crypto.randomUUID()
+    const messageId = createClientId()
     messages.value.push({
       id: messageId,
       sessionId,
@@ -248,7 +249,7 @@ export const useChatStore = defineStore('chat', () => {
         markAssistantError(assistant.id)
       }
       const textEntry: AssistantReplyTimelineItem = {
-        id: crypto.randomUUID(),
+        id: createClientId(),
         kind: 'text',
         content: errorMessage,
       }
@@ -273,7 +274,7 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
-    const assistantMessageId = crypto.randomUUID()
+    const assistantMessageId = createClientId()
     messages.value.push({
       id: assistantMessageId,
       sessionId: targetSessionId,
@@ -454,7 +455,7 @@ export const useChatStore = defineStore('chat', () => {
         waiting.value = true
         streamingStarted.value = false
         clearRuntimeTodos()
-        const assistantMessageId = crypto.randomUUID()
+        const assistantMessageId = createClientId()
         messages.value.push({
           id: assistantMessageId,
           sessionId: currentSessionId.value || '',
@@ -463,7 +464,7 @@ export const useChatStore = defineStore('chat', () => {
           createdAt: new Date().toISOString(),
         })
         clearAssistantError(assistantMessageId)
-        const batchId = crypto.randomUUID()
+        const batchId = createClientId()
         currentBatchId.value = batchId
         replyBatches.value.push({
           id: batchId,
@@ -591,7 +592,7 @@ export const useChatStore = defineStore('chat', () => {
         }
         if (!data.parentToolCallId) {
           batch.timeline.push({
-            id: crypto.randomUUID(),
+            id: createClientId(),
             kind: 'tool_start',
             toolCallId: data.toolCallId,
           })
@@ -643,7 +644,7 @@ export const useChatStore = defineStore('chat', () => {
         }
         if (!data.parentToolCallId) {
           batch.timeline.push({
-            id: crypto.randomUUID(),
+            id: createClientId(),
             kind: 'tool_result',
             toolCallId: data.toolCallId,
           })
@@ -692,7 +693,7 @@ export const useChatStore = defineStore('chat', () => {
           return
         }
         batch.timeline.push({
-          id: crypto.randomUUID(),
+          id: createClientId(),
           kind: 'thinking',
           content: '',
           done: false,
@@ -846,7 +847,7 @@ export const useChatStore = defineStore('chat', () => {
       return false
     }
     messages.value.push({
-      id: crypto.randomUUID(),
+      id: createClientId(),
       sessionId: currentSessionId.value,
       role: 'user',
       content: trimmed,
@@ -964,7 +965,7 @@ export const useChatStore = defineStore('chat', () => {
     planMode.value = false
     const visibleContent = displayContent.trim() || (i18n.global.t('planExecuteUserMessage') as string)
     messages.value.push({
-      id: crypto.randomUUID(),
+      id: createClientId(),
       sessionId,
       role: 'user',
       content: visibleContent,

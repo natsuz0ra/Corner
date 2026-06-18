@@ -159,6 +159,7 @@ func (s *ChatService) maybeGenerateTitleAsync(
 	session *domain.Session,
 	modelConfig llmsvc.ModelRuntimeConfig,
 	userContent string,
+	titlePrefix string,
 	onTitleGenerated func(sessionID, title string),
 ) {
 	if session == nil {
@@ -209,6 +210,7 @@ func (s *ChatService) maybeGenerateTitleAsync(
 		logging.Info("title_generation_skipped", "session", sid, "reason", "empty_generated_title")
 		return
 	}
+	title = applyTitlePrefix(titlePrefix, title)
 
 	updated, err := gen.store.UpdateSessionTitle(ctx, sid, title)
 	if err != nil {
@@ -221,6 +223,15 @@ func (s *ChatService) maybeGenerateTitleAsync(
 	if updated && onTitleGenerated != nil {
 		onTitleGenerated(sid, title)
 	}
+}
+
+func applyTitlePrefix(prefix, title string) string {
+	prefix = strings.TrimSpace(prefix)
+	title = strings.TrimSpace(title)
+	if prefix == "" || title == "" || strings.HasPrefix(title, prefix) {
+		return title
+	}
+	return prefix + title
 }
 
 // isInitialSessionName returns true if the name looks like a default/untitled session.

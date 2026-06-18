@@ -128,6 +128,14 @@ test('update settings tab treats terminal jobs as history when a new update is a
   assert.doesNotMatch(source, /showApplyAction = computed\(\(\) => hasUpdate\.value && job\.value\.phase !== 'succeeded' && job\.value\.phase !== 'failed'\)/)
 })
 
+test('update settings tab resumes polling when an active job already exists', () => {
+  const source = readFileSync(resolve(import.meta.dirname, '../src/components/settings/SettingsUpdateTab.vue'), 'utf8')
+
+  assert.match(source, /async function loadJob\([^)]*pollIfActive/)
+  assert.match(source, /if \(applying\.value && pollIfActive\)[\s\S]*startPolling\(\)/)
+  assert.match(source, /await loadJob\(true\)/)
+})
+
 test('update settings tab uses one primary update action without duplicate progress text', () => {
   const source = readFileSync(resolve(import.meta.dirname, '../src/components/settings/SettingsUpdateTab.vue'), 'utf8')
 

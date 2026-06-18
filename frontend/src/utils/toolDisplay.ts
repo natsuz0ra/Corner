@@ -327,6 +327,19 @@ function fileReadTargetAndCount(params: Record<string, unknown> | undefined): { 
   return { target: filePath || 'file', count: 1 }
 }
 
+function sanitizeWebExtractError(error: string): string {
+  const trimmed = error.trim()
+  if (!trimmed) return ''
+
+  const statusMatch = trimmed.match(/^(web_extract request failed \(status \d+\))(?::.*|\.)?$/is)
+  if (statusMatch) return `${statusMatch[1]}.`
+
+  const lines = trimmed.split(/\r?\n/)
+  const bodyStart = lines.findIndex((line) => /^\s*(body|content|response body)\s*:/i.test(line))
+  const visible = (bodyStart >= 0 ? lines.slice(0, bodyStart) : lines.slice(0, 1)).join('\n').trim()
+  return visible || 'web_extract request failed'
+}
+
 export function buildLightweightToolDisplay(item: Pick<ToolCallItem, 'toolCallId' | 'toolName' | 'command' | 'params' | 'status' | 'error'>): LightweightToolDisplay | null {
   const toolName = item.toolName.trim().toLowerCase()
   if (!isLightweightToolName(toolName)) return null
@@ -381,7 +394,7 @@ export function buildLightweightToolDisplay(item: Pick<ToolCallItem, 'toolCallId
     label,
     target,
     status: item.status,
-    error: item.error || '',
+    error: toolName === 'web_extract' ? sanitizeWebExtractError(item.error || '') : item.error || '',
     count,
   }
 }

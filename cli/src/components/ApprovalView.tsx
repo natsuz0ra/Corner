@@ -6,6 +6,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import { filterToolParamsForDetail, formatToolCallSummary, truncateText, wrapText } from "../utils/format.js";
 import { buildFileToolDisplay, isFileToolName } from "../utils/fileToolDisplay.js";
+import { CLI_ACCENT_COLOR } from "../utils/terminal.js";
 import { renderColorDiffRows } from "../native/colorDiff.js";
 import type { ApprovalReviewItem, ApprovalReviewStatus } from "../types.js";
 
@@ -191,8 +192,8 @@ export function buildApprovalDetailLines(item: ApprovalItem | undefined): string
   return lines;
 }
 
-function detailLineColor(line: string): "cyan" | "gray" | "green" | "red" | "white" {
-  if (line === "Selected details" || line === "Command" || line === "Params" || line === "Diff preview:") return "cyan";
+function detailLineColor(line: string): string {
+  if (line === "Selected details" || line === "Command" || line === "Params" || line === "Diff preview:") return CLI_ACCENT_COLOR;
   if (line.startsWith("+ ")) return "green";
   if (line.startsWith("- ")) return "red";
   if (line.startsWith("... ") || line === "(no pending tool call)") return "gray";
@@ -305,7 +306,7 @@ export function ApprovalView({
 
   return (
     <Box flexDirection="column" width={contentWidth}>
-      <Text bold color="cyan">
+      <Text bold color={CLI_ACCENT_COLOR}>
         {formatApprovalTitle(reviewIndex, reviewItems.length || approvalItems.length)}
       </Text>
       <Box>

@@ -85,6 +85,7 @@ func New(cfg config.Config, tokenManager *auth.TokenManager, httpController *con
 
 			api.Get("/mcp-configs", adapt(httpController.ListMCPConfigs))
 			api.Post("/mcp-configs", adapt(httpController.CreateMCPConfig))
+			api.Get("/mcp-configs/{id}/tools", adapt(httpController.GetMCPConfigTools))
 			api.Put("/mcp-configs/{id}", adapt(httpController.UpdateMCPConfig))
 			api.Delete("/mcp-configs/{id}", adapt(httpController.DeleteMCPConfig))
 

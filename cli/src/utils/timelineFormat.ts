@@ -1,5 +1,5 @@
 import { renderMarkdownLines } from "./markdownRenderer.js";
-import { DOT } from "./terminal.js";
+import { CLI_ACCENT_COLOR, CLI_ACCENT_SOFT_COLOR, DOT } from "./terminal.js";
 import { stringWidth } from "./stringWidth.js";
 import type { RuntimeTodoItem, TimelineEntry, ToolCallStatus } from "../types.js";
 import {
@@ -28,7 +28,7 @@ import {
 
 export const PLAN_GOLD = "#f59e0b";
 export const WAITING_STATS_COLOR = "#64748b";
-export const TOOL_SUMMARY_TAG_COLOR = "#7dd3fc";
+export const TOOL_SUMMARY_TAG_COLOR = CLI_ACCENT_SOFT_COLOR;
 export const SHOW_CLI_THINKING = false;
 
 const BUILTIN_TIMELINE_TOOL_NAMES = new Set([
@@ -447,7 +447,7 @@ function formatRunSubagentTreeLines(lines: string[], maxWidth: number): string[]
 }
 
 export function getRunSubagentDetailLineColor(line: string, previousColor: string = "gray"): string {
-  if (line.includes("Thinking & tools")) return "cyan";
+  if (line.includes("Thinking & tools")) return CLI_ACCENT_COLOR;
   if (line.includes("Context") || line.includes("Task") || line.includes("Result")) return "white";
   if (line.includes("Params")) return "gray";
   return previousColor === "white" ? "white" : "gray";

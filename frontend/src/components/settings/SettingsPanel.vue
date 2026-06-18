@@ -138,6 +138,10 @@ const {
   mcpRows,
   mcpDialogTitle,
   mcpTemplateType,
+  expandedMCPToolsID,
+  mcpToolLoading,
+  mcpToolResponses,
+  mcpToolQueries,
   mcpEditorExtensions,
   applyTemplate,
   openMCPDialog,
@@ -146,6 +150,10 @@ const {
   updateMCP,
   deleteMCP: removeMCP,
   mcpPreview,
+  loadMCPTools,
+  toggleMCPTools,
+  setMCPToolsQuery,
+  visibleMCPTools,
 } = useSettingsMCP({
   mcpList,
   mcpDialogVisible,
@@ -454,6 +462,14 @@ watch(tab, (nextTab) => {
           :mcp-rows="mcpRows"
           :mcp-preview="mcpPreview"
           :update-mcp="updateMCP"
+          :expanded-mcp-tools-id="expandedMCPToolsID"
+          :mcp-tool-loading="mcpToolLoading"
+          :mcp-tool-responses="mcpToolResponses"
+          :mcp-tool-queries="mcpToolQueries"
+          :visible-mcp-tools="visibleMCPTools"
+          :toggle-mcp-tools="toggleMCPTools"
+          :load-mcp-tools="loadMCPTools"
+          :set-mcp-tools-query="setMCPToolsQuery"
           @add="openMCPDialog"
           @edit="openMCPEditDialog"
           @delete="deleteMCP"

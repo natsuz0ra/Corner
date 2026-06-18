@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"net/http"
 
 	configsvc "slimebot/internal/services/config"
@@ -86,4 +87,19 @@ func (h *HTTPController) DeleteMCPConfig(c WebContext) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+// GetMCPConfigTools lists tools advertised by one MCP config on demand.
+func (h *HTTPController) GetMCPConfigTools(c WebContext) {
+	id := c.Param("id")
+	result, err := h.mcpConfigs.GetTools(c.Request().Context(), id)
+	if err != nil {
+		if errors.Is(err, configsvc.ErrMCPConfigNotFound) {
+			jsonError(c, http.StatusNotFound, err.Error())
+			return
+		}
+		jsonInternalError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
 }

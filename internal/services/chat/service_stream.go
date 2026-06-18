@@ -178,7 +178,7 @@ func (s *ChatService) handleChatStreamWithReceivedAt(
 			return nil, err
 		}
 	}
-	s.maybeGenerateTitleAsync(state.session, state.modelConfig, state.userContent, callbacks.OnTitleGenerated)
+	s.maybeGenerateTitleAsync(state.session, state.modelConfig, state.userContent, callbacks.TitlePrefix, callbacks.OnTitleGenerated)
 
 	if planMode {
 		state.contextMessages = append(state.contextMessages, llmsvc.ChatMessage{

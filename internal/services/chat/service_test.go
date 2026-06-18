@@ -1223,7 +1223,7 @@ func TestMaybeGenerateTitleAsync_TriggersForInitialSessionName(t *testing.T) {
 	svc := &ChatService{titleGen: gen}
 
 	resultCh := make(chan string, 1)
-	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-1", Name: " New Chat "}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", func(sessionID, title string) {
+	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-1", Name: " New Chat "}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", "", func(sessionID, title string) {
 		resultCh <- sessionID + ":" + title
 	})
 
@@ -1247,6 +1247,43 @@ func TestMaybeGenerateTitleAsync_TriggersForInitialSessionName(t *testing.T) {
 	select {
 	case got := <-resultCh:
 		if got != "sid-1:自动标题" {
+			t.Fatalf("unexpected callback payload: %q", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for title callback")
+	}
+}
+
+func TestMaybeGenerateTitleAsync_AppliesOptionalTitlePrefix(t *testing.T) {
+	store := &stubTitleUpdateStore{updated: true, done: make(chan struct{})}
+	gen := newTitleGenerator(llmsvc.NewFactory(&fakeTitleProvider{title: `{"title":"自动标题"}`}), store)
+	svc := &ChatService{titleGen: gen}
+
+	resultCh := make(chan string, 1)
+	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-prefix", Name: "New Chat"}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", "定时：", func(sessionID, title string) {
+		resultCh <- sessionID + ":" + title
+	})
+
+	select {
+	case <-store.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for title persistence")
+	}
+
+	calls, id, name := store.snapshot()
+	if calls != 1 {
+		t.Fatalf("UpdateSessionTitle calls = %d, want 1", calls)
+	}
+	if id != "sid-prefix" {
+		t.Fatalf("persisted session id = %q, want sid-prefix", id)
+	}
+	if name != "定时：自动标题" {
+		t.Fatalf("persisted title = %q, want 定时：自动标题", name)
+	}
+
+	select {
+	case got := <-resultCh:
+		if got != "sid-prefix:定时：自动标题" {
 			t.Fatalf("unexpected callback payload: %q", got)
 		}
 	case <-time.After(2 * time.Second):
@@ -1303,7 +1340,7 @@ func TestMaybeGenerateTitleAsync_SkipsWhenPreconditionsFail(t *testing.T) {
 			}
 
 			called := make(chan struct{}, 1)
-			svc.maybeGenerateTitleAsync(tt.session, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, tt.userContent, func(string, string) {
+			svc.maybeGenerateTitleAsync(tt.session, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, tt.userContent, "", func(string, string) {
 				called <- struct{}{}
 			})
 
@@ -1331,7 +1368,7 @@ func TestMaybeGenerateTitleAsync_DoesNotCallbackWhenPersistReturnsFalse(t *testi
 	svc := &ChatService{titleGen: newTitleGenerator(llmsvc.NewFactory(&fakeTitleProvider{title: `{"title":"自动标题"}`}), store)}
 	called := make(chan struct{}, 1)
 
-	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-6", Name: "New Chat"}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", func(string, string) {
+	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-6", Name: "New Chat"}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", "", func(string, string) {
 		called <- struct{}{}
 	})
 
@@ -1381,7 +1418,7 @@ func TestMaybeGenerateTitleAsync_IgnoresGenerationError(t *testing.T) {
 	svc := &ChatService{titleGen: newTitleGenerator(llmsvc.NewFactory(&fakeTitleProvider{err: fmt.Errorf("boom")}), store)}
 	called := make(chan struct{}, 1)
 
-	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-7", Name: "New Chat"}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", func(string, string) {
+	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-7", Name: "New Chat"}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", "", func(string, string) {
 		called <- struct{}{}
 	})
 
@@ -1402,7 +1439,7 @@ func TestMaybeGenerateTitleAsync_IgnoresPersistError(t *testing.T) {
 	svc := &ChatService{titleGen: newTitleGenerator(llmsvc.NewFactory(&fakeTitleProvider{title: `{"title":"自动标题"}`}), store)}
 	called := make(chan struct{}, 1)
 
-	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-8", Name: "New Chat"}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", func(string, string) {
+	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-8", Name: "New Chat"}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", "", func(string, string) {
 		called <- struct{}{}
 	})
 
@@ -1423,7 +1460,7 @@ func TestMaybeGenerateTitleAsync_UsesOnlyUserMessageForInitialTitle(t *testing.T
 	provider := &fakeTitleProvider{title: `{"title":"自动标题"}`}
 	svc := &ChatService{titleGen: newTitleGenerator(llmsvc.NewFactory(provider), store)}
 
-	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-9", Name: "New Chat"}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户开场", func(string, string) {})
+	svc.maybeGenerateTitleAsync(&domain.Session{ID: "sid-9", Name: "New Chat"}, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户开场", "", func(string, string) {})
 
 	select {
 	case <-store.done:
@@ -1441,12 +1478,12 @@ func TestMaybeGenerateTitleAsync_RetriesAfterGenerationError(t *testing.T) {
 	svc := &ChatService{titleGen: newTitleGenerator(llmsvc.NewFactory(provider), store)}
 	session := &domain.Session{ID: "sid-10", Name: "New Chat"}
 
-	svc.maybeGenerateTitleAsync(session, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", func(string, string) {})
+	svc.maybeGenerateTitleAsync(session, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", "", func(string, string) {})
 	time.Sleep(150 * time.Millisecond)
 
 	provider.err = nil
 	provider.title = `{"title":"重试标题"}`
-	svc.maybeGenerateTitleAsync(session, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", func(string, string) {})
+	svc.maybeGenerateTitleAsync(session, llmsvc.ModelRuntimeConfig{Provider: llmsvc.ProviderOpenAI}, "用户消息", "", func(string, string) {})
 
 	select {
 	case <-store.done:

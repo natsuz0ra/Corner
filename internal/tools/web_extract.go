@@ -89,7 +89,7 @@ func (w *webExtractTool) extract(ctx context.Context, params map[string]any) (*E
 		return &ExecuteResult{Error: fmt.Sprintf("Failed to read web_extract response: %s.", err.Error())}, nil
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return &ExecuteResult{Error: fmt.Sprintf("web_extract request failed (status %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))}, nil
+		return &ExecuteResult{Error: fmt.Sprintf("web_extract request failed (status %d).", resp.StatusCode)}, nil
 	}
 	title, text := extractReadableHTML(string(body))
 	if text == "" {

@@ -1,4 +1,6 @@
+// @ts-ignore
 import assert from 'node:assert/strict'
+// @ts-ignore
 import test from 'node:test'
 import type { SessionHistoryThinkingItem, ToolCallItem } from '../src/api/chat'
 import {
@@ -97,6 +99,19 @@ test('getCollapsedReplyTimeline keeps every plan and only the final text segment
   assert.deepEqual(
     getCollapsedReplyTimeline(timeline).map((entry) => entry.id),
     ['plan-1', 'text-final'],
+  )
+})
+
+test('getCollapsedReplyTimeline keeps process cards when a reply has no final text', () => {
+  const timeline = [
+    { id: 'thinking-1', kind: 'thinking' as const, content: 'reasoning', done: true },
+    { id: 'tool-1', kind: 'tool_start' as const, toolCallId: 'tool-1' },
+    { id: 'tool-result-1', kind: 'tool_result' as const, toolCallId: 'tool-1' },
+  ]
+
+  assert.deepEqual(
+    getCollapsedReplyTimeline(timeline).map((entry) => entry.id),
+    ['thinking-1', 'tool-1', 'tool-result-1'],
   )
 })
 
