@@ -668,6 +668,11 @@ func (a *AgentService) RunAgentLoop(
 			tcCopy := tc
 			invocationCopy := invocation
 			paramsCopy := params
+			var reservedMember *domain.TeamMemberRun
+			var reservationErr error
+			if invocation.toolName == constants.RunSubagentTool {
+				reservedMember, reservationErr = a.reserveParallelSubagentMember(ctx, modelConfig, opts, tc, params, callbacks)
+			}
 			parallelJobs = append(parallelJobs, parallelToolJob{
 				index:            toolIndex,
 				toolCallID:       tc.ID,
@@ -720,6 +725,8 @@ func (a *AgentService) RunAgentLoop(
 							toolCall:            tcCopy,
 							invocation:          invocationCopy,
 							userSubagentModelID: opts.SubagentModelID,
+							reservedMember:      reservedMember,
+							reservationErr:      reservationErr,
 						}
 						execCtx = tools.WithSubagentRunner(execCtx, runner)
 						execResult := a.executeInvocation(execCtx, tcCopy, invocationCopy, paramsCopy, sessionID, mcpConfigs)

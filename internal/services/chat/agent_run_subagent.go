@@ -29,6 +29,8 @@ type agentSubagentRunner struct {
 	invocation          resolvedToolInvocation
 	userSubagentModelID string
 	preamble            string
+	reservedMember      *domain.TeamMemberRun
+	reservationErr      error
 }
 
 func (r agentSubagentRunner) RunSubagent(ctx context.Context, request tools.SubagentRunRequest) (*tools.ExecuteResult, error) {
@@ -53,7 +55,36 @@ func (r agentSubagentRunner) RunSubagent(ctx context.Context, request tools.Suba
 		params,
 		r.userSubagentModelID,
 		r.preamble,
+		r.reservedMember,
+		r.reservationErr,
 	)
+}
+
+func (a *AgentService) reserveParallelSubagentMember(
+	ctx context.Context,
+	parentModel llmsvc.ModelRuntimeConfig,
+	opts AgentLoopOptions,
+	tc llmsvc.ToolCallInfo,
+	params map[string]any,
+	callbacks AgentCallbacks,
+) (*domain.TeamMemberRun, error) {
+	if opts.teamRuntime == nil || a.subagentHost == nil || opts.Depth >= constants.MaxSubagentDepth {
+		return nil, nil
+	}
+	task := anyToTrimmedString(params["task"])
+	if task == "" {
+		return nil, nil
+	}
+	modelConfigID := parentModel.ConfigID
+	if userOverride := strings.TrimSpace(opts.SubagentModelID); userOverride != "" {
+		resolved, err := a.subagentHost.ResolveModelRuntimeConfig(ctx, userOverride)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve user subagent model: %w", err)
+		}
+		modelConfigID = resolved.ConfigID
+	}
+	title := normalizeSubagentTitle(anyToTrimmedString(params["title"]), task)
+	return opts.teamRuntime.reserveMember(ctx, tc.ID, title, task, modelConfigID, callbacks)
 }
 
 func normalizeSubagentTitle(title, task string) string {
@@ -107,7 +138,7 @@ func (a *AgentService) handleRunSubagentTool(
 	preamble string,
 	messages *[]llmsvc.ChatMessage,
 ) error {
-	execResult, err := a.executeRunSubagentTool(ctx, parentModel, sessionID, mcpConfigs, activatedSkills, callbacks, opts, tc, invocation, params, userSubagentModelID, preamble)
+	execResult, err := a.executeRunSubagentTool(ctx, parentModel, sessionID, mcpConfigs, activatedSkills, callbacks, opts, tc, invocation, params, userSubagentModelID, preamble, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -139,6 +170,8 @@ func (a *AgentService) executeRunSubagentTool(
 	params map[string]any,
 	userSubagentModelID string,
 	preamble string,
+	reservedMember *domain.TeamMemberRun,
+	reservationErr error,
 ) (*tools.ExecuteResult, error) {
 	if a.subagentHost == nil {
 		return &tools.ExecuteResult{Output: "subagent execution is not configured"}, nil
@@ -187,8 +220,11 @@ func (a *AgentService) executeRunSubagentTool(
 		subModel = resolved
 	}
 
-	var member *domain.TeamMemberRun
-	if opts.teamRuntime != nil {
+	if reservationErr != nil {
+		return &tools.ExecuteResult{Error: reservationErr.Error()}, nil
+	}
+	member := reservedMember
+	if opts.teamRuntime != nil && member == nil {
 		reserved, err := opts.teamRuntime.reserveMember(ctx, tc.ID, title, task, subModel.ConfigID, callbacks)
 		if err != nil {
 			return &tools.ExecuteResult{Error: err.Error()}, nil
