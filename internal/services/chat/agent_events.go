@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"slimebot/internal/domain"
 	sandboxpolicy "slimebot/internal/sandbox"
 	llmsvc "slimebot/internal/services/llm"
 )
@@ -22,6 +23,8 @@ type ApprovalRequest struct {
 	Preamble         string         `json:"preamble,omitempty"`
 	ParentToolCallID string         `json:"parentToolCallId,omitempty"`
 	SubagentRunID    string         `json:"subagentRunId,omitempty"`
+	TeamRunID        string         `json:"teamRunId,omitempty"`
+	MemberRunID      string         `json:"memberRunId,omitempty"`
 }
 
 // ApprovalResponse is the client's approval decision.
@@ -67,6 +70,8 @@ type ApprovalReviewEvent struct {
 	ReviewReason     string `json:"reviewReason,omitempty"`
 	ParentToolCallID string `json:"parentToolCallId,omitempty"`
 	SubagentRunID    string `json:"subagentRunId,omitempty"`
+	TeamRunID        string `json:"teamRunId,omitempty"`
+	MemberRunID      string `json:"memberRunId,omitempty"`
 }
 
 // ToolCallResult is pushed to the client after tool execution.
@@ -82,6 +87,8 @@ type ToolCallResult struct {
 	Metadata         any    `json:"metadata,omitempty"`
 	ParentToolCallID string `json:"parentToolCallId,omitempty"`
 	SubagentRunID    string `json:"subagentRunId,omitempty"`
+	TeamRunID        string `json:"teamRunId,omitempty"`
+	MemberRunID      string `json:"memberRunId,omitempty"`
 }
 
 type TodoItem struct {
@@ -98,6 +105,15 @@ type TodoUpdate struct {
 type ThinkingEventMeta struct {
 	ParentToolCallID string
 	SubagentRunID    string
+	TeamRunID        string
+	MemberRunID      string
+}
+
+type AgentEventMeta struct {
+	ParentToolCallID string `json:"parentToolCallId,omitempty"`
+	SubagentRunID    string `json:"subagentRunId,omitempty"`
+	TeamRunID        string `json:"teamRunId,omitempty"`
+	MemberRunID      string `json:"memberRunId,omitempty"`
 }
 
 type ContextUsage struct {
@@ -123,9 +139,11 @@ type AgentCallbacks struct {
 	OnToolApprovalRequired func(req ApprovalRequest) error
 	WaitApproval           func(ctx context.Context, toolCallID string) (*ApprovalResponse, error)
 	OnToolCallResult       func(result ToolCallResult) error
-	OnSubagentStart        func(parentToolCallID, runID, title, task string) error
-	OnSubagentChunk        func(parentToolCallID, runID, chunk string) error
-	OnSubagentDone         func(parentToolCallID, runID string, runErr error) error
+	OnTeamStart            func(run domain.TeamRun) error
+	OnTeamDone             func(run domain.TeamRun) error
+	OnSubagentStart        func(meta AgentEventMeta, title, task string) error
+	OnSubagentChunk        func(meta AgentEventMeta, chunk string) error
+	OnSubagentDone         func(meta AgentEventMeta, runErr error) error
 	OnThinkingStart        func(meta ThinkingEventMeta) error
 	OnThinkingChunk        func(chunk string, meta ThinkingEventMeta) error
 	OnThinkingDone         func(meta ThinkingEventMeta) error
@@ -148,4 +166,5 @@ type AgentLoopOptions struct {
 	OnProviderUsage      func(usage llmsvc.TokenUsage) error
 	SandboxPolicy        *sandboxpolicy.Policy
 	AllowedToolFunctions map[string]struct{}
+	teamRuntime          *teamRuntime
 }

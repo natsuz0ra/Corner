@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"slimebot/internal/constants"
+	"slimebot/internal/domain"
 	"slimebot/internal/logging"
 	"strings"
 	"sync"
@@ -589,15 +590,49 @@ func truncateWSString(value string, maxRunes int) string {
 	return string(runes[:maxRunes-3]) + "..."
 }
 
-func buildSubagentStartPayload(sessionID, parentToolCallID, runID, title, task string) map[string]any {
-	return map[string]any{
+func addTeamIdentity(payload map[string]any, teamRunID, memberRunID string) {
+	if teamRunID != "" {
+		payload["teamRunId"] = teamRunID
+	}
+	if memberRunID != "" {
+		payload["memberRunId"] = memberRunID
+	}
+}
+
+func buildSubagentStartPayload(sessionID string, meta chatsvc.AgentEventMeta, title, task string) map[string]any {
+	payload := map[string]any{
 		"type":             "subagent_start",
 		"sessionId":        sessionID,
-		"parentToolCallId": parentToolCallID,
-		"subagentRunId":    runID,
+		"parentToolCallId": meta.ParentToolCallID,
+		"subagentRunId":    meta.SubagentRunID,
 		"title":            truncateWSString(title, 80),
 		"task":             truncateWSString(task, 512),
 	}
+	addTeamIdentity(payload, meta.TeamRunID, meta.MemberRunID)
+	return payload
+}
+
+func buildTeamStartPayload(run domain.TeamRun) map[string]any {
+	return map[string]any{
+		"type":        "team_start",
+		"sessionId":   run.SessionID,
+		"requestId":   run.RequestID,
+		"teamRunId":   run.ID,
+		"status":      run.Status,
+		"maxMembers":  run.MaxMembers,
+		"maxParallel": run.MaxParallel,
+		"startedAt":   run.StartedAt.Format(time.RFC3339Nano),
+	}
+}
+
+func buildTeamDonePayload(run domain.TeamRun) map[string]any {
+	payload := buildTeamStartPayload(run)
+	payload["type"] = "team_done"
+	payload["lastError"] = run.LastError
+	if run.FinishedAt != nil {
+		payload["finishedAt"] = run.FinishedAt.Format(time.RFC3339Nano)
+	}
+	return payload
 }
 
 // buildCallbacks builds ChatService callbacks and maps them to WebSocket events.
@@ -637,6 +672,7 @@ func (w *Controller) buildCallbacks(
 			if meta.SubagentRunID != "" {
 				payload["subagentRunId"] = meta.SubagentRunID
 			}
+			addTeamIdentity(payload, meta.TeamRunID, meta.MemberRunID)
 			if !enqueue(payload) {
 				return context.Canceled
 			}
@@ -650,6 +686,7 @@ func (w *Controller) buildCallbacks(
 			if meta.SubagentRunID != "" {
 				payload["subagentRunId"] = meta.SubagentRunID
 			}
+			addTeamIdentity(payload, meta.TeamRunID, meta.MemberRunID)
 			if !enqueue(payload) {
 				return context.Canceled
 			}
@@ -663,6 +700,7 @@ func (w *Controller) buildCallbacks(
 			if meta.SubagentRunID != "" {
 				payload["subagentRunId"] = meta.SubagentRunID
 			}
+			addTeamIdentity(payload, meta.TeamRunID, meta.MemberRunID)
 			if !enqueue(payload) {
 				return context.Canceled
 			}
@@ -695,6 +733,7 @@ func (w *Controller) buildCallbacks(
 			if req.SubagentRunID != "" {
 				payload["subagentRunId"] = req.SubagentRunID
 			}
+			addTeamIdentity(payload, req.TeamRunID, req.MemberRunID)
 			if !enqueue(payload) {
 				return context.Canceled
 			}
@@ -718,6 +757,7 @@ func (w *Controller) buildCallbacks(
 			if event.SubagentRunID != "" {
 				payload["subagentRunId"] = event.SubagentRunID
 			}
+			addTeamIdentity(payload, event.TeamRunID, event.MemberRunID)
 			if !enqueue(payload) {
 				return context.Canceled
 			}
@@ -743,6 +783,7 @@ func (w *Controller) buildCallbacks(
 			if req.SubagentRunID != "" {
 				payload["subagentRunId"] = req.SubagentRunID
 			}
+			addTeamIdentity(payload, req.TeamRunID, req.MemberRunID)
 			if !enqueue(payload) {
 				return context.Canceled
 			}
@@ -778,36 +819,52 @@ func (w *Controller) buildCallbacks(
 			if result.SubagentRunID != "" {
 				payload["subagentRunId"] = result.SubagentRunID
 			}
+			addTeamIdentity(payload, result.TeamRunID, result.MemberRunID)
 			if !enqueue(payload) {
 				return context.Canceled
 			}
 			return nil
 		},
-		OnSubagentStart: func(parentToolCallID, runID, title, task string) error {
-			if !enqueue(buildSubagentStartPayload(sessionID, parentToolCallID, runID, title, task)) {
+		OnTeamStart: func(run domain.TeamRun) error {
+			if !enqueue(buildTeamStartPayload(run)) {
 				return context.Canceled
 			}
 			return nil
 		},
-		OnSubagentChunk: func(parentToolCallID, runID, chunk string) error {
-			if !enqueue(map[string]any{
+		OnTeamDone: func(run domain.TeamRun) error {
+			if !enqueue(buildTeamDonePayload(run)) {
+				return context.Canceled
+			}
+			return nil
+		},
+		OnSubagentStart: func(meta chatsvc.AgentEventMeta, title, task string) error {
+			if !enqueue(buildSubagentStartPayload(sessionID, meta, title, task)) {
+				return context.Canceled
+			}
+			return nil
+		},
+		OnSubagentChunk: func(meta chatsvc.AgentEventMeta, chunk string) error {
+			payload := map[string]any{
 				"type":             "subagent_chunk",
 				"sessionId":        sessionID,
-				"parentToolCallId": parentToolCallID,
-				"subagentRunId":    runID,
+				"parentToolCallId": meta.ParentToolCallID,
+				"subagentRunId":    meta.SubagentRunID,
 				"content":          chunk,
-			}) {
+			}
+			addTeamIdentity(payload, meta.TeamRunID, meta.MemberRunID)
+			if !enqueue(payload) {
 				return context.Canceled
 			}
 			return nil
 		},
-		OnSubagentDone: func(parentToolCallID, runID string, runErr error) error {
+		OnSubagentDone: func(meta chatsvc.AgentEventMeta, runErr error) error {
 			payload := map[string]any{
 				"type":             "subagent_done",
 				"sessionId":        sessionID,
-				"parentToolCallId": parentToolCallID,
-				"subagentRunId":    runID,
+				"parentToolCallId": meta.ParentToolCallID,
+				"subagentRunId":    meta.SubagentRunID,
 			}
+			addTeamIdentity(payload, meta.TeamRunID, meta.MemberRunID)
 			if runErr != nil {
 				payload["error"] = runErr.Error()
 			}

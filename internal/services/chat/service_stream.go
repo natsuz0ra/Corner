@@ -54,6 +54,7 @@ type chatTurnResult struct {
 	narration     string
 	planBody      string
 	tokenUsage    *llmsvc.TokenUsage
+	teamRuntime   *teamRuntime
 }
 
 // HandleChatStream runs one full turn: persist user message, build context, run agent, save assistant.
@@ -394,6 +395,7 @@ func (s *ChatService) executeChatTurn(
 	subagentModelID string,
 	approvalModeOverride string,
 ) (*chatTurnResult, error) {
+	requestTeamRuntime := newTeamRuntime(s.teamService, sessionID, requestID)
 	parser := newTitleStreamParser()
 	accumulator := &chatStreamAccumulator{}
 	usageTracker := newContextUsageTracker(state.contextUsage, callbacks.OnContextUsage)
@@ -537,21 +539,23 @@ func (s *ChatService) executeChatTurn(
 			}
 			return callbacks.OnToolCallResult(result)
 		},
-		OnSubagentStart: func(parentToolCallID, runID, title, task string) error {
+		OnTeamStart: callbacks.OnTeamStart,
+		OnTeamDone:  callbacks.OnTeamDone,
+		OnSubagentStart: func(meta AgentEventMeta, title, task string) error {
 			if callbacks.OnSubagentStart != nil {
-				return callbacks.OnSubagentStart(parentToolCallID, runID, title, task)
+				return callbacks.OnSubagentStart(meta, title, task)
 			}
 			return nil
 		},
-		OnSubagentChunk: func(parentToolCallID, runID, chunk string) error {
+		OnSubagentChunk: func(meta AgentEventMeta, chunk string) error {
 			if callbacks.OnSubagentChunk != nil {
-				return callbacks.OnSubagentChunk(parentToolCallID, runID, chunk)
+				return callbacks.OnSubagentChunk(meta, chunk)
 			}
 			return nil
 		},
-		OnSubagentDone: func(parentToolCallID, runID string, runErr error) error {
+		OnSubagentDone: func(meta AgentEventMeta, runErr error) error {
 			if callbacks.OnSubagentDone != nil {
-				return callbacks.OnSubagentDone(parentToolCallID, runID, runErr)
+				return callbacks.OnSubagentDone(meta, runErr)
 			}
 			return nil
 		},
@@ -658,6 +662,7 @@ func (s *ChatService) executeChatTurn(
 		LatestUsage:     &latestUsage,
 		OnProviderUsage: usageTracker.calibrateProviderUsage,
 		SandboxPolicy:   sandboxPolicy,
+		teamRuntime:     requestTeamRuntime,
 	})
 	logging.Span("agent_loop", agentStart)
 	s.mergeSessionActivatedSkills(sessionID, activatedSkills)
@@ -731,6 +736,7 @@ func (s *ChatService) executeChatTurn(
 		narration:     resultNarration,
 		planBody:      resultPlanBody,
 		tokenUsage:    nonZeroTokenUsage(latestUsage),
+		teamRuntime:   requestTeamRuntime,
 	}, nil
 }
 
@@ -768,6 +774,11 @@ func (s *ChatService) finalizeChatTurn(
 	}
 	if err := s.store.BindThinkingRecordsToAssistantMessage(ctx, sessionID, requestID, assistantMessage.ID); err != nil {
 		return nil, err
+	}
+	if result.teamRuntime != nil {
+		if err := result.teamRuntime.finalize(ctx, assistantMessage.ID, result.interrupted, callbacks); err != nil {
+			return nil, err
+		}
 	}
 
 	streamResult := &ChatStreamResult{

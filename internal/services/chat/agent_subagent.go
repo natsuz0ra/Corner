@@ -1,15 +1,20 @@
 package chat
 
 // wrapSubagentCallbacks routes child stream chunks to OnSubagentChunk and tags nested tool events.
-func wrapSubagentCallbacks(base AgentCallbacks, parentToolCallID, subagentRunID string) AgentCallbacks {
-	thinkingMeta := ThinkingEventMeta{ParentToolCallID: parentToolCallID, SubagentRunID: subagentRunID}
+func wrapSubagentCallbacks(base AgentCallbacks, meta AgentEventMeta) AgentCallbacks {
+	thinkingMeta := ThinkingEventMeta{
+		ParentToolCallID: meta.ParentToolCallID,
+		SubagentRunID:    meta.SubagentRunID,
+		TeamRunID:        meta.TeamRunID,
+		MemberRunID:      meta.MemberRunID,
+	}
 	return AgentCallbacks{
 		OnChunk: func(chunk string) error {
 			if chunk == "" {
 				return nil
 			}
 			if base.OnSubagentChunk != nil {
-				return base.OnSubagentChunk(parentToolCallID, subagentRunID, chunk)
+				return base.OnSubagentChunk(meta, chunk)
 			}
 			return nil
 		},
@@ -17,24 +22,30 @@ func wrapSubagentCallbacks(base AgentCallbacks, parentToolCallID, subagentRunID 
 			if base.OnToolCallStart == nil {
 				return nil
 			}
-			req.ParentToolCallID = parentToolCallID
-			req.SubagentRunID = subagentRunID
+			req.ParentToolCallID = meta.ParentToolCallID
+			req.SubagentRunID = meta.SubagentRunID
+			req.TeamRunID = meta.TeamRunID
+			req.MemberRunID = meta.MemberRunID
 			return base.OnToolCallStart(req)
 		},
 		OnToolApprovalReview: func(event ApprovalReviewEvent) error {
 			if base.OnToolApprovalReview == nil {
 				return nil
 			}
-			event.ParentToolCallID = parentToolCallID
-			event.SubagentRunID = subagentRunID
+			event.ParentToolCallID = meta.ParentToolCallID
+			event.SubagentRunID = meta.SubagentRunID
+			event.TeamRunID = meta.TeamRunID
+			event.MemberRunID = meta.MemberRunID
 			return base.OnToolApprovalReview(event)
 		},
 		OnToolApprovalRequired: func(req ApprovalRequest) error {
 			if base.OnToolApprovalRequired == nil {
 				return nil
 			}
-			req.ParentToolCallID = parentToolCallID
-			req.SubagentRunID = subagentRunID
+			req.ParentToolCallID = meta.ParentToolCallID
+			req.SubagentRunID = meta.SubagentRunID
+			req.TeamRunID = meta.TeamRunID
+			req.MemberRunID = meta.MemberRunID
 			return base.OnToolApprovalRequired(req)
 		},
 		WaitApproval: base.WaitApproval,
@@ -42,8 +53,10 @@ func wrapSubagentCallbacks(base AgentCallbacks, parentToolCallID, subagentRunID 
 			if base.OnToolCallResult == nil {
 				return nil
 			}
-			result.ParentToolCallID = parentToolCallID
-			result.SubagentRunID = subagentRunID
+			result.ParentToolCallID = meta.ParentToolCallID
+			result.SubagentRunID = meta.SubagentRunID
+			result.TeamRunID = meta.TeamRunID
+			result.MemberRunID = meta.MemberRunID
 			return base.OnToolCallResult(result)
 		},
 		OnThinkingStart: func(_ ThinkingEventMeta) error {

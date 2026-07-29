@@ -2,12 +2,14 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"slimebot/internal/constants"
 	"slimebot/internal/domain"
 	llmsvc "slimebot/internal/services/llm"
+	teamsvc "slimebot/internal/services/team"
 	"slimebot/internal/tools"
 
 	"github.com/google/uuid"
@@ -171,6 +173,7 @@ func (a *AgentService) executeRunSubagentTool(
 
 	parentCtx := anyToTrimmedString(params["context"])
 	subModel := parentModel
+	title := normalizeSubagentTitle(anyToTrimmedString(params["title"]), task)
 
 	// Priority: user UI/config selection > inherit parent model. Ignore any LLM-supplied
 	// model_id argument so the model cannot invent aliases such as "fast".
@@ -184,6 +187,15 @@ func (a *AgentService) executeRunSubagentTool(
 		subModel = resolved
 	}
 
+	var member *domain.TeamMemberRun
+	if opts.teamRuntime != nil {
+		reserved, err := opts.teamRuntime.reserveMember(ctx, tc.ID, title, task, subModel.ConfigID, callbacks)
+		if err != nil {
+			return &tools.ExecuteResult{Error: err.Error()}, nil
+		}
+		member = reserved
+	}
+
 	subMsgs, err := a.subagentHost.BuildSubagentMessages(ctx, sessionID, task, parentCtx)
 	if err != nil {
 		msg := fmt.Sprintf("failed to build subagent context: %s", err.Error())
@@ -191,17 +203,45 @@ func (a *AgentService) executeRunSubagentTool(
 	}
 
 	runID := uuid.NewString()
+	meta := AgentEventMeta{ParentToolCallID: tc.ID, SubagentRunID: runID}
+	if member != nil {
+		started, startErr := opts.teamRuntime.startMember(ctx, member.ID, runID, subModel.ConfigID)
+		if startErr != nil {
+			return &tools.ExecuteResult{Error: startErr.Error()}, nil
+		}
+		meta.TeamRunID = started.TeamRunID
+		meta.MemberRunID = started.ID
+	}
 	if callbacks.OnSubagentStart != nil {
-		_ = callbacks.OnSubagentStart(tc.ID, runID, normalizeSubagentTitle(anyToTrimmedString(params["title"]), task), task)
+		if err := callbacks.OnSubagentStart(meta, title, task); err != nil {
+			if member != nil {
+				_, _ = opts.teamRuntime.finishMember(context.Background(), member.ID, teamsvc.MemberResult{Err: err})
+			}
+			return nil, fmt.Errorf("failed to push subagent start: %w", err)
+		}
 	}
 
-	subCb := wrapSubagentCallbacks(callbacks, tc.ID, runID)
+	subCb := wrapSubagentCallbacks(callbacks, meta)
 	childOpts := AgentLoopOptions{Depth: opts.Depth + 1, ApprovalMode: opts.ApprovalMode, PlanMode: opts.PlanMode, SandboxPolicy: opts.SandboxPolicy}
 
 	answer, runErr := a.RunAgentLoop(ctx, subModel, sessionID, subMsgs, mcpConfigs, activatedSkills, subCb, childOpts)
+	if member != nil {
+		finishCtx := ctx
+		if ctx.Err() != nil {
+			finishCtx = context.Background()
+		}
+		memberResult := teamsvc.MemberResult{Answer: answer, Err: runErr}
+		if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
+			memberResult.Err = nil
+			memberResult.Canceled = true
+		}
+		if _, finishErr := opts.teamRuntime.finishMember(finishCtx, member.ID, memberResult); finishErr != nil && runErr == nil {
+			runErr = finishErr
+		}
+	}
 
 	if callbacks.OnSubagentDone != nil {
-		_ = callbacks.OnSubagentDone(tc.ID, runID, runErr)
+		_ = callbacks.OnSubagentDone(meta, runErr)
 	}
 
 	var execResult *tools.ExecuteResult

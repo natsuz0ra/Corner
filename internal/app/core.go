@@ -108,6 +108,7 @@ func NewCore(cfg config.Config) (*Core, error) {
 	memoryService := memorysvc.NewServiceFromSettings(repo)
 	scheduleService := schedulesvc.NewService(repo, nil, schedulesvc.Options{})
 	chatService := chatsvc.NewChatService(repo, repo, providerFactory, mcpManager, skillRuntime)
+	chatService.SetTeamService(teamService)
 	chatService.SetMemoryService(memoryService)
 	chatService.SetScheduleService(scheduleService)
 	chatService.SetAgentsInstructions(agentsService)
