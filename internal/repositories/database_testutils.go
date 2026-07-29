@@ -23,6 +23,8 @@ func NewSQLiteDBTest(t testing.TB, namespace string) *gorm.DB {
 		&domain.Message{},
 		&domain.ToolCallRecord{},
 		&domain.ThinkingRecord{},
+		&domain.TeamRun{},
+		&domain.TeamMemberRun{},
 		&domain.AppSetting{},
 		&domain.LLMConfig{},
 		&domain.SessionContextSummary{},

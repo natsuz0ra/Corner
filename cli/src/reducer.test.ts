@@ -33,6 +33,35 @@ test("createInitialState initializes empty input value", () => {
 	assert.equal(state.sessionName, "");
 });
 
+test("Team reducer accepts member events before team_start and updates terminal state", () => {
+	let state = reduce(initState(), {
+		type: "UPSERT_TEAM_MEMBER",
+		member: {
+			id: "member-1", teamRunId: "team-1", toolCallId: "tool-1", title: "Research",
+			task: "Inspect runtime", status: "running", startedAt: "2026-07-29T00:00:01Z",
+		},
+	});
+	state = reduce(state, {
+		type: "UPSERT_TEAM_RUN",
+		run: {
+			id: "team-1", sessionId: "session-1", requestId: "request-1", status: "running",
+			maxMembers: 8, maxParallel: 4, startedAt: "2026-07-29T00:00:00Z",
+		},
+	});
+	state = reduce(state, {
+		type: "UPSERT_TEAM_MEMBER",
+		member: {
+			id: "member-1", teamRunId: "team-1", toolCallId: "tool-1", title: "",
+			task: "", status: "failed", error: "boom", finishedAt: "2026-07-29T00:00:03Z",
+		},
+	});
+
+	const entry = state.timeline.find((item) => item.kind === "team");
+	assert.equal(entry?.teamRun?.requestId, "request-1");
+	assert.equal(entry?.teamRun?.members[0]?.title, "Research");
+	assert.equal(entry?.teamRun?.members[0]?.status, "failed");
+});
+
 test("SET_INPUT updates value", () => {
 	const state = reduce(initState(), {
 		type: "SET_INPUT",

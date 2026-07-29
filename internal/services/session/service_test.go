@@ -15,6 +15,8 @@ type storeStub struct {
 	messages        []domain.Message
 	toolRecords     []domain.ToolCallRecord
 	thinkingRecords []domain.ThinkingRecord
+	teamRuns        []domain.TeamRun
+	teamMembers     []domain.TeamMemberRun
 }
 
 func (s *storeStub) ListSessions(ctx context.Context, limit int, offset int, query string) ([]domain.Session, error) {
@@ -50,6 +52,16 @@ func (s *storeStub) ListSessionToolCallRecordsByAssistantMessageIDs(ctx context.
 func (s *storeStub) ListSessionThinkingRecordsByAssistantMessageIDs(ctx context.Context, sessionID string, messageIDs []string) ([]domain.ThinkingRecord, error) {
 	s.seenCtx = ctx
 	return s.thinkingRecords, nil
+}
+
+func (s *storeStub) ListSessionTeamRunsByAssistantMessageIDs(ctx context.Context, sessionID string, messageIDs []string) ([]domain.TeamRun, error) {
+	s.seenCtx = ctx
+	return s.teamRuns, nil
+}
+
+func (s *storeStub) ListSessionTeamMemberRunsByAssistantMessageIDs(ctx context.Context, sessionID string, messageIDs []string) ([]domain.TeamMemberRun, error) {
+	s.seenCtx = ctx
+	return s.teamMembers, nil
 }
 
 func TestGetMessageHistoryBuildsToolThinkingAndReplyTiming(t *testing.T) {
@@ -101,6 +113,31 @@ func TestGetMessageHistoryBuildsToolThinkingAndReplyTiming(t *testing.T) {
 	thinking := got.ThinkingByAssistantMessageID[assistantID][0]
 	if thinking.Status != "completed" || thinking.Content != "reasoning" {
 		t.Fatalf("unexpected thinking history: %+v", thinking)
+	}
+}
+
+func TestGetMessageHistoryIncludesTeamRunsAndMembers(t *testing.T) {
+	assistantID := "assistant-1"
+	assistantIDPtr := assistantID
+	store := &storeStub{
+		messages: []domain.Message{{ID: assistantID, SessionID: "session-1", Role: "assistant", Content: "answer"}},
+		teamRuns: []domain.TeamRun{{
+			ID: "team-1", SessionID: "session-1", RequestID: "request-1", AssistantMessageID: &assistantIDPtr, Status: domain.TeamRunStatusSucceeded,
+		}},
+		teamMembers: []domain.TeamMemberRun{{
+			ID: "member-1", TeamRunID: "team-1", ToolCallID: "tool-1", Status: domain.TeamMemberRunStatusSucceeded,
+		}},
+	}
+
+	got, err := NewSessionService(store).GetMessageHistory(context.Background(), "session-1", 10, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("GetMessageHistory failed: %v", err)
+	}
+	if len(got.TeamRuns) != 1 || got.TeamRuns[0].ID != "team-1" {
+		t.Fatalf("team runs = %#v", got.TeamRuns)
+	}
+	if len(got.TeamMemberRuns) != 1 || got.TeamMemberRuns[0].ID != "member-1" {
+		t.Fatalf("team members = %#v", got.TeamMemberRuns)
 	}
 }
 

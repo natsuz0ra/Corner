@@ -46,6 +46,7 @@ import { GradientFlowText } from "./GradientFlowText.js";
 import { FileToolDiffBlock } from "./FileToolDiffBlock.js";
 import { Markdown, StreamingMarkdown } from "./Markdown.js";
 import { Spinner } from "./Spinner.js";
+import { formatAgentTeamRows } from "../utils/agentTeam.js";
 
 interface TimelineProps {
   entries: TimelineEntry[];
@@ -367,9 +368,17 @@ export function Timeline({
   return (
     <Box flexDirection="column">
       {displayRows.map((row, index) => (
-        <React.Fragment key={row.kind === "lightweight_tool_group" ? row.id : `${row.entry.kind}-${row.entry.toolCallId ?? `r-${index}`}`}>
+        <React.Fragment key={row.kind === "lightweight_tool_group" ? row.id : row.kind === "agent_team" ? row.team.id : `${row.entry.kind}-${row.entry.toolCallId ?? `r-${index}`}`}>
           {index > 0 && <Text> </Text>}
-          {row.kind === "lightweight_tool_group" ? (
+          {row.kind === "agent_team" ? (
+            <Box flexDirection="column">
+              {formatAgentTeamRows(row.team, maxWidth, toolOutputExpanded).map((line, lineIndex) => (
+                <Text key={`${row.team.id}-line-${lineIndex}`} color={line.color}>
+                  {line.active && !blinkOn ? line.text.replace(/^./u, " ") : line.text}
+                </Text>
+              ))}
+            </Box>
+          ) : row.kind === "lightweight_tool_group" ? (
             (() => {
               const runningOverride = streaming && row.trailing;
               const autoPreview = streaming && !toolOutputExpanded;

@@ -2,6 +2,7 @@ import type { SessionHistoryPayload, SessionHistoryReplyTimingItem, SessionHisto
 import type { ToolCallStatus } from '@/types/chat'
 import { hasContentMarkers, parseContentMarkers } from './contentMarkers'
 import { createClientId } from './uuid'
+import { buildAgentTeamsFromHistory, type AgentTeamRun } from './agentTeam'
 
 export type AssistantReplyTimelineItem =
   | {
@@ -37,6 +38,7 @@ export interface AssistantReplyBatch {
   sessionId: string
   assistantMessageId: string
   toolCalls: ToolCallItem[]
+  teamRuns: AgentTeamRun[]
   timeline: AssistantReplyTimelineItem[]
   collapsed: boolean
   startedAt?: number
@@ -300,6 +302,8 @@ export function buildReplyBatchesFromHistory(sessionId: string, history: Session
       finishedAt: parseTimestamp(item.finishedAt),
       parentToolCallId: item.parentToolCallId,
       subagentRunId: item.subagentRunId,
+      teamRunId: item.teamRunId,
+      memberRunId: item.memberRunId,
       subagentTitle: item.toolName === 'run_subagent' ? String(item.params?.title ?? '').trim() || undefined : undefined,
       subagentTask: item.toolName === 'run_subagent' ? String(item.params?.task ?? '').trim() || undefined : undefined,
     }))
@@ -339,6 +343,7 @@ export function buildReplyBatchesFromHistory(sessionId: string, history: Session
       sessionId: sessionId,
       assistantMessageId: message.id,
       toolCalls,
+      teamRuns: buildAgentTeamsFromHistory(history.teamRuns, history.teamMemberRuns, message.id),
       timeline,
       collapsed: true,
       ...deriveReplyTiming(message.createdAt, historyToolCalls, normalizedHistoryThinking, history.replyTimingByAssistantMessageId?.[message.id]),

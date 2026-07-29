@@ -213,6 +213,51 @@ test("dispatchWSMessage routes subagent_start with title and task", () => {
   }]);
 });
 
+test("dispatchWSMessage routes Agent Team lifecycle and member identity", () => {
+  const calls: string[] = [];
+  const handlers: WSHandlers = {
+    onSession: () => {},
+    onStart: () => {},
+    onChunk: () => {},
+    onDone: () => {},
+    onError: () => {},
+    onTeamStart: (run) => calls.push(`start:${run.id}:${run.status}`),
+    onTeamDone: (run) => calls.push(`done:${run.id}:${run.status}`),
+    onSubagentStart: (data) => calls.push(`member:${data.teamRunId}:${data.memberRunId}`),
+  };
+
+  dispatchWSMessage(JSON.stringify({
+    type: "team_start", sessionId: "s1", teamRunId: "team-1", requestId: "request-1",
+    status: "running", maxMembers: 8, maxParallel: 4, startedAt: "2026-07-29T00:00:00Z",
+  }), handlers);
+  dispatchWSMessage(JSON.stringify({
+    type: "subagent_start", sessionId: "s1", parentToolCallId: "tool-1", subagentRunId: "sub-1",
+    teamRunId: "team-1", memberRunId: "member-1", title: "Research", task: "Inspect",
+  }), handlers);
+  dispatchWSMessage(JSON.stringify({
+    type: "team_done", sessionId: "s1", teamRunId: "team-1", requestId: "request-1",
+    status: "succeeded", maxMembers: 8, maxParallel: 4, startedAt: "2026-07-29T00:00:00Z", finishedAt: "2026-07-29T00:00:03Z",
+  }), handlers);
+
+  assert.deepEqual(calls, ["start:team-1:running", "member:team-1:member-1", "done:team-1:succeeded"]);
+});
+
+test("dispatchWSMessage routes queued Agent Team members", () => {
+  const calls: string[] = [];
+  dispatchWSMessage(JSON.stringify({
+    type: "team_member_queued", sessionId: "s1", teamRunId: "team-1", memberRunId: "member-1",
+    toolCallId: "tool-1", title: "Research", task: "Inspect", status: "queued", createdAt: "2026-07-29T00:00:01Z",
+  }), {
+    onSession: () => {},
+    onStart: () => {},
+    onChunk: () => {},
+    onDone: () => {},
+    onError: () => {},
+    onTeamMemberQueued: (member) => calls.push(`${member.id}:${member.teamRunId}:${member.status}`),
+  });
+  assert.deepEqual(calls, ["member-1:team-1:queued"]);
+});
+
 test("dispatchWSMessage routes subagent_done with error", () => {
   const calls: Array<{
     sessionId?: string;

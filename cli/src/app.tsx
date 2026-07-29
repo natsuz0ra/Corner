@@ -608,6 +608,8 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
           history.messages,
           history.toolCallsByAssistantMessageId || {},
           history.thinkingByAssistantMessageId || {},
+          history.teamRuns || [],
+          history.teamMemberRuns || [],
         ),
       } as AppAction);
       await refreshContextUsage(session.id, state.modelId);

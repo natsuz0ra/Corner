@@ -1,6 +1,8 @@
 import { hasContentMarkers, parseContentMarkers } from "./contentMarkers.js";
 import { splitNarrationAndPlan } from "./planUtils.js";
 import type {
+  AgentTeamMemberRun,
+  AgentTeamRun,
   Message,
   ThinkingHistoryItem,
   TimelineEntry,
@@ -53,6 +55,8 @@ function timelineToolEntry(tc: ToolCallHistoryItem, subagentThinking?: ThinkingH
     metadata: tc.metadata,
     ...(tc.parentToolCallId ? { parentToolCallId: tc.parentToolCallId } : {}),
     ...(tc.subagentRunId ? { subagentRunId: tc.subagentRunId } : {}),
+    ...(tc.teamRunId ? { teamRunId: tc.teamRunId } : {}),
+    ...(tc.memberRunId ? { memberRunId: tc.memberRunId } : {}),
     ...subagentHistoryFields(tc),
     ...(subagentThinking ? {
       subagentThinking: {
@@ -78,6 +82,8 @@ export function mapHistoryMessages(
   messages: Message[],
   toolCallsByMsgId: Record<string, ToolCallHistoryItem[]>,
   thinkingByMsgId: Record<string, ThinkingHistoryItem[]> = {},
+  teamRuns: Array<Omit<AgentTeamRun, "members"> & { members?: AgentTeamMemberRun[] }> = [],
+  teamMemberRuns: AgentTeamMemberRun[] = [],
 ): TimelineEntry[] {
   const ordered = [...messages].sort((a, b) => (a.seq || 0) - (b.seq || 0));
   const entries: TimelineEntry[] = [];
@@ -101,6 +107,22 @@ export function mapHistoryMessages(
     const thinkingRecords = [...(thinkingByMsgId[msg.id] || [])].map((thinking) => normalizeHistoryThinking(thinking, interrupted)).sort((a, b) => {
       return new Date(a.startedAt || 0).getTime() - new Date(b.startedAt || 0).getTime();
     });
+    const messageTeams = teamRuns.filter((run) => run.assistantMessageId === msg.id);
+    for (const run of messageTeams) {
+      const members = teamMemberRuns
+        .filter((member) => member.teamRunId === run.id)
+        .sort((left, right) => {
+          const leftAt = Date.parse(left.createdAt || left.startedAt || "");
+          const rightAt = Date.parse(right.createdAt || right.startedAt || "");
+          return (Number.isFinite(leftAt) ? leftAt : 0) - (Number.isFinite(rightAt) ? rightAt : 0)
+            || left.id.localeCompare(right.id);
+        });
+      entries.push({
+        kind: "team",
+        content: "",
+        teamRun: { ...run, members: run.members?.length ? run.members : members },
+      });
+    }
 
     if (hasContentMarkers(msg.content)) {
       const toolCallMap = new Map(toolCalls.map(tc => [tc.toolCallId, tc]));

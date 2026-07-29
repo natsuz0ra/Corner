@@ -32,6 +32,8 @@ type sessionServiceStub struct {
 	messages        []domain.Message
 	toolRecords     []domain.ToolCallRecord
 	thinkingRecords []domain.ThinkingRecord
+	teamRuns        []domain.TeamRun
+	teamMembers     []domain.TeamMemberRun
 }
 
 func (s sessionServiceStub) List(ctx context.Context, limit int, offset int, query string) (sessionsvc.ListResult, error) {
@@ -64,6 +66,8 @@ func (s sessionServiceStub) GetMessageHistory(ctx context.Context, sessionID str
 		ToolCallsByAssistantMessageID:   testBuildToolCallHistory(s.toolRecords, messageIDSet, interruptedAssistantIDs),
 		ThinkingByAssistantMessageID:    testBuildThinkingHistory(s.thinkingRecords, messageIDSet, interruptedAssistantIDs),
 		ReplyTimingByAssistantMessageID: testBuildReplyTiming(s.messages),
+		TeamRuns:                        s.teamRuns,
+		TeamMemberRuns:                  s.teamMembers,
 	}, nil
 }
 
@@ -183,6 +187,32 @@ func TestListMessages_ReturnsReplyTimingForAssistantMessages(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(body), []byte(`"assistant-1":{"startedAt":"2026-04-29T01:02:03.000Z","finishedAt":"2026-04-29T01:02:05.500Z","durationMs":2500}`)) {
 		t.Fatalf("unexpected reply timing body: %s", body)
+	}
+}
+
+func TestListMessagesReturnsTeamHistoryCollections(t *testing.T) {
+	controller := NewHTTPController(nil, sessionServiceStub{
+		messages:    []domain.Message{{ID: "assistant-1", SessionID: "session-1", Role: "assistant", Content: "answer"}},
+		teamRuns:    []domain.TeamRun{{ID: "team-1", SessionID: "session-1", RequestID: "request-1", Status: domain.TeamRunStatusSucceeded}},
+		teamMembers: []domain.TeamMemberRun{{ID: "member-1", TeamRunID: "team-1", ToolCallID: "tool-1", Status: domain.TeamMemberRunStatusSucceeded}},
+	}, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	req := httptest.NewRequest(http.MethodGet, "/sessions/session-1/messages", nil)
+	routeCtx := chi.NewRouteContext()
+	routeCtx.URLParams.Add("id", "session-1")
+	req = req.WithContext(contextWithRoute(req.Context(), routeCtx))
+	resp := httptest.NewRecorder()
+
+	controller.ListMessages(NewChiContext(resp, req))
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", resp.Code, resp.Body.String())
+	}
+	body := resp.Body.String()
+	if !bytes.Contains([]byte(body), []byte(`"teamRuns":[{"id":"team-1"`)) {
+		t.Fatalf("missing team runs: %s", body)
+	}
+	if !bytes.Contains([]byte(body), []byte(`"teamMemberRuns":[{"id":"member-1"`)) {
+		t.Fatalf("missing team members: %s", body)
 	}
 }
 

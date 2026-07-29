@@ -14,6 +14,7 @@ import type {
 import { estimateTokens } from "./utils/format.js";
 import { CONTEXT_SIZE_DEFAULT, clampContextSize } from "./utils/contextSize.js";
 import { memoryConsoleActionCount } from "./utils/memoryConsole.js";
+import { upsertAgentTeamMember, upsertAgentTeamRun } from "./utils/agentTeam.js";
 
 function clearTurnStats() {
   return {
@@ -41,6 +42,8 @@ function entryTokenText(entry: TimelineEntry): string {
     entry.subagentThinking?.content,
     entry.toolName,
     entry.command,
+    entry.teamRun?.lastError,
+    ...(entry.teamRun?.members.flatMap((member) => [member.title, member.task, member.answer, member.error]) || []),
     ...(entry.params ? Object.values(entry.params) : []),
   ].filter(Boolean).join("\n");
 }
@@ -402,6 +405,24 @@ export function reducer(state: AppState, action: AppAction): AppState {
         ...state,
         timeline: entries,
         turnTokenEstimate: state.streaming ? estimateTurnTokens(state, entries) : state.turnTokenEstimate,
+      };
+    }
+
+    case "UPSERT_TEAM_RUN": {
+      const timeline = upsertAgentTeamRun(state.timeline, action.run);
+      return {
+        ...state,
+        timeline,
+        turnTokenEstimate: state.streaming ? estimateTurnTokens(state, timeline) : state.turnTokenEstimate,
+      };
+    }
+
+    case "UPSERT_TEAM_MEMBER": {
+      const timeline = upsertAgentTeamMember(state.timeline, action.member);
+      return {
+        ...state,
+        timeline,
+        turnTokenEstimate: state.streaming ? estimateTurnTokens(state, timeline) : state.turnTokenEstimate,
       };
     }
 
