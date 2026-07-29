@@ -729,6 +729,14 @@ export const useChatStore = defineStore('chat', () => {
         mergeAgentTeamRun(state, data)
         batch.teamRuns = state.runs
       },
+      onTeamMemberQueued: (data, sessionId) => {
+        if (!sessionId || sessionId !== currentSessionId.value) return
+        const batch = getCurrentBatch()
+        if (!batch) return
+        const state = createAgentTeamState(batch.teamRuns)
+        mergeAgentTeamMember(state, data)
+        batch.teamRuns = state.runs
+      },
       onTeamDone: (data, sessionId) => {
         if (!sessionId || sessionId !== currentSessionId.value) return
         const batch = getCurrentBatch()

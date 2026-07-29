@@ -646,10 +646,22 @@ export type TimelineDisplayRow = {
   id: string;
   items: LightweightToolDisplay[];
   trailing: boolean;
+} | {
+  kind: "agent_team";
+  team: NonNullable<TimelineEntry["teamRun"]>;
+  memberTools: TimelineEntry[];
 };
 
 export function buildTimelineDisplayRows(entries: TimelineEntry[]): TimelineDisplayRow[] {
   const skip = nestedToolCallIdsToSkip(entries);
+  const teamMemberToolIds = new Set(entries.flatMap((entry) =>
+    entry.kind === "team" && entry.teamRun
+      ? entry.teamRun.members.map((member) => member.toolCallId).filter(Boolean)
+      : [],
+  ));
+  const toolsById = new Map(entries
+    .filter((entry) => entry.kind === "tool" && entry.toolCallId)
+    .map((entry) => [entry.toolCallId!, entry]));
   const childrenByParent = buildChildrenByParent(entries);
   const rows: TimelineDisplayRow[] = [];
   let lightweightItems: LightweightToolDisplay[] = [];
@@ -665,6 +677,20 @@ export function buildTimelineDisplayRows(entries: TimelineEntry[]): TimelineDisp
   };
   for (const e of entries) {
     if (!SHOW_CLI_THINKING && e.kind === "thinking") {
+      continue;
+    }
+    if (e.kind === "team" && e.teamRun) {
+      flushLightweight(false);
+      rows.push({
+        kind: "agent_team",
+        team: e.teamRun,
+        memberTools: e.teamRun.members
+          .map((member) => toolsById.get(member.toolCallId))
+          .filter((entry): entry is TimelineEntry => !!entry),
+      });
+      continue;
+    }
+    if (e.kind === "tool" && e.toolCallId && teamMemberToolIds.has(e.toolCallId)) {
       continue;
     }
     if (e.kind === "tool" && e.toolCallId && skip.has(e.toolCallId)) {

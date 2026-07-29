@@ -1,6 +1,6 @@
 import { getAuthToken } from '../utils/authStorage'
 import type { ToolCallStatus } from '@/types/chat'
-import type { TeamRunItem } from '@/api/chat'
+import type { TeamMemberRunItem, TeamRunItem } from '@/api/chat'
 
 export type ChatSocketHandlers = {
   onSession: (sessionId: string) => void
@@ -15,6 +15,7 @@ export type ChatSocketHandlers = {
   onToolApprovalRequired?: (data: ToolApprovalRequiredData, sessionId?: string) => void
   onToolCallResult?: (data: ToolCallResultData, sessionId?: string) => void
   onTeamStart?: (data: TeamRunItem, sessionId?: string) => void
+  onTeamMemberQueued?: (data: TeamMemberRunItem, sessionId?: string) => void
   onTeamDone?: (data: TeamRunItem, sessionId?: string) => void
   onSubagentStart?: (data: SubagentStartData, sessionId?: string) => void
   onSubagentChunk?: (data: SubagentChunkData, sessionId?: string) => void
@@ -220,6 +221,25 @@ function normalizeTeamRun(data: WSIncoming): TeamRunItem {
   }
 }
 
+function normalizeTeamMember(data: WSIncoming): TeamMemberRunItem {
+  return {
+    id: data.memberRunId || '',
+    teamRunId: data.teamRunId || '',
+    toolCallId: data.toolCallId || '',
+    subagentRunId: data.subagentRunId,
+    title: data.title || '',
+    task: data.task || '',
+    modelConfigId: data.modelConfigId,
+    status: (data.status || 'queued') as TeamMemberRunItem['status'],
+    answer: data.answer,
+    error: data.error,
+    startedAt: data.startedAt,
+    finishedAt: data.finishedAt,
+    createdAt: data.createdAt,
+    updatedAt: data.updatedAt,
+  }
+}
+
 function normalizeContextUsage(data: WSIncoming | ContextUsageData | undefined, fallbackSessionId?: string): ContextUsageData | null {
   if (!data) return null
   const source = 'usage' in data && data.usage ? data.usage : data
@@ -277,6 +297,7 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
   }
   if (data.type === 'error') handlers?.onError(data.error || 'unknown error', data.sessionId)
   if (data.type === 'team_start') handlers?.onTeamStart?.(normalizeTeamRun(data), data.sessionId)
+  if (data.type === 'team_member_queued') handlers?.onTeamMemberQueued?.(normalizeTeamMember(data), data.sessionId)
   if (data.type === 'team_done') handlers?.onTeamDone?.(normalizeTeamRun(data), data.sessionId)
 
   if (data.type === 'tool_call_start') {

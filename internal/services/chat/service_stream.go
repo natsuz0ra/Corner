@@ -539,8 +539,9 @@ func (s *ChatService) executeChatTurn(
 			}
 			return callbacks.OnToolCallResult(result)
 		},
-		OnTeamStart: callbacks.OnTeamStart,
-		OnTeamDone:  callbacks.OnTeamDone,
+		OnTeamStart:        callbacks.OnTeamStart,
+		OnTeamMemberQueued: callbacks.OnTeamMemberQueued,
+		OnTeamDone:         callbacks.OnTeamDone,
 		OnSubagentStart: func(meta AgentEventMeta, title, task string) error {
 			if callbacks.OnSubagentStart != nil {
 				return callbacks.OnSubagentStart(meta, title, task)

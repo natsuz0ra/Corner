@@ -48,6 +48,15 @@ func TestHandleChatStreamPersistsTeamAndPublishesStableIdentity(t *testing.T) {
 				teamRunID = run.ID
 				return nil
 			},
+			OnTeamMemberQueued: func(member domain.TeamMemberRun) error {
+				mu.Lock()
+				defer mu.Unlock()
+				events = append(events, "member_queued")
+				if member.TeamRunID != teamRunID || member.ID == "" || member.ToolCallID == "" || member.Status != domain.TeamMemberRunStatusQueued {
+					return fmt.Errorf("incomplete queued member event: %#v", member)
+				}
+				return nil
+			},
 			OnSubagentStart: func(meta AgentEventMeta, title, task string) error {
 				mu.Lock()
 				defer mu.Unlock()
@@ -96,7 +105,7 @@ func TestHandleChatStreamPersistsTeamAndPublishesStableIdentity(t *testing.T) {
 	}
 
 	mu.Lock()
-	if len(events) != 4 || events[0] != "team_start" || events[len(events)-1] != "team_done" {
+	if len(events) != 6 || events[0] != "team_start" || events[1] != "member_queued" || events[len(events)-1] != "team_done" {
 		t.Fatalf("event order = %v", events)
 	}
 	if len(memberRunIDs) != 2 {

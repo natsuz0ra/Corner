@@ -635,6 +635,22 @@ func buildTeamDonePayload(run domain.TeamRun) map[string]any {
 	return payload
 }
 
+func buildTeamMemberQueuedPayload(sessionID string, member domain.TeamMemberRun) map[string]any {
+	return map[string]any{
+		"type":          "team_member_queued",
+		"sessionId":     sessionID,
+		"teamRunId":     member.TeamRunID,
+		"memberRunId":   member.ID,
+		"toolCallId":    member.ToolCallID,
+		"title":         truncateWSString(member.Title, 80),
+		"task":          truncateWSString(member.Task, 512),
+		"modelConfigId": member.ModelConfigID,
+		"status":        member.Status,
+		"createdAt":     member.CreatedAt.Format(time.RFC3339Nano),
+		"updatedAt":     member.UpdatedAt.Format(time.RFC3339Nano),
+	}
+}
+
 // buildCallbacks builds ChatService callbacks and maps them to WebSocket events.
 func (w *Controller) buildCallbacks(
 	enqueue func(any) bool,
@@ -827,6 +843,12 @@ func (w *Controller) buildCallbacks(
 		},
 		OnTeamStart: func(run domain.TeamRun) error {
 			if !enqueue(buildTeamStartPayload(run)) {
+				return context.Canceled
+			}
+			return nil
+		},
+		OnTeamMemberQueued: func(member domain.TeamMemberRun) error {
+			if !enqueue(buildTeamMemberQueuedPayload(sessionID, member)) {
 				return context.Canceled
 			}
 			return nil

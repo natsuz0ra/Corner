@@ -140,6 +140,7 @@ type AgentCallbacks struct {
 	WaitApproval           func(ctx context.Context, toolCallID string) (*ApprovalResponse, error)
 	OnToolCallResult       func(result ToolCallResult) error
 	OnTeamStart            func(run domain.TeamRun) error
+	OnTeamMemberQueued     func(member domain.TeamMemberRun) error
 	OnTeamDone             func(run domain.TeamRun) error
 	OnSubagentStart        func(meta AgentEventMeta, title, task string) error
 	OnSubagentChunk        func(meta AgentEventMeta, chunk string) error

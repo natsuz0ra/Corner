@@ -99,3 +99,14 @@ test('socket 分派 team_start、team_done 并保留成员标识', () => {
 
   assert.deepEqual(events, ['start:team-1:running', 'member:team-1:member-1', 'done:team-1:succeeded'])
 })
+
+test('socket 分派 queued Team 成员事件', () => {
+  const events: string[] = []
+  dispatchChatSocketMessage(JSON.stringify({
+    type: 'team_member_queued', sessionId: 'session-1', teamRunId: 'team-1', memberRunId: 'member-1',
+    toolCallId: 'tool-1', title: '研究', task: '检查后端', status: 'queued', createdAt: '2026-07-29T00:00:01Z',
+  }), {
+    onTeamMemberQueued(data) { events.push(`${data.id}:${data.teamRunId}:${data.status}`) },
+  })
+  assert.deepEqual(events, ['member-1:team-1:queued'])
+})

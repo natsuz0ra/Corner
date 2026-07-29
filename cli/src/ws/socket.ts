@@ -4,12 +4,14 @@
  */
 
 import WebSocket from "ws";
-import type { ContextUsage, SubagentChunkData, SubagentDoneData, SubagentStartData, TodoUpdateData, ToolApprovalRequiredData, ToolCallReviewData, ToolCallStartData, ToolCallResultData } from "../types.js";
+import type { AgentTeamMemberRun, AgentTeamRun, ContextUsage, SubagentChunkData, SubagentDoneData, SubagentStartData, TodoUpdateData, ToolApprovalRequiredData, ToolCallReviewData, ToolCallStartData, ToolCallResultData } from "../types.js";
 
 export interface ThinkingEventData {
   content?: string;
   parentToolCallId?: string;
   subagentRunId?: string;
+  teamRunId?: string;
+  memberRunId?: string;
 }
 
 export interface WSHandlers {
@@ -26,6 +28,9 @@ export interface WSHandlers {
   onToolCallReview?: (data: ToolCallReviewData, sessionId?: string) => void;
   onToolApprovalRequired?: (data: ToolApprovalRequiredData, sessionId?: string) => void;
   onToolCallResult?: (data: ToolCallResultData, sessionId?: string) => void;
+  onTeamStart?: (data: Omit<AgentTeamRun, "members">, sessionId?: string) => void;
+  onTeamMemberQueued?: (data: AgentTeamMemberRun, sessionId?: string) => void;
+  onTeamDone?: (data: Omit<AgentTeamRun, "members">, sessionId?: string) => void;
   onSubagentStart?: (data: SubagentStartData, sessionId?: string) => void;
   onSubagentChunk?: (data: SubagentChunkData, sessionId?: string) => void;
   onSubagentDone?: (data: SubagentDoneData, sessionId?: string) => void;
@@ -63,6 +68,15 @@ interface WSIncoming {
   isStopPlaceholder?: boolean;
   parentToolCallId?: string;
   subagentRunId?: string;
+  teamRunId?: string;
+  memberRunId?: string;
+  requestId?: string;
+  maxMembers?: number;
+  maxParallel?: number;
+  lastError?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  createdAt?: string;
   task?: string;
   planId?: string;
   planBody?: string;
@@ -78,6 +92,48 @@ interface WSIncoming {
   availablePercent?: number;
   isCompacted?: boolean;
   compactedAt?: string;
+}
+
+function teamIdentity(msg: WSIncoming): { teamRunId?: string; memberRunId?: string } {
+  return {
+    ...(msg.teamRunId ? { teamRunId: msg.teamRunId } : {}),
+    ...(msg.memberRunId ? { memberRunId: msg.memberRunId } : {}),
+  };
+}
+
+function normalizeTeamRun(msg: WSIncoming): Omit<AgentTeamRun, "members"> {
+  return {
+    id: msg.teamRunId || "",
+    sessionId: msg.sessionId || "",
+    requestId: msg.requestId || "",
+    status: (msg.status || "running") as AgentTeamRun["status"],
+    maxMembers: Number(msg.maxMembers) || 8,
+    maxParallel: Number(msg.maxParallel) || 4,
+    lastError: msg.lastError,
+    startedAt: msg.startedAt || msg.createdAt || "",
+    finishedAt: msg.finishedAt,
+    createdAt: msg.createdAt || msg.startedAt,
+    updatedAt: msg.updatedAt || msg.finishedAt,
+  };
+}
+
+function normalizeTeamMember(msg: WSIncoming): AgentTeamMemberRun {
+  return {
+    id: msg.memberRunId || "",
+    teamRunId: msg.teamRunId || "",
+    toolCallId: msg.toolCallId || "",
+    subagentRunId: msg.subagentRunId,
+    title: msg.title || "",
+    task: msg.task || "",
+    modelConfigId: msg.modelConfigId,
+    status: (msg.status || "queued") as AgentTeamMemberRun["status"],
+    answer: msg.answer,
+    error: msg.error,
+    startedAt: msg.startedAt,
+    finishedAt: msg.finishedAt,
+    createdAt: msg.createdAt,
+    updatedAt: msg.updatedAt,
+  };
 }
 
 function normalizeContextUsage(msg: WSIncoming | ContextUsage | undefined, fallbackSessionId?: string): ContextUsage | null {
@@ -249,6 +305,9 @@ export function dispatchWSMessage(raw: string, handlers: WSHandlers | null): voi
   }
   if (msg.type === "error")
     handlers?.onError(msg.error || "unknown error", msg.sessionId);
+  if (msg.type === "team_start") handlers?.onTeamStart?.(normalizeTeamRun(msg), msg.sessionId);
+  if (msg.type === "team_member_queued") handlers?.onTeamMemberQueued?.(normalizeTeamMember(msg), msg.sessionId);
+  if (msg.type === "team_done") handlers?.onTeamDone?.(normalizeTeamRun(msg), msg.sessionId);
 
   if (msg.type === "tool_call_start") {
     handlers?.onToolCallStart?.(
@@ -264,6 +323,7 @@ export function dispatchWSMessage(raw: string, handlers: WSHandlers | null): voi
         preamble: msg.preamble || "",
         parentToolCallId: msg.parentToolCallId,
         subagentRunId: msg.subagentRunId,
+        ...teamIdentity(msg),
       },
       msg.sessionId,
     );
@@ -280,6 +340,7 @@ export function dispatchWSMessage(raw: string, handlers: WSHandlers | null): voi
         reviewReason: msg.reviewReason || "",
         parentToolCallId: msg.parentToolCallId,
         subagentRunId: msg.subagentRunId,
+        ...teamIdentity(msg),
       },
       msg.sessionId,
     );
@@ -298,6 +359,7 @@ export function dispatchWSMessage(raw: string, handlers: WSHandlers | null): voi
         reviewReason: msg.reviewReason || "",
         parentToolCallId: msg.parentToolCallId,
         subagentRunId: msg.subagentRunId,
+        ...teamIdentity(msg),
       },
       msg.sessionId,
     );
@@ -316,6 +378,7 @@ export function dispatchWSMessage(raw: string, handlers: WSHandlers | null): voi
         metadata: msg.metadata,
         parentToolCallId: msg.parentToolCallId,
         subagentRunId: msg.subagentRunId,
+        ...teamIdentity(msg),
       },
       msg.sessionId,
     );
@@ -327,6 +390,7 @@ export function dispatchWSMessage(raw: string, handlers: WSHandlers | null): voi
         parentToolCallId: msg.parentToolCallId || "",
         subagentRunId: msg.subagentRunId || "",
         content: msg.content || "",
+        ...teamIdentity(msg),
       },
       msg.sessionId,
     );
@@ -338,6 +402,7 @@ export function dispatchWSMessage(raw: string, handlers: WSHandlers | null): voi
         parentToolCallId: msg.parentToolCallId || "",
         subagentRunId: msg.subagentRunId || "",
         error: msg.error,
+        ...teamIdentity(msg),
       },
       msg.sessionId,
     );
@@ -347,6 +412,7 @@ export function dispatchWSMessage(raw: string, handlers: WSHandlers | null): voi
     handlers?.onThinkingStart?.({
       parentToolCallId: msg.parentToolCallId,
       subagentRunId: msg.subagentRunId,
+      ...teamIdentity(msg),
     });
   }
   if (msg.type === "thinking_chunk") {
@@ -354,12 +420,14 @@ export function dispatchWSMessage(raw: string, handlers: WSHandlers | null): voi
       content: msg.content || "",
       parentToolCallId: msg.parentToolCallId,
       subagentRunId: msg.subagentRunId,
+      ...teamIdentity(msg),
     });
   }
   if (msg.type === "thinking_done") {
     handlers?.onThinkingDone?.({
       parentToolCallId: msg.parentToolCallId,
       subagentRunId: msg.subagentRunId,
+      ...teamIdentity(msg),
     });
   }
 
@@ -370,6 +438,7 @@ export function dispatchWSMessage(raw: string, handlers: WSHandlers | null): voi
         subagentRunId: msg.subagentRunId || "",
         title: msg.title || "",
         task: msg.task || "",
+        ...teamIdentity(msg),
       },
       msg.sessionId,
     );

@@ -517,6 +517,23 @@ test("buildTimelineDisplayRows hides top-level thinking entries by default", () 
   assert.ok(entryRows.every((row) => !row.entry.content.includes("private reasoning")));
 });
 
+test("buildTimelineDisplayRows groups member tools under an explicit Agent Team row", () => {
+  const rows = buildTimelineDisplayRows([
+    {
+      kind: "team", content: "", teamRun: {
+        id: "team-1", sessionId: "session-1", requestId: "request-1", status: "running",
+        maxMembers: 8, maxParallel: 4, startedAt: "2026-07-29T00:00:00Z",
+        members: [{ id: "member-1", teamRunId: "team-1", toolCallId: "tool-1", title: "Research", task: "Inspect", status: "running" }],
+      },
+    },
+    { kind: "tool", content: "", toolCallId: "tool-1", toolName: "run_subagent", command: "delegate", status: "executing" },
+    { kind: "assistant", content: "done" },
+  ]);
+
+  assert.deepEqual(rows.map((row) => row.kind), ["agent_team", "entry"]);
+  assert.equal(rows[0]?.kind === "agent_team" ? rows[0].memberTools.length : 0, 1);
+});
+
 test("buildTimelineDisplayRows groups consecutive lightweight tools and keeps file edits separate", () => {
   const rows = buildTimelineDisplayRows([
     {

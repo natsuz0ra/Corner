@@ -38,7 +38,16 @@ func (r *teamRuntime) reserveMember(ctx context.Context, toolCallID, title, task
 			}
 		}
 	}
-	return r.service.EnsureMember(ctx, r.run.ID, toolCallID, title, task, modelConfigID)
+	member, err := r.service.EnsureMember(ctx, r.run.ID, toolCallID, title, task, modelConfigID)
+	if err != nil {
+		return nil, err
+	}
+	if callbacks.OnTeamMemberQueued != nil && member.Status == domain.TeamMemberRunStatusQueued {
+		if err := callbacks.OnTeamMemberQueued(*member); err != nil {
+			return nil, err
+		}
+	}
+	return member, nil
 }
 
 func (r *teamRuntime) startMember(ctx context.Context, memberRunID, subagentRunID, modelConfigID string) (*domain.TeamMemberRun, error) {

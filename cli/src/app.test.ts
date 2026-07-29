@@ -71,6 +71,23 @@ test("mapHistoryMessages inserts tool calls after assistant messages in timeline
   ]);
 });
 
+test("mapHistoryMessages restores only explicit Agent Team history", () => {
+  const messages: Message[] = [{
+    id: "a1", sessionId: "s1", role: "assistant", content: "done", seq: 1, createdAt: "2026-07-29T00:00:05Z",
+  }];
+  const entries = mapHistoryMessages(messages, {}, {}, [{
+    id: "team-1", sessionId: "s1", requestId: "request-1", assistantMessageId: "a1", status: "succeeded",
+    maxMembers: 8, maxParallel: 4, startedAt: "2026-07-29T00:00:00Z", finishedAt: "2026-07-29T00:00:04Z",
+  }], [{
+    id: "member-1", teamRunId: "team-1", toolCallId: "tool-1", title: "Research", task: "Inspect", status: "succeeded",
+    createdAt: "2026-07-29T00:00:01Z", finishedAt: "2026-07-29T00:00:03Z",
+  }]);
+
+  assert.equal(entries.filter((entry) => entry.kind === "team").length, 1);
+  assert.equal(entries.find((entry) => entry.kind === "team")?.teamRun?.members[0]?.id, "member-1");
+  assert.equal(mapHistoryMessages(messages, {}, {}).some((entry) => entry.kind === "team"), false);
+});
+
 test("getChatFooterHint returns toggle hint in plan mode", () => {
   assert.equal(
     getChatFooterHint(true, "standard"),

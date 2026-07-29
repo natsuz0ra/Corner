@@ -139,6 +139,24 @@ func TestBuildTeamPayloadsIncludeLifecycleFields(t *testing.T) {
 	}
 }
 
+func TestBuildTeamMemberQueuedPayloadIncludesMemberFields(t *testing.T) {
+	createdAt := time.Now()
+	member := domain.TeamMemberRun{
+		ID: "member-1", TeamRunID: "team-1", ToolCallID: "tool-1", Title: "Research",
+		Task: "Inspect runtime", ModelConfigID: "model-1", Status: domain.TeamMemberRunStatusQueued, CreatedAt: createdAt,
+	}
+	payload := buildTeamMemberQueuedPayload("session-1", member)
+	if payload["type"] != "team_member_queued" || payload["sessionId"] != "session-1" {
+		t.Fatalf("queued member payload = %+v", payload)
+	}
+	if payload["teamRunId"] != "team-1" || payload["memberRunId"] != "member-1" || payload["toolCallId"] != "tool-1" {
+		t.Fatalf("queued member identity = %+v", payload)
+	}
+	if payload["status"] != domain.TeamMemberRunStatusQueued || payload["createdAt"] == nil {
+		t.Fatalf("queued member lifecycle = %+v", payload)
+	}
+}
+
 func TestBuildContextUsagePayloadIncludesPercentages(t *testing.T) {
 	payload := buildContextUsagePayload("session-1", chatsvc.ContextUsage{
 		SessionID:        "session-1",
