@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { mdiClose } from '@mdi/js'
 import MdiIcon from '@/components/ui/MdiIcon.vue'
@@ -52,6 +52,25 @@ const emit = defineEmits<{
 
 const titleId = `dialog-title-${Math.random().toString(36).slice(2, 10)}`
 const pointerDownStartedOnMask = ref(false)
+const panelRef = ref<HTMLElement | null>(null)
+let previouslyFocused: HTMLElement | null = null
+
+function focusableElements() {
+  if (!panelRef.value) return []
+  return Array.from(panelRef.value.querySelectorAll<HTMLElement>([
+    'button:not([disabled])',
+    'a[href]',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])',
+  ].join(','))).filter((element) => !element.hasAttribute('hidden'))
+}
+
+function restoreFocus() {
+  if (previouslyFocused?.isConnected) previouslyFocused.focus()
+  previouslyFocused = null
+}
 
 function close() {
   emit('update:visible', false)
@@ -64,6 +83,26 @@ function onConfirm() {
 
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && props.visible && props.closeOnEsc) close()
+  const isTab = e.key === 'Tab'
+  if (!isTab || !props.visible || !panelRef.value) return
+
+  const elements = focusableElements()
+  if (elements.length === 0) {
+    e.preventDefault()
+    panelRef.value.focus()
+    return
+  }
+
+  const first = elements[0]!
+  const last = elements[elements.length - 1]!
+  const activeElement = document.activeElement
+  if (e.shiftKey && (activeElement === first || !panelRef.value.contains(activeElement))) {
+    e.preventDefault()
+    last.focus()
+  } else if (!e.shiftKey && (activeElement === last || !panelRef.value.contains(activeElement))) {
+    e.preventDefault()
+    first.focus()
+  }
 }
 
 function onMaskPointerDown(e: PointerEvent) {
@@ -82,8 +121,27 @@ function onMaskClick(e: MouseEvent) {
   pointerDownStartedOnMask.value = false
 }
 
+watch(
+  () => props.visible,
+  async (visible) => {
+    if (visible) {
+      previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      await nextTick()
+      const firstFocusable = focusableElements()[0]
+      if (firstFocusable) firstFocusable.focus()
+      else panelRef.value?.focus()
+      return
+    }
+    restoreFocus()
+  },
+  { immediate: true, flush: 'post' },
+)
+
 onMounted(() => document.addEventListener('keydown', onKeydown))
-onUnmounted(() => document.removeEventListener('keydown', onKeydown))
+onUnmounted(() => {
+  document.removeEventListener('keydown', onKeydown)
+  restoreFocus()
+})
 </script>
 
 <template>
@@ -97,10 +155,12 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
         @click="onMaskClick"
       >
         <div
+          ref="panelRef"
           class="dialog-panel relative flex flex-col overflow-hidden rounded-2xl"
           :style="{ width: '100%', maxWidth: width, maxHeight: '90vh' }"
           role="dialog"
           aria-modal="true"
+          tabindex="-1"
           :aria-labelledby="title ? titleId : undefined"
           @click.stop
         >

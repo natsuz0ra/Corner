@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -72,9 +72,21 @@ test('Agent Team block is semantic, responsive, and disables active motion when 
   const source = readFileSync(resolve(projectRoot, 'src/components/chat/AgentTeamBlock.vue'), 'utf8')
 
   assert.match(source, /<section[^>]*class="agent-team"/)
-  assert.match(source, /<button[\s\S]*:aria-expanded=/)
+  assert.match(source, /<button[\s\S]*aria-haspopup="dialog"/)
   assert.match(source, /overflow-wrap:\s*anywhere;/)
   assert.match(source, /@media\s*\(max-width:\s*480px\)/)
   assert.match(source, /@media\s*\(prefers-reduced-motion:\s*reduce\)/)
+  assert.doesNotMatch(source, /overflow-x:\s*(auto|scroll)/)
+})
+
+test('Agent Team detail dialog is height constrained and becomes a single column on mobile', () => {
+  const path = resolve(projectRoot, 'src/components/chat/AgentTeamDetailDialog.vue')
+  assert.ok(existsSync(path), 'AgentTeamDetailDialog.vue should exist')
+  const source = readFileSync(path, 'utf8')
+
+  assert.match(source, /max-height:\s*80vh;/)
+  assert.match(source, /grid-template-columns:\s*minmax\(0,\s*220px\)\s+minmax\(0,\s*1fr\);/)
+  assert.match(source, /@media\s*\(max-width:\s*640px\)[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/)
+  assert.match(source, /overflow-wrap:\s*anywhere;/)
   assert.doesNotMatch(source, /overflow-x:\s*(auto|scroll)/)
 })

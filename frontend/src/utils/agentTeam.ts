@@ -117,7 +117,9 @@ export function selectAgentTeamMembers(state: AgentTeamState, teamRunId: string)
 }
 
 export function findAgentTeamPendingTool(member: TeamMemberRunItem, tools: ToolCallItem[]) {
-  return tools.find((tool) => tool.parentToolCallId === member.toolCallId && tool.status === 'pending')
+  return tools.find((tool) => tool.status === 'pending' && (
+    tool.toolCallId === member.toolCallId || tool.parentToolCallId === member.toolCallId
+  ))
 }
 
 export function selectVisibleAgentTeamMembers(

@@ -6,6 +6,7 @@ import {
   buildAgentTeamResultPreview,
   countAgentTeamMemberTools,
   createAgentTeamState,
+  findAgentTeamPendingTool,
   formatAgentTeamDuration,
   getAgentTeamStatusLabel,
   mergeAgentTeamMember,
@@ -92,6 +93,17 @@ test('Team 摘要优先显示待审批、失败和运行中的成员', () => {
     selectVisibleAgentTeamMembers(members, tools, 2).map((item) => item.id),
     ['done', 'failed'],
   )
+})
+
+test('Team 待审批工具可以是成员工具本身', () => {
+  const target = member('approval', '2026-07-29T00:00:01Z')
+  const tools = [{
+    toolCallId: target.toolCallId,
+    status: 'pending',
+  } as ToolCallItem]
+
+  assert.equal(selectVisibleAgentTeamMembers([target], tools, 1)[0]?.id, 'approval')
+  assert.equal(findAgentTeamPendingTool(target, tools)?.toolCallId, target.toolCallId)
 })
 
 test('Team 结果摘要规范化空白并限制长度', () => {
