@@ -1,5 +1,6 @@
 import type { AgentTeamMemberRun, AgentTeamRun, TimelineEntry } from "../types.js";
 import { wrapText } from "./format.js";
+import { stringWidth } from "./stringWidth.js";
 
 export type AgentTeamDisplayLine = {
   text: string;
@@ -131,6 +132,10 @@ function statusColor(status: string): AgentTeamDisplayLine["color"] {
   return "gray";
 }
 
+function memberPriority(status: string): number {
+  return ({ failed: 0, running: 1, queued: 2, interrupted: 3, canceled: 3, succeeded: 4 } as Record<string, number>)[status] ?? 5;
+}
+
 function durationMs(startedAt: string | undefined, finishedAt: string | undefined, now: number): number {
   const start = Date.parse(startedAt || "");
   if (!Number.isFinite(start)) return 0;
@@ -146,40 +151,116 @@ function formatDuration(ms: number): string {
   return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
-function wrapTreeLine(prefix: string, body: string, continuation: string, maxWidth: number): string[] {
-  const available = Math.max(1, maxWidth - prefix.length);
-  const wrapped = wrapText(body, available).split("\n");
-  return wrapped.map((line, index) => `${index === 0 ? prefix : continuation}${line}`);
+function truncateToWidth(value: string, maxWidth: number): string {
+  const width = Math.max(1, Math.floor(maxWidth));
+  if (stringWidth(value) <= width) return value;
+  const suffix = width > 1 ? "…" : "";
+  const target = width - stringWidth(suffix);
+  let result = "";
+  for (const character of Array.from(value)) {
+    if (stringWidth(result + character) > target) break;
+    result += character;
+  }
+  return result + suffix;
 }
 
-export function formatAgentTeamRows(run: AgentTeamRun, maxWidth: number, expanded = false, now = Date.now()): AgentTeamDisplayLine[] {
+export function getAgentTeamRuns(entries: TimelineEntry[]): AgentTeamRun[] {
+  return entries
+    .filter((entry) => entry.kind === "team" && entry.teamRun)
+    .map((entry) => entry.teamRun!);
+}
+
+export function clampAgentTeamCursor(cursor: number, length: number): number {
+  if (length <= 0) return 0;
+  return Math.min(length - 1, Math.max(0, Math.trunc(cursor)));
+}
+
+export function buildAgentTeamResultPreview(value = "", maxLength = 320): string {
+  const paragraph = value.trim().split(/\n\s*\n/).find((item) => item.trim())?.replace(/\s+/g, " ").trim() || "";
+  if (paragraph.length <= maxLength) return paragraph;
+  if (maxLength <= 0) return "";
+  return `${paragraph.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+export function formatAgentTeamRows(run: AgentTeamRun, maxWidth: number, now = Date.now()): AgentTeamDisplayLine[] {
   const width = Math.max(10, maxWidth);
   const completed = run.members.filter((member) => member.status !== "queued" && member.status !== "running").length;
   const status = getAgentTeamStatusLabel(run.status);
   const duration = formatDuration(durationMs(run.startedAt, run.finishedAt, now));
-  const summary = width < 36
-    ? `${statusSymbol(run.status)} ${status} · ${completed}/${run.members.length}`
-    : `${statusSymbol(run.status)} Agent Team · ${status} · ${completed}/${run.members.length} · ${duration}`;
-  const lines: AgentTeamDisplayLine[] = wrapText(summary, width).split("\n").map((text) => ({
-    text,
+  const compactSummary = `${statusSymbol(run.status)} ${status} · ${completed}/${run.members.length}`;
+  const fullSummary = `${statusSymbol(run.status)} Agent Team · ${status} · ${completed}/${run.members.length} · ${duration}`;
+  const summary = stringWidth(fullSummary) <= width ? fullSummary : compactSummary;
+  const orderedMembers = run.members
+    .map((member, index) => ({ member, index }))
+    .sort((left, right) => memberPriority(left.member.status) - memberPriority(right.member.status) || left.index - right.index)
+    .map(({ member }) => member);
+  const prefix = "  ";
+  const shown: string[] = [];
+
+  for (const member of orderedMembers) {
+    const candidate = `${statusSymbol(member.status)} ${member.title || "Team member"}`;
+    const next = [...shown, candidate];
+    const remaining = orderedMembers.length - next.length;
+    const preview = `${prefix}${next.join(" · ")}${remaining > 0 ? ` · +${remaining}` : ""}`;
+    if (stringWidth(preview) > width) break;
+    shown.push(candidate);
+  }
+
+  let memberSummary: string;
+  if (orderedMembers.length === 0) {
+    memberSummary = `${prefix}No members yet`;
+  } else if (shown.length === 0) {
+    const remaining = orderedMembers.length - 1;
+    const suffix = remaining > 0 ? ` · +${remaining}` : "";
+    const available = Math.max(1, width - stringWidth(prefix + suffix));
+    const first = `${statusSymbol(orderedMembers[0]!.status)} ${orderedMembers[0]!.title || "Team member"}`;
+    memberSummary = `${prefix}${truncateToWidth(first, available)}${suffix}`;
+  } else {
+    const remaining = orderedMembers.length - shown.length;
+    memberSummary = `${prefix}${shown.join(" · ")}${remaining > 0 ? ` · +${remaining}` : ""}`;
+  }
+
+  return [{
+    text: truncateToWidth(summary, width),
     color: statusColor(run.status),
     active: run.status === "running",
-  }));
+  }, {
+    text: truncateToWidth(memberSummary, width),
+    color: orderedMembers[0] ? statusColor(orderedMembers[0].status) : "gray",
+    active: orderedMembers.some((member) => member.status === "running"),
+  }];
+}
 
-  run.members.forEach((member, index) => {
-    const last = index === run.members.length - 1;
-    const branch = last ? "└─ " : "├─ ";
-    const continuation = last ? "   " : "│  ";
-    const body = `${statusSymbol(member.status)} ${member.title || "Team member"} · ${memberStatusLabel(member.status)} · ${formatDuration(durationMs(member.startedAt || member.createdAt, member.finishedAt, now))}${member.task ? ` · ${member.task}` : ""}`;
-    for (const text of wrapTreeLine(branch, body, continuation, width)) {
-      lines.push({ text, color: statusColor(member.status), active: member.status === "running" });
-    }
-    if (expanded && (member.error || member.answer)) {
-      const detailPrefix = last ? "   " : "│  ";
-      for (const text of wrapTreeLine(`${detailPrefix}  `, member.error || member.answer || "", `${detailPrefix}  `, width)) {
-        lines.push({ text, color: member.error ? "red" : "gray" });
-      }
-    }
-  });
-  return lines;
+function formatDetailField(
+  label: string,
+  value: string,
+  maxWidth: number,
+  color: AgentTeamDisplayLine["color"],
+): AgentTeamDisplayLine[] {
+  const prefix = `${label}: `;
+  const continuation = " ".repeat(prefix.length);
+  const available = Math.max(1, maxWidth - stringWidth(prefix));
+  return wrapText(value, available).split("\n").map((line, index) => ({
+    text: truncateToWidth(`${index === 0 ? prefix : continuation}${line}`, maxWidth),
+    color,
+  }));
+}
+
+export function formatAgentTeamMemberDetail(
+  member: AgentTeamMemberRun,
+  childTools: TimelineEntry[],
+  maxWidth: number,
+  now = Date.now(),
+): AgentTeamDisplayLine[] {
+  const width = Math.max(10, maxWidth);
+  const duration = formatDuration(durationMs(member.startedAt || member.createdAt, member.finishedAt, now));
+  const result = buildAgentTeamResultPreview(member.error || member.answer || "") || "No result yet";
+  const toolCount = childTools.filter((entry) => entry.kind === "tool").length;
+
+  return [
+    ...formatDetailField("Status", `${memberStatusLabel(member.status)} · ${duration}`, width, statusColor(member.status)),
+    ...formatDetailField("Task", member.task || "No task description", width, "gray"),
+    ...formatDetailField(member.error ? "Error" : "Result", result, width, member.error ? "red" : "gray"),
+    ...formatDetailField("Tools", `${toolCount} ${toolCount === 1 ? "tool" : "tools"}`, width, "cyan"),
+  ];
 }

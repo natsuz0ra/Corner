@@ -372,7 +372,7 @@ export function Timeline({
           {index > 0 && <Text> </Text>}
           {row.kind === "agent_team" ? (
             <Box flexDirection="column">
-              {formatAgentTeamRows(row.team, maxWidth, toolOutputExpanded).map((line, lineIndex) => (
+              {formatAgentTeamRows(row.team, maxWidth).map((line, lineIndex) => (
                 <Text key={`${row.team.id}-line-${lineIndex}`} color={line.color}>
                   {line.active && !blinkOn ? line.text.replace(/^./u, " ") : line.text}
                 </Text>
