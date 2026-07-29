@@ -230,6 +230,21 @@ func (r *Repository) UpdateUserMessageAndPruneAfter(ctx context.Context, session
 			return err
 		}
 		if len(prunedAssistantIDs) > 0 {
+			var teamRunIDs []string
+			if err := tx.Model(&domain.TeamRun{}).
+				Where("session_id = ? AND assistant_message_id IN ?", trimmedSessionID, prunedAssistantIDs).
+				Pluck("id", &teamRunIDs).Error; err != nil {
+				return err
+			}
+			if len(teamRunIDs) > 0 {
+				if err := tx.Where("team_run_id IN ?", teamRunIDs).Delete(&domain.TeamMemberRun{}).Error; err != nil {
+					return err
+				}
+			}
+			if err := tx.Where("session_id = ? AND assistant_message_id IN ?", trimmedSessionID, prunedAssistantIDs).
+				Delete(&domain.TeamRun{}).Error; err != nil {
+				return err
+			}
 			if err := tx.Where("session_id = ? AND assistant_message_id IN ?", trimmedSessionID, prunedAssistantIDs).
 				Delete(&domain.ToolCallRecord{}).Error; err != nil {
 				return err
