@@ -432,3 +432,42 @@ test('buildReplyBatchesFromHistory prefers backend reply timing over derived too
   assert.equal(batches[0]!.finishedAt, Date.parse('2026-04-28T00:00:03.500Z'))
   assert.equal(batches[0]!.durationMs, 2500)
 })
+
+test('history builder groups explicit Team metadata by assistant message and preserves member order', async () => {
+  const { buildReplyBatchesFromHistory } = await import('../src/utils/replyBatchBuilder')
+  const batches = buildReplyBatchesFromHistory('session-1', {
+    messages: [{ id: 'assistant-1', sessionId: 'session-1', role: 'assistant', content: 'done', createdAt: '2026-07-29T00:00:10Z' }],
+    toolCallsByAssistantMessageId: { 'assistant-1': [] },
+    thinkingByAssistantMessageId: { 'assistant-1': [] },
+    teamRuns: [{
+      id: 'team-1', sessionId: 'session-1', requestId: 'request-1', assistantMessageId: 'assistant-1',
+      status: 'succeeded', maxMembers: 8, maxParallel: 4, startedAt: '2026-07-29T00:00:00Z',
+      finishedAt: '2026-07-29T00:00:05Z', createdAt: '2026-07-29T00:00:00Z', updatedAt: '2026-07-29T00:00:05Z',
+    }],
+    teamMemberRuns: [
+      { id: 'member-b', teamRunId: 'team-1', toolCallId: 'tool-b', title: 'B', task: 'B', status: 'succeeded', createdAt: '2026-07-29T00:00:02Z', updatedAt: '2026-07-29T00:00:03Z' },
+      { id: 'member-a', teamRunId: 'team-1', toolCallId: 'tool-a', title: 'A', task: 'A', status: 'succeeded', createdAt: '2026-07-29T00:00:01Z', updatedAt: '2026-07-29T00:00:03Z' },
+    ],
+    hasMore: false,
+  })
+
+  assert.equal(batches[0]?.teamRuns.length, 1)
+  assert.deepEqual(batches[0]?.teamRuns[0]?.members.map((item) => item.id), ['member-a', 'member-b'])
+})
+
+test('legacy subagent history without Team metadata does not synthesize a Team', async () => {
+  const { buildReplyBatchesFromHistory } = await import('../src/utils/replyBatchBuilder')
+  const batches = buildReplyBatchesFromHistory('session-1', {
+    messages: [{ id: 'assistant-1', sessionId: 'session-1', role: 'assistant', content: 'done', createdAt: '2026-07-29T00:00:10Z' }],
+    toolCallsByAssistantMessageId: {
+      'assistant-1': [{
+        toolCallId: 'tool-a', toolName: 'run_subagent', command: 'delegate', params: { title: 'legacy', task: 'legacy task' },
+        status: 'completed', requiresApproval: false,
+      }],
+    },
+    thinkingByAssistantMessageId: { 'assistant-1': [] },
+    teamRuns: [], teamMemberRuns: [], hasMore: false,
+  })
+
+  assert.deepEqual(batches[0]?.teamRuns, [])
+})

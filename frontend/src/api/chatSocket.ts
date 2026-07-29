@@ -1,5 +1,6 @@
 import { getAuthToken } from '../utils/authStorage'
 import type { ToolCallStatus } from '@/types/chat'
+import type { TeamRunItem } from '@/api/chat'
 
 export type ChatSocketHandlers = {
   onSession: (sessionId: string) => void
@@ -13,6 +14,8 @@ export type ChatSocketHandlers = {
   onToolCallReview?: (data: ToolCallReviewData, sessionId?: string) => void
   onToolApprovalRequired?: (data: ToolApprovalRequiredData, sessionId?: string) => void
   onToolCallResult?: (data: ToolCallResultData, sessionId?: string) => void
+  onTeamStart?: (data: TeamRunItem, sessionId?: string) => void
+  onTeamDone?: (data: TeamRunItem, sessionId?: string) => void
   onSubagentStart?: (data: SubagentStartData, sessionId?: string) => void
   onSubagentChunk?: (data: SubagentChunkData, sessionId?: string) => void
   onSubagentDone?: (data: SubagentDoneData, sessionId?: string) => void
@@ -52,6 +55,8 @@ export interface ToolCallStartData {
   startedAt?: string
   parentToolCallId?: string
   subagentRunId?: string
+  teamRunId?: string
+  memberRunId?: string
 }
 
 export interface ToolCallReviewData {
@@ -63,6 +68,8 @@ export interface ToolCallReviewData {
   reviewReason?: string
   parentToolCallId?: string
   subagentRunId?: string
+  teamRunId?: string
+  memberRunId?: string
 }
 
 export interface ToolApprovalRequiredData extends ToolCallReviewData {
@@ -82,6 +89,8 @@ export interface ToolCallResultData {
   finishedAt?: string
   parentToolCallId?: string
   subagentRunId?: string
+  teamRunId?: string
+  memberRunId?: string
 }
 
 export interface SubagentStartData {
@@ -89,18 +98,24 @@ export interface SubagentStartData {
   subagentRunId: string
   title: string
   task: string
+  teamRunId?: string
+  memberRunId?: string
 }
 
 export interface SubagentChunkData {
   parentToolCallId: string
   subagentRunId: string
   content: string
+  teamRunId?: string
+  memberRunId?: string
 }
 
 export interface SubagentDoneData {
   parentToolCallId: string
   subagentRunId: string
   error?: string
+  teamRunId?: string
+  memberRunId?: string
 }
 
 export interface ThinkingEventData {
@@ -109,6 +124,8 @@ export interface ThinkingEventData {
   finishedAt?: string
   parentToolCallId?: string
   subagentRunId?: string
+  teamRunId?: string
+  memberRunId?: string
 }
 
 export type RuntimeTodoStatus = 'pending' | 'in_progress' | 'completed'
@@ -138,6 +155,7 @@ export interface ContextUsageData {
 
 type WSIncoming = {
   type: string
+  id?: string
   sessionId?: string
   messageId?: string
   content?: string
@@ -165,6 +183,12 @@ type WSIncoming = {
   isStopPlaceholder?: boolean
   parentToolCallId?: string
   subagentRunId?: string
+  teamRunId?: string
+  memberRunId?: string
+  requestId?: string
+  maxMembers?: number
+  maxParallel?: number
+  lastError?: string
   task?: string
   planId?: string
   planBody?: string
@@ -178,6 +202,22 @@ type WSIncoming = {
   availablePercent?: number
   isCompacted?: boolean
   compactedAt?: string
+}
+
+function normalizeTeamRun(data: WSIncoming): TeamRunItem {
+  return {
+    id: data.teamRunId || data.id || '',
+    sessionId: data.sessionId || '',
+    requestId: data.requestId || '',
+    status: data.status === 'completed' ? 'succeeded' : (data.status || 'running') as TeamRunItem['status'],
+    maxMembers: Number(data.maxMembers) || 8,
+    maxParallel: Number(data.maxParallel) || 4,
+    lastError: data.lastError,
+    startedAt: data.startedAt || data.createdAt || '',
+    finishedAt: data.finishedAt,
+    createdAt: data.createdAt || data.startedAt,
+    updatedAt: data.updatedAt || data.finishedAt,
+  }
 }
 
 function normalizeContextUsage(data: WSIncoming | ContextUsageData | undefined, fallbackSessionId?: string): ContextUsageData | null {
@@ -236,6 +276,8 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
     })
   }
   if (data.type === 'error') handlers?.onError(data.error || 'unknown error', data.sessionId)
+  if (data.type === 'team_start') handlers?.onTeamStart?.(normalizeTeamRun(data), data.sessionId)
+  if (data.type === 'team_done') handlers?.onTeamDone?.(normalizeTeamRun(data), data.sessionId)
 
   if (data.type === 'tool_call_start') {
     handlers?.onToolCallStart?.({
@@ -251,6 +293,8 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
       startedAt: data.startedAt,
       parentToolCallId: data.parentToolCallId,
       subagentRunId: data.subagentRunId,
+      teamRunId: data.teamRunId,
+      memberRunId: data.memberRunId,
     }, data.sessionId)
   }
 
@@ -264,6 +308,8 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
       reviewReason: data.reviewReason || '',
       parentToolCallId: data.parentToolCallId,
       subagentRunId: data.subagentRunId,
+      teamRunId: data.teamRunId,
+      memberRunId: data.memberRunId,
     }, data.sessionId)
   }
 
@@ -279,6 +325,8 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
       reviewReason: data.reviewReason || '',
       parentToolCallId: data.parentToolCallId,
       subagentRunId: data.subagentRunId,
+      teamRunId: data.teamRunId,
+      memberRunId: data.memberRunId,
     }, data.sessionId)
   }
 
@@ -295,6 +343,8 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
       finishedAt: data.finishedAt,
       parentToolCallId: data.parentToolCallId,
       subagentRunId: data.subagentRunId,
+      teamRunId: data.teamRunId,
+      memberRunId: data.memberRunId,
     }, data.sessionId)
   }
 
@@ -304,6 +354,8 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
       subagentRunId: data.subagentRunId || '',
       title: data.title || '',
       task: data.task || '',
+      teamRunId: data.teamRunId,
+      memberRunId: data.memberRunId,
     }, data.sessionId)
   }
 
@@ -312,6 +364,8 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
       parentToolCallId: data.parentToolCallId || '',
       subagentRunId: data.subagentRunId || '',
       content: data.content || '',
+      teamRunId: data.teamRunId,
+      memberRunId: data.memberRunId,
     }, data.sessionId)
   }
 
@@ -320,6 +374,8 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
       parentToolCallId: data.parentToolCallId || '',
       subagentRunId: data.subagentRunId || '',
       error: data.error,
+      teamRunId: data.teamRunId,
+      memberRunId: data.memberRunId,
     }, data.sessionId)
   }
 
@@ -327,17 +383,23 @@ export function dispatchChatSocketMessage(raw: string, handlers: ChatSocketHandl
     startedAt: data.startedAt,
     parentToolCallId: data.parentToolCallId,
     subagentRunId: data.subagentRunId,
+    teamRunId: data.teamRunId,
+    memberRunId: data.memberRunId,
   }, data.sessionId)
   if (data.type === 'thinking_chunk') handlers?.onThinkingChunk?.({
     content: data.content || '',
     startedAt: data.startedAt,
     parentToolCallId: data.parentToolCallId,
     subagentRunId: data.subagentRunId,
+    teamRunId: data.teamRunId,
+    memberRunId: data.memberRunId,
   }, data.sessionId)
   if (data.type === 'thinking_done') handlers?.onThinkingDone?.({
     finishedAt: data.finishedAt,
     parentToolCallId: data.parentToolCallId,
     subagentRunId: data.subagentRunId,
+    teamRunId: data.teamRunId,
+    memberRunId: data.memberRunId,
   }, data.sessionId)
   if (data.type === 'todo_update') handlers?.onTodoUpdate?.({
     items: Array.isArray(data.items) ? data.items : [],

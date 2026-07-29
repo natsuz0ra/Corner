@@ -49,6 +49,8 @@ export interface SessionHistoryToolCallItem {
   reviewReason?: string
   parentToolCallId?: string
   subagentRunId?: string
+  teamRunId?: string
+  memberRunId?: string
   output?: string
   error?: string
   metadata?: unknown
@@ -60,6 +62,8 @@ export interface SessionHistoryThinkingItem {
   thinkingId: string
   parentToolCallId?: string
   subagentRunId?: string
+  teamRunId?: string
+  memberRunId?: string
   content: string
   status: string
   startedAt?: string
@@ -78,7 +82,44 @@ export interface SessionHistoryPayload {
   toolCallsByAssistantMessageId: Record<string, SessionHistoryToolCallItem[]>
   thinkingByAssistantMessageId: Record<string, SessionHistoryThinkingItem[]>
   replyTimingByAssistantMessageId?: Record<string, SessionHistoryReplyTimingItem>
+  teamRuns?: TeamRunItem[]
+  teamMemberRuns?: TeamMemberRunItem[]
   hasMore: boolean
+}
+
+export type TeamRunStatus = 'running' | 'succeeded' | 'partial_failed' | 'failed' | 'canceled' | 'interrupted'
+export type TeamMemberRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled' | 'interrupted'
+
+export interface TeamRunItem {
+  id: string
+  sessionId: string
+  requestId: string
+  assistantMessageId?: string
+  status: TeamRunStatus
+  maxMembers: number
+  maxParallel: number
+  lastError?: string
+  startedAt: string
+  finishedAt?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface TeamMemberRunItem {
+  id: string
+  teamRunId: string
+  toolCallId: string
+  subagentRunId?: string
+  title: string
+  task: string
+  modelConfigId?: string
+  status: TeamMemberRunStatus
+  answer?: string
+  error?: string
+  startedAt?: string
+  finishedAt?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface ContextUsageData {
@@ -132,6 +173,8 @@ export interface ToolCallItem {
   /** Present on tools invoked inside a sub-agent run */
   parentToolCallId?: string
   subagentRunId?: string
+  teamRunId?: string
+  memberRunId?: string
   /** Streaming text from nested agent (parent run_subagent only) */
   subagentStream?: string
   /** Short title from subagent_start or params.title */

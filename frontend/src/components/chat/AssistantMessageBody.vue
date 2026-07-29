@@ -6,6 +6,7 @@ import LightweightToolGroup from '@/components/chat/LightweightToolGroup.vue'
 import ThinkingBlock from '@/components/chat/ThinkingBlock.vue'
 import PlanBlock from '@/components/chat/PlanBlock.vue'
 import TypingDots from '@/components/chat/TypingDots.vue'
+import AgentTeamBlock from '@/components/chat/AgentTeamBlock.vue'
 import { renderMarkdown } from '@/utils/markdown'
 import type { MessageItem } from '@/api/chat'
 import { useChatContext } from '@/composables/chat/useChatContext'
@@ -28,7 +29,12 @@ let elapsedTimer: ReturnType<typeof setInterval> | undefined
 const isStreaming = computed(() => ctx.isStreamingMessage(props.item.id))
 const showCollapseBar = computed(() => ctx.shouldShowReplyCollapseBar(props.item.id))
 const isExpanded = computed(() => isStreaming.value || !ctx.isReplyToolCollapsed(props.item.id))
-const fullTimeline = computed(() => ctx.getReplyTimeline(props.item.id))
+const replyBatch = computed(() => store.replyBatches.find((batch) => batch.assistantMessageId === props.item.id))
+const agentTeams = computed(() => replyBatch.value?.teamRuns ?? [])
+const teamMemberToolIds = computed(() => new Set(agentTeams.value.flatMap((team) => team.members.map((member) => member.toolCallId))))
+const fullTimeline = computed(() => ctx.getReplyTimeline(props.item.id).filter((entry) => (
+  (entry.kind !== 'tool_start' && entry.kind !== 'tool_result') || !teamMemberToolIds.value.has(entry.toolCallId)
+)))
 const collapsedEntryIds = computed(() => new Set(getCollapsedReplyTimeline(fullTimeline.value).map((entry) => entry.id)))
 const renderedTimeline = computed(() => (
   isExpanded.value
@@ -125,6 +131,15 @@ onUnmounted(() => {
         <path d="M4 6l4 4 4-4" />
       </svg>
     </button>
+
+    <AgentTeamBlock
+      v-for="team in agentTeams"
+      :key="team.id"
+      :team="team"
+      :tool-calls="replyBatch?.toolCalls ?? []"
+      @approve="ctx.approveToolCall($event, true)"
+      @reject="ctx.approveToolCall($event, false)"
+    />
 
     <TransitionGroup
       v-if="renderedTimeline.length > 0"

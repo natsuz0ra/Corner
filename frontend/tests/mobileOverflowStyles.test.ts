@@ -67,3 +67,14 @@ test('settings typography and narrow tabs use semantic styles', () => {
   assert.match(settingsStyles, /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*?\.settings-body\s*\{[\s\S]*?flex-direction:\s*column;/)
   assert.match(settingsStyles, /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*?\.settings-sidebar\s*\{[\s\S]*?overflow-x:\s*auto;/)
 })
+
+test('Agent Team block is semantic, responsive, and disables active motion when requested', () => {
+  const source = readFileSync(resolve(projectRoot, 'src/components/chat/AgentTeamBlock.vue'), 'utf8')
+
+  assert.match(source, /<section[^>]*class="agent-team"/)
+  assert.match(source, /<button[\s\S]*:aria-expanded=/)
+  assert.match(source, /overflow-wrap:\s*anywhere;/)
+  assert.match(source, /@media\s*\(max-width:\s*480px\)/)
+  assert.match(source, /@media\s*\(prefers-reduced-motion:\s*reduce\)/)
+  assert.doesNotMatch(source, /overflow-x:\s*(auto|scroll)/)
+})
