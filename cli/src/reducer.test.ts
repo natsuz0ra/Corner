@@ -62,6 +62,100 @@ test("Team reducer accepts member events before team_start and updates terminal 
 	assert.equal(entry?.teamRun?.members[0]?.status, "failed");
 });
 
+function stateWithTeams(): AppState {
+	const state = initState();
+	return {
+		...state,
+		timeline: [
+			{
+				kind: "team",
+				content: "",
+				teamRun: {
+					id: "team-1",
+					sessionId: "session-1",
+					requestId: "request-1",
+					status: "succeeded",
+					maxMembers: 8,
+					maxParallel: 4,
+					startedAt: "2026-07-29T00:00:00Z",
+					members: [{
+						id: "member-1",
+						teamRunId: "team-1",
+						toolCallId: "tool-1",
+						title: "Research",
+						task: "Inspect runtime",
+						status: "succeeded",
+					}],
+				},
+			},
+			{ kind: "assistant", content: "between teams" },
+			{
+				kind: "team",
+				content: "",
+				teamRun: {
+					id: "team-2",
+					sessionId: "session-1",
+					requestId: "request-2",
+					status: "running",
+					maxMembers: 8,
+					maxParallel: 4,
+					startedAt: "2026-07-29T00:01:00Z",
+					members: [
+						{
+							id: "member-2",
+							teamRunId: "team-2",
+							toolCallId: "tool-2",
+							title: "Backend",
+							task: "Inspect backend",
+							status: "running",
+						},
+						{
+							id: "member-3",
+							teamRunId: "team-2",
+							toolCallId: "tool-3",
+							title: "Frontend",
+							task: "Inspect frontend",
+							status: "queued",
+						},
+					],
+				},
+			},
+		],
+	};
+}
+
+test("OPEN_TEAM_DETAIL selects the latest Team and first member", () => {
+	const state = reduce(stateWithTeams(), { type: "OPEN_TEAM_DETAIL" });
+
+	assert.equal(state.view, "team-detail");
+	assert.equal(state.teamRunCursor, 1);
+	assert.equal(state.teamMemberCursor, 0);
+});
+
+test("Team detail navigation clamps cursors and resets member on Team change", () => {
+	let state = reduce(stateWithTeams(), { type: "OPEN_TEAM_DETAIL" });
+	state = reduce(state, { type: "TEAM_DETAIL_NAV_MEMBER", delta: 99 });
+	assert.equal(state.teamMemberCursor, 1);
+
+	state = reduce(state, { type: "TEAM_DETAIL_NAV_TEAM", delta: -1 });
+	assert.equal(state.teamRunCursor, 0);
+	assert.equal(state.teamMemberCursor, 0);
+
+	state = reduce(state, { type: "TEAM_DETAIL_NAV_TEAM", delta: -99 });
+	state = reduce(state, { type: "TEAM_DETAIL_NAV_MEMBER", delta: 99 });
+	assert.equal(state.teamRunCursor, 0);
+	assert.equal(state.teamMemberCursor, 0);
+});
+
+test("RESET_SESSION clears Agent Team detail cursors", () => {
+	let state = reduce(stateWithTeams(), { type: "OPEN_TEAM_DETAIL" });
+	state = reduce(state, { type: "TEAM_DETAIL_NAV_MEMBER", delta: 1 });
+	state = reduce(state, { type: "RESET_SESSION" });
+
+	assert.equal(state.teamRunCursor, 0);
+	assert.equal(state.teamMemberCursor, 0);
+});
+
 test("SET_INPUT updates value", () => {
 	const state = reduce(initState(), {
 		type: "SET_INPUT",

@@ -16,6 +16,7 @@ import { MCPTemplatePicker } from "./components/MCPTemplatePicker.js";
 import { MCPToolsView } from "./components/MCPToolsView.js";
 import { CLI_HINT_COLOR, MenuView, MENU_VISIBLE_LIMIT } from "./components/MenuView.js";
 import MemoryConsoleView from "./components/MemoryConsoleView.js";
+import TeamView from "./components/TeamView.js";
 import { ModelEditor } from "./components/ModelEditor.js";
 import { TextInput } from "./components/TextInput.js";
 import { Timeline } from "./components/Timeline.js";
@@ -27,6 +28,7 @@ import { useCliSocket } from "./hooks/useCliSocket.js";
 import { reducer, createInitialState } from "./reducer.js";
 import { completeCommand, isCommand, matchCommandHints, moveCommandHintCursor } from "./utils/commands.js";
 import { formatTimestamp, formatWaitingStatsSuffix } from "./utils/format.js";
+import { getAgentTeamRuns } from "./utils/agentTeam.js";
 import { mapHistoryMessages } from "./utils/history.js";
 import { buildSandboxMenuItems, type SandboxMenuAction } from "./utils/sandboxSettings.js";
 import { formatMemorySnapshot, normalizeMemoryResetTarget } from "./utils/memory.js";
@@ -98,6 +100,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
   const planStartedRef = useRef(false);
   const preambleShownRef = useRef("");
   const commandHints = React.useMemo(() => matchCommandHints(state.inputValue), [state.inputValue]);
+  const teamRuns = React.useMemo(() => getAgentTeamRuns(state.timeline), [state.timeline]);
   const hasCommandHints = state.view === "chat" && !state.streaming && commandHints.length > 0;
   const selectedCommandHintIndex = commandHints.length > 0
     ? Math.max(0, Math.min(commandHints.length - 1, commandHintCursor))
@@ -923,6 +926,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       loadSandboxSettings,
       loadMemory,
       resetMemory,
+      openTeamDetail: () => dispatch({ type: "OPEN_TEAM_DETAIL" } as AppAction),
       showHelp,
       togglePlanMode: () => dispatch({ type: "TOGGLE_PLAN_MODE" } as AppAction),
       unknownCommand: (cmd) => appendSystem(`Unknown command: ${cmd}`),
@@ -1044,7 +1048,7 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         updateAvailable={Boolean(state.updateCheck?.updateAvailable)}
       />
       <Text> </Text>
-      {(state.timeline.length > 0 || state.streaming) && (
+      {state.view !== "team-detail" && (state.timeline.length > 0 || state.streaming) && (
         <>
           <Timeline
             entries={state.timeline}
@@ -1266,6 +1270,16 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
         />
       )}
 
+      {state.view === "team-detail" && (
+        <TeamView
+          runs={teamRuns}
+          entries={state.timeline}
+          teamCursor={state.teamRunCursor}
+          memberCursor={state.teamMemberCursor}
+          columns={width}
+        />
+      )}
+
       {state.view === "mcp-editor" && (
         <MCPEditor
           id={state.mcpEditorId}
@@ -1362,6 +1376,12 @@ export function App({ apiURL, cliToken, version }: AppProps): React.ReactElement
       {state.view === "plan-confirm" && (
         <Text color={CLI_HINT_COLOR}>
           Arrow keys to navigate | Enter to select | Esc to cancel
+        </Text>
+      )}
+
+      {state.view === "team-detail" && (
+        <Text color={CLI_HINT_COLOR}>
+          ←/→ Team | ↑/↓ member | Esc back
         </Text>
       )}
 

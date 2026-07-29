@@ -331,7 +331,7 @@ export interface ContextUsage {
 
 // ===== UI state types =====
 
-export type ViewMode = "chat" | "menu" | "mcp-editor" | "mcp-template" | "mcp-tools" | "model-editor" | "approval" | "thinking-detail" | "plan-confirm" | "question-answer" | "update" | "memory-console";
+export type ViewMode = "chat" | "menu" | "mcp-editor" | "mcp-template" | "mcp-tools" | "model-editor" | "approval" | "thinking-detail" | "plan-confirm" | "question-answer" | "update" | "memory-console" | "team-detail";
 
 export type MenuKind =
   | "session"
@@ -483,6 +483,7 @@ export const SUPPORTED_COMMANDS: CommandMeta[] = [
   { command: "/session", description: "Open session menu to switch or delete" },
   { command: "/model", description: "Choose the default model" },
   { command: "/memory", description: "Open memory console" },
+  { command: "/team", description: "Open Agent Team details" },
   { command: "/subagent_model", description: "Choose sub-agent model" },
   { command: "/approval", description: "Toggle approval mode (standard/auto review/auto)" },
   { command: "/effort", description: "Toggle thinking level (off/low/medium/high)" },
@@ -541,6 +542,10 @@ export interface AppState {
   memoryDraft: string;
   memoryViewTarget: MemoryTarget | null;
   memoryMessage: string;
+
+  // Agent Team detail
+  teamRunCursor: number;
+  teamMemberCursor: number;
 
   // Thinking detail view
   thinkingDetailContent: string;
@@ -638,6 +643,9 @@ export type AppAction =
   | { type: "UPSERT_TOOL_ENTRY"; entry: TimelineEntry }
   | { type: "UPSERT_TEAM_RUN"; run: Omit<AgentTeamRun, "members"> & { members?: AgentTeamMemberRun[] } }
   | { type: "UPSERT_TEAM_MEMBER"; member: AgentTeamMemberRun }
+  | { type: "OPEN_TEAM_DETAIL" }
+  | { type: "TEAM_DETAIL_NAV_TEAM"; delta: number }
+  | { type: "TEAM_DETAIL_NAV_MEMBER"; delta: number }
   | { type: "APPEND_SUBAGENT_STREAM"; parentToolCallId: string; content: string }
   | { type: "SUBAGENT_DONE"; parentToolCallId: string; error?: string; finishedAt?: number }
   | { type: "APPEND_ENTRY"; entry: TimelineEntry }

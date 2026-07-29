@@ -117,6 +117,16 @@ test("memory command opens the dedicated console instead of printing only a snap
   assert.doesNotMatch(source, /appendSystem\(formatMemorySnapshot\(snapshot\)\)/);
 });
 
+test("Agent Team command opens a dedicated compact detail view", () => {
+  const source = readFileSync(new URL("./app.tsx", import.meta.url), "utf-8");
+
+  assert.match(source, /openTeamDetail:\s*\(\)\s*=>\s*dispatch\(\{\s*type:\s*"OPEN_TEAM_DETAIL"/);
+  assert.match(source, /<TeamView/);
+  assert.match(source, /teamRunCursor/);
+  assert.match(source, /teamMemberCursor/);
+  assert.match(source, /←\/→ Team \| ↑\/↓ member \| Esc back/);
+});
+
 test("getChatFooterHint returns default hint in standard mode", () => {
   assert.equal(
     getChatFooterHint(false, "standard"),

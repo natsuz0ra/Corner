@@ -43,6 +43,7 @@ test("memory command routes to console loader and keeps reset shortcut", async (
     loadUpdate: async () => { calls.push("update"); },
     loadSkills: async () => { calls.push("skills"); },
     loadMCPConfigs: async () => { calls.push("mcp"); },
+    openTeamDetail: () => calls.push("team"),
     showHelp: () => calls.push("help"),
     togglePlanMode: () => calls.push("plan"),
     unknownCommand: (cmd) => calls.push(`unknown:${cmd}`),
@@ -52,6 +53,33 @@ test("memory command routes to console loader and keeps reset shortcut", async (
   await runCliCommand("/memory reset user", handlers);
 
   assert.deepEqual(calls, ["memory", "reset:user"]);
+});
+
+test("/team routes to Agent Team detail opener", async () => {
+  const calls: string[] = [];
+  const handlers: CliCommandHandlers = {
+    newSession: () => calls.push("new"),
+    loadSessions: async () => { calls.push("sessions"); },
+    loadModels: async () => { calls.push("models"); },
+    loadSubagentModels: async () => { calls.push("subagent"); },
+    toggleApprovalMode: async () => { calls.push("approval"); },
+    toggleThinkingLevel: () => calls.push("effort"),
+    setThinkingLevel: (level) => calls.push(`effort:${level}`),
+    loadSandboxSettings: async () => { calls.push("sandbox"); },
+    loadMemory: async () => { calls.push("memory"); },
+    resetMemory: async (target) => { calls.push(`reset:${target}`); },
+    loadUpdate: async () => { calls.push("update"); },
+    loadSkills: async () => { calls.push("skills"); },
+    loadMCPConfigs: async () => { calls.push("mcp"); },
+    openTeamDetail: () => calls.push("team"),
+    showHelp: () => calls.push("help"),
+    togglePlanMode: () => calls.push("plan"),
+    unknownCommand: (cmd) => calls.push(`unknown:${cmd}`),
+  };
+
+  await runCliCommand("/team", handlers);
+
+  assert.deepEqual(calls, ["team"]);
 });
 
 test("matchCommandHints includes sandbox command", () => {

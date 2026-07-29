@@ -196,6 +196,16 @@ export function getUpdateKeyAction(input: string, key: Key, confirming: boolean)
   return null;
 }
 
+export function getTeamDetailKeyAction(state: AppState, key: Key): AppAction | null {
+  if (state.view !== "team-detail") return null;
+  if (key.escape) return { type: "SET_VIEW", view: "chat" };
+  if (key.leftArrow) return { type: "TEAM_DETAIL_NAV_TEAM", delta: -1 };
+  if (key.rightArrow) return { type: "TEAM_DETAIL_NAV_TEAM", delta: 1 };
+  if (key.upArrow) return { type: "TEAM_DETAIL_NAV_MEMBER", delta: -1 };
+  if (key.downArrow) return { type: "TEAM_DETAIL_NAV_MEMBER", delta: 1 };
+  return null;
+}
+
 export function useCliKeyboard({
   state,
   dispatch,
@@ -236,6 +246,12 @@ export function useCliKeyboard({
 
     if (key.tab && key.shift && state.view === "chat") {
       dispatch({ type: "TOGGLE_PLAN_MODE" });
+      return;
+    }
+
+    if (state.view === "team-detail") {
+      const action = getTeamDetailKeyAction(state, key);
+      if (action) dispatch(action);
       return;
     }
 

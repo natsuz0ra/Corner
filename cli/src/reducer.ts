@@ -14,7 +14,12 @@ import type {
 import { estimateTokens } from "./utils/format.js";
 import { CONTEXT_SIZE_DEFAULT, clampContextSize } from "./utils/contextSize.js";
 import { memoryConsoleActionCount } from "./utils/memoryConsole.js";
-import { upsertAgentTeamMember, upsertAgentTeamRun } from "./utils/agentTeam.js";
+import {
+  clampAgentTeamCursor,
+  getAgentTeamRuns,
+  upsertAgentTeamMember,
+  upsertAgentTeamRun,
+} from "./utils/agentTeam.js";
 
 function clearTurnStats() {
   return {
@@ -187,6 +192,8 @@ export function createInitialState(
     memoryDraft: "",
     memoryViewTarget: null,
     memoryMessage: "",
+    teamRunCursor: 0,
+    teamMemberCursor: 0,
     thinkingDetailContent: "",
     inputValue: "",
     inputKey: 0,
@@ -426,6 +433,36 @@ export function reducer(state: AppState, action: AppAction): AppState {
       };
     }
 
+    case "OPEN_TEAM_DETAIL": {
+      const runs = getAgentTeamRuns(state.timeline);
+      return {
+        ...state,
+        view: "team-detail",
+        teamRunCursor: clampAgentTeamCursor(runs.length - 1, runs.length),
+        teamMemberCursor: 0,
+      };
+    }
+
+    case "TEAM_DETAIL_NAV_TEAM": {
+      const runs = getAgentTeamRuns(state.timeline);
+      return {
+        ...state,
+        teamRunCursor: clampAgentTeamCursor(state.teamRunCursor + action.delta, runs.length),
+        teamMemberCursor: 0,
+      };
+    }
+
+    case "TEAM_DETAIL_NAV_MEMBER": {
+      const runs = getAgentTeamRuns(state.timeline);
+      const teamRunCursor = clampAgentTeamCursor(state.teamRunCursor, runs.length);
+      const memberCount = runs[teamRunCursor]?.members.length || 0;
+      return {
+        ...state,
+        teamRunCursor,
+        teamMemberCursor: clampAgentTeamCursor(state.teamMemberCursor + action.delta, memberCount),
+      };
+    }
+
     case "APPEND_SUBAGENT_STREAM": {
       const entries = [...state.timeline];
       const idx = entries.findIndex(
@@ -486,6 +523,8 @@ export function reducer(state: AppState, action: AppAction): AppState {
         updateConfirming: false,
         contextUsage: null,
         thinkingDetailContent: "",
+        teamRunCursor: 0,
+        teamMemberCursor: 0,
         view: "chat",
         pendingApprovals: [],
         approvalCursor: 0,
