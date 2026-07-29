@@ -19,6 +19,8 @@ type sessionMessagesResponse struct {
 	ToolCallsByAssistantMessageID   map[string][]sessionsvc.ToolCallHistory `json:"toolCallsByAssistantMessageId"`
 	ThinkingByAssistantMessageID    map[string][]sessionsvc.ThinkingHistory `json:"thinkingByAssistantMessageId"`
 	ReplyTimingByAssistantMessageID map[string]sessionsvc.ReplyTiming       `json:"replyTimingByAssistantMessageId"`
+	TeamRuns                        []domain.TeamRun                        `json:"teamRuns"`
+	TeamMemberRuns                  []domain.TeamMemberRun                  `json:"teamMemberRuns"`
 	HasMore                         bool                                    `json:"hasMore"`
 }
 
@@ -190,6 +192,8 @@ func (h *HTTPController) ListMessages(c WebContext) {
 		ToolCallsByAssistantMessageID:   history.ToolCallsByAssistantMessageID,
 		ThinkingByAssistantMessageID:    history.ThinkingByAssistantMessageID,
 		ReplyTimingByAssistantMessageID: history.ReplyTimingByAssistantMessageID,
+		TeamRuns:                        history.TeamRuns,
+		TeamMemberRuns:                  history.TeamMemberRuns,
 		HasMore:                         history.HasMore,
 	})
 	logging.Span("http_list_messages", listStart)
