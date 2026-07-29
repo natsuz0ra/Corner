@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import type { ToolCallItem } from '../src/api/chat'
 import { dispatchChatSocketMessage } from '../src/api/chatSocket'
 import {
+  buildAgentTeamResultPreview,
+  countAgentTeamMemberTools,
   createAgentTeamState,
   formatAgentTeamDuration,
   getAgentTeamStatusLabel,
   mergeAgentTeamMember,
   mergeAgentTeamRun,
+  selectVisibleAgentTeamMembers,
   selectAgentTeamMembers,
   type AgentTeamMember,
   type AgentTeamRun,
@@ -70,6 +74,41 @@ test('Team 耗时格式化支持毫秒、秒和分钟', () => {
   assert.equal(formatAgentTeamDuration(640), '640ms')
   assert.equal(formatAgentTeamDuration(12_300), '12.3s')
   assert.equal(formatAgentTeamDuration(125_000), '2m 5s')
+})
+
+test('Team 摘要优先显示待审批、失败和运行中的成员', () => {
+  const members = [
+    member('done', '2026-07-29T00:00:01Z', { status: 'succeeded' }),
+    member('running', '2026-07-29T00:00:02Z', { status: 'running' }),
+    member('failed', '2026-07-29T00:00:03Z', { status: 'failed' }),
+  ]
+  const tools = [{
+    toolCallId: 'approval',
+    parentToolCallId: 'tool-done',
+    status: 'pending',
+  } as ToolCallItem]
+
+  assert.deepEqual(
+    selectVisibleAgentTeamMembers(members, tools, 2).map((item) => item.id),
+    ['done', 'failed'],
+  )
+})
+
+test('Team 结果摘要规范化空白并限制长度', () => {
+  assert.equal(
+    buildAgentTeamResultPreview('  first   paragraph\n\nsecond paragraph  '),
+    'first paragraph',
+  )
+  const truncated = buildAgentTeamResultPreview('x'.repeat(400))
+  assert.equal(truncated.length, 320)
+  assert.match(truncated, /…$/)
+})
+
+test('Team 成员工具统计只计算成员的直接子工具', () => {
+  assert.equal(countAgentTeamMemberTools('parent', [
+    { toolCallId: 'a', parentToolCallId: 'parent' },
+    { toolCallId: 'b', parentToolCallId: 'other' },
+  ] as ToolCallItem[]), 1)
 })
 
 test('socket 分派 team_start、team_done 并保留成员标识', () => {

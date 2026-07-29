@@ -1,4 +1,4 @@
-import type { TeamMemberRunItem, TeamRunItem } from '@/api/chat'
+import type { TeamMemberRunItem, TeamRunItem, ToolCallItem } from '@/api/chat'
 
 export interface AgentTeamMember extends TeamMemberRunItem {
   createdAt: string
@@ -114,6 +114,46 @@ export function mergeAgentTeamMember(state: AgentTeamState, incoming: TeamMember
 
 export function selectAgentTeamMembers(state: AgentTeamState, teamRunId: string) {
   return state.runs.find((run) => run.id === teamRunId)?.members ?? []
+}
+
+export function findAgentTeamPendingTool(member: TeamMemberRunItem, tools: ToolCallItem[]) {
+  return tools.find((tool) => tool.parentToolCallId === member.toolCallId && tool.status === 'pending')
+}
+
+export function selectVisibleAgentTeamMembers(
+  members: AgentTeamMember[],
+  tools: ToolCallItem[],
+  limit: number,
+) {
+  const statusPriority = {
+    failed: 1,
+    running: 2,
+    queued: 3,
+    interrupted: 4,
+    canceled: 4,
+    succeeded: 5,
+  } as const
+
+  return members
+    .map((member, index) => ({
+      member,
+      index,
+      priority: findAgentTeamPendingTool(member, tools) ? 0 : statusPriority[member.status],
+    }))
+    .sort((left, right) => left.priority - right.priority || left.index - right.index)
+    .slice(0, Math.max(0, limit))
+    .map(({ member }) => member)
+}
+
+export function buildAgentTeamResultPreview(value: string | undefined, maxLength = 320) {
+  const firstParagraph = (value || '').trim().split(/\n\s*\n/, 1)[0]?.replace(/\s+/g, ' ') || ''
+  if (firstParagraph.length <= maxLength) return firstParagraph
+  if (maxLength <= 0) return ''
+  return `${firstParagraph.slice(0, Math.max(0, maxLength - 1))}…`
+}
+
+export function countAgentTeamMemberTools(parentToolCallId: string, tools: ToolCallItem[]) {
+  return tools.filter((tool) => tool.parentToolCallId === parentToolCallId).length
 }
 
 export function buildAgentTeamsFromHistory(
