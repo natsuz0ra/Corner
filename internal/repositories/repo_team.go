@@ -99,6 +99,15 @@ func (r *Repository) CreateTeamMemberRun(ctx context.Context, input domain.Creat
 	return &stored, err
 }
 
+func (r *Repository) GetTeamMemberRunByID(ctx context.Context, id string) (*domain.TeamMemberRun, error) {
+	var member domain.TeamMemberRun
+	err := r.dbWithContext(ctx).Where("id = ?", strings.TrimSpace(id)).Take(&member).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, apperrors.ErrNotFound
+	}
+	return &member, err
+}
+
 func (r *Repository) ListTeamMemberRuns(ctx context.Context, teamRunID string) ([]domain.TeamMemberRun, error) {
 	var members []domain.TeamMemberRun
 	err := r.dbWithContext(ctx).

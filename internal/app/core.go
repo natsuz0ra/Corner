@@ -26,6 +26,7 @@ import (
 	sessionsvc "slimebot/internal/services/session"
 	settingssvc "slimebot/internal/services/settings"
 	skillsvc "slimebot/internal/services/skill"
+	teamsvc "slimebot/internal/services/team"
 	"slimebot/internal/updater"
 	buildversion "slimebot/internal/version"
 )
@@ -52,6 +53,7 @@ type Core struct {
 	MCPManager       *mcp.Manager
 	PlanService      *plansvc.PlanService
 	UpdateService    *updater.Service
+	TeamService      *teamsvc.Service
 
 	warmupOnce    sync.Once
 	warmupDone    chan struct{}
@@ -74,6 +76,10 @@ func NewCore(cfg config.Config) (*Core, error) {
 		return nil, err
 	}
 	repo := repositories.New(db)
+	teamService := teamsvc.NewService(repo, teamsvc.Options{})
+	if err := teamService.RecoverInterrupted(context.Background()); err != nil {
+		return nil, err
+	}
 	authService := authsvc.NewAuthService(repo)
 	if err := authService.EnsureDefaultAdmin(); err != nil {
 		return nil, err
@@ -136,6 +142,7 @@ func NewCore(cfg config.Config) (*Core, error) {
 		MCPManager:       mcpManager,
 		PlanService:      planService,
 		UpdateService:    updateService,
+		TeamService:      teamService,
 		warmupDone:       make(chan struct{}),
 	}, nil
 }

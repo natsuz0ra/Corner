@@ -7,6 +7,7 @@ type TeamStore interface {
 	GetOrCreateTeamRun(ctx context.Context, input CreateTeamRunInput) (*TeamRun, error)
 	GetTeamRunByID(ctx context.Context, id string) (*TeamRun, error)
 	CreateTeamMemberRun(ctx context.Context, input CreateTeamMemberRunInput) (*TeamMemberRun, error)
+	GetTeamMemberRunByID(ctx context.Context, id string) (*TeamMemberRun, error)
 	ListTeamMemberRuns(ctx context.Context, teamRunID string) ([]TeamMemberRun, error)
 	UpdateTeamMemberRun(ctx context.Context, input UpdateTeamMemberRunInput) error
 	UpdateTeamRun(ctx context.Context, input UpdateTeamRunInput) error
