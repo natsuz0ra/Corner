@@ -24,6 +24,24 @@ test('Team 详情弹窗只在待审批时复用工具审批组件', () => {
   assert.doesNotMatch(source, /nested-tools=/)
 })
 
+test('Team 详情弹窗挂载为可见状态时立即初始化选中成员', () => {
+  const source = readFileSync(resolve(projectRoot, 'src/components/chat/AgentTeamDetailDialog.vue'), 'utf8')
+
+  assert.match(
+    source,
+    /watch\(\(\) => props\.visible, \(visible\) => \{[\s\S]*?if \(visible\) chooseInitialMember\(true\)[\s\S]*?\}, \{ immediate: true \}\)/,
+  )
+})
+
+test('Team 详情弹窗在深色主题下使用语义正文颜色', () => {
+  const source = readFileSync(resolve(projectRoot, 'src/components/chat/AgentTeamDetailDialog.vue'), 'utf8')
+
+  assert.match(
+    source,
+    /\.agent-team-detail-dialog\s*\{[^}]*color:\s*var\(--text-primary\)/,
+  )
+})
+
 test('AppDialog 管理焦点锁定和关闭后的焦点归还', () => {
   const source = readFileSync(resolve(projectRoot, 'src/components/ui/AppDialog.vue'), 'utf8')
 

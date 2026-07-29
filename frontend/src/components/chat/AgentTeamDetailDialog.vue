@@ -77,7 +77,7 @@ function restartTimer(active: boolean) {
 
 watch(() => props.visible, (visible) => {
   if (visible) chooseInitialMember(true)
-})
+}, { immediate: true })
 watch(() => props.team.members.map((member) => member.id), () => chooseInitialMember(false))
 watch(() => props.visible && props.team.status === 'running', restartTimer, { immediate: true })
 onUnmounted(() => { if (timer) clearInterval(timer) })
@@ -168,6 +168,7 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
   min-width: 0;
   max-height: 80vh;
   overflow: hidden;
+  color: var(--text-primary);
 }
 
 .agent-team-detail-overview {
