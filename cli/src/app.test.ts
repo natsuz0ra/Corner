@@ -111,10 +111,16 @@ test("getChatFooterHint returns toggle hint in auto review mode", () => {
 
 test("memory command opens the dedicated console instead of printing only a snapshot", () => {
   const source = readFileSync(new URL("./app.tsx", import.meta.url), "utf-8");
+  const loadMemoryStart = source.indexOf("const loadMemory = useCallback");
+  const resetMemoryStart = source.indexOf("const resetMemory = useCallback");
 
-  assert.match(source, /SET_MEMORY_CONSOLE/);
+  assert.notEqual(loadMemoryStart, -1);
+  assert.ok(resetMemoryStart > loadMemoryStart);
+  const loadMemorySource = source.slice(loadMemoryStart, resetMemoryStart);
+
+  assert.match(loadMemorySource, /SET_MEMORY_CONSOLE/);
   assert.match(source, /<MemoryConsoleView/);
-  assert.doesNotMatch(source, /appendSystem\(formatMemorySnapshot\(snapshot\)\)/);
+  assert.doesNotMatch(loadMemorySource, /appendSystem\(formatMemorySnapshot\(snapshot\)\)/);
 });
 
 test("Agent Team command opens a dedicated compact detail view", () => {
