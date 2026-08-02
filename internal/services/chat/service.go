@@ -15,6 +15,7 @@ import (
 	plansvc "slimebot/internal/services/plan"
 	schedulesvc "slimebot/internal/services/schedule"
 	skillsvc "slimebot/internal/services/skill"
+	teamsvc "slimebot/internal/services/team"
 )
 
 type agentsInstructionsReader interface {
@@ -32,6 +33,7 @@ type ChatService struct {
 	schedule        *schedulesvc.Service
 	skillRuntime    *skillsvc.SkillRuntimeService
 	planService     *plansvc.PlanService
+	teamService     *teamsvc.Service
 	uploads         *ChatUploadService
 	titleGen        *titleGenerator
 	skillsMu        sync.Mutex
@@ -131,6 +133,10 @@ func (s *ChatService) SetUploadService(uploads *ChatUploadService) {
 // SetPlanService injects the plan service for plan mode file management.
 func (s *ChatService) SetPlanService(ps *plansvc.PlanService) {
 	s.planService = ps
+}
+
+func (s *ChatService) SetTeamService(service *teamsvc.Service) {
+	s.teamService = service
 }
 
 // SetRunContext injects deployment/runtime info for the system prompt environment section.

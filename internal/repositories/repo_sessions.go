@@ -78,6 +78,18 @@ func (r *Repository) UpdateSessionTitle(ctx context.Context, id, name string) (b
 
 func (r *Repository) DeleteSession(ctx context.Context, id string) error {
 	return r.dbWithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var teamRunIDs []string
+		if err := tx.Model(&domain.TeamRun{}).Where("session_id = ?", id).Pluck("id", &teamRunIDs).Error; err != nil {
+			return err
+		}
+		if len(teamRunIDs) > 0 {
+			if err := tx.Where("team_run_id IN ?", teamRunIDs).Delete(&domain.TeamMemberRun{}).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("session_id = ?", id).Delete(&domain.TeamRun{}).Error; err != nil {
+			return err
+		}
 		// Delete messages.
 		if err := tx.Table("messages").Where("session_id = ?", id).Delete(nil).Error; err != nil {
 			return err

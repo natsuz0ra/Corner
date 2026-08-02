@@ -4,6 +4,7 @@ import type { Key } from "ink";
 import { createInitialState } from "../reducer.js";
 import {
   getApprovalKeyAction,
+  getTeamDetailKeyAction,
   handleStreamingChatShortcut,
   getModelEditorFieldNavigationAction,
   getQuestionAnswerConfirmEnterAction,
@@ -33,6 +34,19 @@ function key(overrides: Partial<Key> = {}): Key {
     ...overrides,
   } as Key;
 }
+
+test("team detail keyboard maps Escape and arrow navigation", () => {
+  const state = {
+    ...createInitialState("http://127.0.0.1:8080", "token", "/tmp", "1.0.0"),
+    view: "team-detail" as const,
+  };
+  assert.deepEqual(getTeamDetailKeyAction(state, key({ escape: true })), { type: "SET_VIEW", view: "chat" });
+  assert.deepEqual(getTeamDetailKeyAction(state, key({ leftArrow: true })), { type: "TEAM_DETAIL_NAV_TEAM", delta: -1 });
+  assert.deepEqual(getTeamDetailKeyAction(state, key({ rightArrow: true })), { type: "TEAM_DETAIL_NAV_TEAM", delta: 1 });
+  assert.deepEqual(getTeamDetailKeyAction(state, key({ upArrow: true })), { type: "TEAM_DETAIL_NAV_MEMBER", delta: -1 });
+  assert.deepEqual(getTeamDetailKeyAction(state, key({ downArrow: true })), { type: "TEAM_DETAIL_NAV_MEMBER", delta: 1 });
+  assert.equal(getTeamDetailKeyAction(state, key()), null);
+});
 
 test("custom input cursor lets question view handle printable input", () => {
   const state = {

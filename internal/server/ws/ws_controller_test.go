@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"slimebot/internal/domain"
 	chatsvc "slimebot/internal/services/chat"
 )
 
@@ -92,7 +93,12 @@ func TestBuildTodoUpdatePayloadIncludesSessionScopedItems(t *testing.T) {
 }
 
 func TestBuildSubagentStartPayloadIncludesTitleAndTask(t *testing.T) {
-	payload := buildSubagentStartPayload("session-1", "parent-call", "run-1", "Inspect UI cards", "Inspect UI cards and report exact files")
+	payload := buildSubagentStartPayload("session-1", chatsvc.AgentEventMeta{
+		ParentToolCallID: "parent-call",
+		SubagentRunID:    "run-1",
+		TeamRunID:        "team-1",
+		MemberRunID:      "member-1",
+	}, "Inspect UI cards", "Inspect UI cards and report exact files")
 
 	if payload["type"] != "subagent_start" {
 		t.Fatalf("unexpected type: %+v", payload)
@@ -106,11 +112,48 @@ func TestBuildSubagentStartPayloadIncludesTitleAndTask(t *testing.T) {
 	if payload["subagentRunId"] != "run-1" {
 		t.Fatalf("unexpected run id: %+v", payload)
 	}
+	if payload["teamRunId"] != "team-1" || payload["memberRunId"] != "member-1" {
+		t.Fatalf("unexpected team identity: %+v", payload)
+	}
 	if payload["title"] != "Inspect UI cards" {
 		t.Fatalf("unexpected title: %+v", payload)
 	}
 	if payload["task"] != "Inspect UI cards and report exact files" {
 		t.Fatalf("unexpected task: %+v", payload)
+	}
+}
+
+func TestBuildTeamPayloadsIncludeLifecycleFields(t *testing.T) {
+	finishedAt := time.Now()
+	run := domain.TeamRun{
+		ID: "team-1", SessionID: "session-1", RequestID: "request-1", Status: domain.TeamRunStatusSucceeded,
+		MaxMembers: 8, MaxParallel: 4, StartedAt: finishedAt.Add(-time.Second), FinishedAt: &finishedAt,
+	}
+	start := buildTeamStartPayload(run)
+	done := buildTeamDonePayload(run)
+	if start["type"] != "team_start" || start["teamRunId"] != "team-1" || start["requestId"] != "request-1" {
+		t.Fatalf("team start = %+v", start)
+	}
+	if done["type"] != "team_done" || done["status"] != domain.TeamRunStatusSucceeded || done["finishedAt"] == nil {
+		t.Fatalf("team done = %+v", done)
+	}
+}
+
+func TestBuildTeamMemberQueuedPayloadIncludesMemberFields(t *testing.T) {
+	createdAt := time.Now()
+	member := domain.TeamMemberRun{
+		ID: "member-1", TeamRunID: "team-1", ToolCallID: "tool-1", Title: "Research",
+		Task: "Inspect runtime", ModelConfigID: "model-1", Status: domain.TeamMemberRunStatusQueued, CreatedAt: createdAt,
+	}
+	payload := buildTeamMemberQueuedPayload("session-1", member)
+	if payload["type"] != "team_member_queued" || payload["sessionId"] != "session-1" {
+		t.Fatalf("queued member payload = %+v", payload)
+	}
+	if payload["teamRunId"] != "team-1" || payload["memberRunId"] != "member-1" || payload["toolCallId"] != "tool-1" {
+		t.Fatalf("queued member identity = %+v", payload)
+	}
+	if payload["status"] != domain.TeamMemberRunStatusQueued || payload["createdAt"] == nil {
+		t.Fatalf("queued member lifecycle = %+v", payload)
 	}
 }
 

@@ -19,6 +19,7 @@ import { getBatchApprovalToolCallIds, markToolApprovalDecision } from '@/utils/t
 import { materializeStoppedMessages } from '@/utils/chatMessages'
 import { applyEditedUserMessage, findLatestEditableUserMessageId } from '@/utils/messageEditing'
 import { createClientId } from '@/utils/uuid'
+import { createAgentTeamState, mergeAgentTeamMember, mergeAgentTeamRun } from '@/utils/agentTeam'
 
 const HISTORY_PAGE_SIZE = 10
 const MAX_SESSION_PAGE_SIZE = 100
@@ -471,6 +472,7 @@ export const useChatStore = defineStore('chat', () => {
           sessionId: sessionId,
           assistantMessageId,
           toolCalls: [],
+          teamRuns: [],
           timeline: [],
           collapsed: false,
           startedAt: parseSocketTimestamp(meta?.startedAt),
@@ -584,6 +586,8 @@ export const useChatStore = defineStore('chat', () => {
           startedAt: parseSocketTimestamp(data.startedAt),
           parentToolCallId: data.parentToolCallId,
           subagentRunId: data.subagentRunId,
+          teamRunId: data.teamRunId,
+          memberRunId: data.memberRunId,
         }
         if (existingToolCall) {
           Object.assign(existingToolCall, startedToolCall)
@@ -637,6 +641,8 @@ export const useChatStore = defineStore('chat', () => {
           item.finishedAt = parseSocketTimestamp(data.finishedAt)
           if (data.parentToolCallId) item.parentToolCallId = data.parentToolCallId
           if (data.subagentRunId) item.subagentRunId = data.subagentRunId
+          if (data.teamRunId) item.teamRunId = data.teamRunId
+          if (data.memberRunId) item.memberRunId = data.memberRunId
           // Auto-close ask_questions drawer when tool times out or is rejected
           if (item.toolName === 'ask_questions' && (item.status === 'error' || item.status === 'rejected')) {
             pendingQuestions.value = null
@@ -660,6 +666,22 @@ export const useChatStore = defineStore('chat', () => {
           parent.subagentTitle = data.title
           parent.subagentTask = data.task
           if (parent.subagentStream === undefined) parent.subagentStream = ''
+          if (data.teamRunId) parent.teamRunId = data.teamRunId
+          if (data.memberRunId) parent.memberRunId = data.memberRunId
+        }
+        if (data.teamRunId && data.memberRunId) {
+          const state = createAgentTeamState(batch.teamRuns)
+          mergeAgentTeamMember(state, {
+            id: data.memberRunId,
+            teamRunId: data.teamRunId,
+            toolCallId: data.parentToolCallId,
+            subagentRunId: data.subagentRunId,
+            title: data.title,
+            task: data.task,
+            status: 'running',
+            startedAt: new Date().toISOString(),
+          })
+          batch.teamRuns = state.runs
         }
       },
       onSubagentChunk: (data, sessionId) => {
@@ -683,6 +705,45 @@ export const useChatStore = defineStore('chat', () => {
             markToolCallError(batch, data.parentToolCallId, data.error)
           }
         }
+        if (data.teamRunId && data.memberRunId) {
+          const state = createAgentTeamState(batch.teamRuns)
+          mergeAgentTeamMember(state, {
+            id: data.memberRunId,
+            teamRunId: data.teamRunId,
+            toolCallId: data.parentToolCallId,
+            subagentRunId: data.subagentRunId,
+            title: '',
+            task: '',
+            status: data.error ? 'failed' : 'succeeded',
+            error: data.error,
+            finishedAt: new Date().toISOString(),
+          })
+          batch.teamRuns = state.runs
+        }
+      },
+      onTeamStart: (data, sessionId) => {
+        if (!sessionId || sessionId !== currentSessionId.value) return
+        const batch = getCurrentBatch()
+        if (!batch) return
+        const state = createAgentTeamState(batch.teamRuns)
+        mergeAgentTeamRun(state, data)
+        batch.teamRuns = state.runs
+      },
+      onTeamMemberQueued: (data, sessionId) => {
+        if (!sessionId || sessionId !== currentSessionId.value) return
+        const batch = getCurrentBatch()
+        if (!batch) return
+        const state = createAgentTeamState(batch.teamRuns)
+        mergeAgentTeamMember(state, data)
+        batch.teamRuns = state.runs
+      },
+      onTeamDone: (data, sessionId) => {
+        if (!sessionId || sessionId !== currentSessionId.value) return
+        const batch = getCurrentBatch()
+        if (!batch) return
+        const state = createAgentTeamState(batch.teamRuns)
+        mergeAgentTeamRun(state, data)
+        batch.teamRuns = state.runs
       },
       onThinkingStart: (data, sessionId) => {
         if (!sessionId || sessionId !== currentSessionId.value) return

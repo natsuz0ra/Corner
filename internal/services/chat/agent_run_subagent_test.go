@@ -71,7 +71,7 @@ func TestWrapSubagentCallbacksTagsThinkingEvents(t *testing.T) {
 		},
 	}
 
-	wrapped := wrapSubagentCallbacks(base, "parent-tool", "sub-run")
+	wrapped := wrapSubagentCallbacks(base, AgentEventMeta{ParentToolCallID: "parent-tool", SubagentRunID: "sub-run"})
 	if err := wrapped.OnThinkingStart(ThinkingEventMeta{}); err != nil {
 		t.Fatalf("OnThinkingStart failed: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestHandleRunSubagentTool_EmitsNormalizedSubagentTitle(t *testing.T) {
 		nil,
 		map[string]struct{}{},
 		AgentCallbacks{
-			OnSubagentStart: func(_ string, _ string, title string, task string) error {
+			OnSubagentStart: func(_ AgentEventMeta, title string, task string) error {
 				gotTitle = title
 				gotTask = task
 				return nil
@@ -152,7 +152,7 @@ func TestHandleRunSubagentTool_FallsBackTitleToTask(t *testing.T) {
 		nil,
 		map[string]struct{}{},
 		AgentCallbacks{
-			OnSubagentStart: func(_ string, _ string, title string, _ string) error {
+			OnSubagentStart: func(_ AgentEventMeta, title string, _ string) error {
 				gotTitle = title
 				return nil
 			},
@@ -762,7 +762,7 @@ func TestRunAgentLoop_CancelledSubagentEmitsDoneAndParentToolError(t *testing.T)
 			nil,
 			map[string]struct{}{},
 			AgentCallbacks{
-				OnSubagentDone: func(_ string, _ string, runErr error) error {
+				OnSubagentDone: func(_ AgentEventMeta, runErr error) error {
 					mu.Lock()
 					defer mu.Unlock()
 					subagentDoneErrs = append(subagentDoneErrs, runErr)

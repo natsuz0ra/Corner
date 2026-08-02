@@ -14,6 +14,12 @@ import type {
 import { estimateTokens } from "./utils/format.js";
 import { CONTEXT_SIZE_DEFAULT, clampContextSize } from "./utils/contextSize.js";
 import { memoryConsoleActionCount } from "./utils/memoryConsole.js";
+import {
+  clampAgentTeamCursor,
+  getAgentTeamRuns,
+  upsertAgentTeamMember,
+  upsertAgentTeamRun,
+} from "./utils/agentTeam.js";
 
 function clearTurnStats() {
   return {
@@ -41,6 +47,8 @@ function entryTokenText(entry: TimelineEntry): string {
     entry.subagentThinking?.content,
     entry.toolName,
     entry.command,
+    entry.teamRun?.lastError,
+    ...(entry.teamRun?.members.flatMap((member) => [member.title, member.task, member.answer, member.error]) || []),
     ...(entry.params ? Object.values(entry.params) : []),
   ].filter(Boolean).join("\n");
 }
@@ -184,6 +192,8 @@ export function createInitialState(
     memoryDraft: "",
     memoryViewTarget: null,
     memoryMessage: "",
+    teamRunCursor: 0,
+    teamMemberCursor: 0,
     thinkingDetailContent: "",
     inputValue: "",
     inputKey: 0,
@@ -405,6 +415,54 @@ export function reducer(state: AppState, action: AppAction): AppState {
       };
     }
 
+    case "UPSERT_TEAM_RUN": {
+      const timeline = upsertAgentTeamRun(state.timeline, action.run);
+      return {
+        ...state,
+        timeline,
+        turnTokenEstimate: state.streaming ? estimateTurnTokens(state, timeline) : state.turnTokenEstimate,
+      };
+    }
+
+    case "UPSERT_TEAM_MEMBER": {
+      const timeline = upsertAgentTeamMember(state.timeline, action.member);
+      return {
+        ...state,
+        timeline,
+        turnTokenEstimate: state.streaming ? estimateTurnTokens(state, timeline) : state.turnTokenEstimate,
+      };
+    }
+
+    case "OPEN_TEAM_DETAIL": {
+      const runs = getAgentTeamRuns(state.timeline);
+      return {
+        ...state,
+        view: "team-detail",
+        teamRunCursor: clampAgentTeamCursor(runs.length - 1, runs.length),
+        teamMemberCursor: 0,
+      };
+    }
+
+    case "TEAM_DETAIL_NAV_TEAM": {
+      const runs = getAgentTeamRuns(state.timeline);
+      return {
+        ...state,
+        teamRunCursor: clampAgentTeamCursor(state.teamRunCursor + action.delta, runs.length),
+        teamMemberCursor: 0,
+      };
+    }
+
+    case "TEAM_DETAIL_NAV_MEMBER": {
+      const runs = getAgentTeamRuns(state.timeline);
+      const teamRunCursor = clampAgentTeamCursor(state.teamRunCursor, runs.length);
+      const memberCount = runs[teamRunCursor]?.members.length || 0;
+      return {
+        ...state,
+        teamRunCursor,
+        teamMemberCursor: clampAgentTeamCursor(state.teamMemberCursor + action.delta, memberCount),
+      };
+    }
+
     case "APPEND_SUBAGENT_STREAM": {
       const entries = [...state.timeline];
       const idx = entries.findIndex(
@@ -465,6 +523,8 @@ export function reducer(state: AppState, action: AppAction): AppState {
         updateConfirming: false,
         contextUsage: null,
         thinkingDetailContent: "",
+        teamRunCursor: 0,
+        teamMemberCursor: 0,
         view: "chat",
         pendingApprovals: [],
         approvalCursor: 0,

@@ -15,6 +15,11 @@ type SessionService struct {
 	store domain.SessionStore
 }
 
+type teamHistoryStore interface {
+	ListSessionTeamRunsByAssistantMessageIDs(ctx context.Context, sessionID string, messageIDs []string) ([]domain.TeamRun, error)
+	ListSessionTeamMemberRunsByAssistantMessageIDs(ctx context.Context, sessionID string, messageIDs []string) ([]domain.TeamMemberRun, error)
+}
+
 func NewSessionService(store domain.SessionStore) *SessionService {
 	return &SessionService{store: store}
 }
@@ -29,6 +34,8 @@ type MessageHistoryPage struct {
 	ToolCallsByAssistantMessageID   map[string][]ToolCallHistory
 	ThinkingByAssistantMessageID    map[string][]ThinkingHistory
 	ReplyTimingByAssistantMessageID map[string]ReplyTiming
+	TeamRuns                        []domain.TeamRun
+	TeamMemberRuns                  []domain.TeamMemberRun
 	HasMore                         bool
 }
 
@@ -123,12 +130,26 @@ func (s *SessionService) GetMessageHistory(ctx context.Context, sessionID string
 	if err != nil {
 		return MessageHistoryPage{}, err
 	}
+	teamRuns := []domain.TeamRun{}
+	teamMemberRuns := []domain.TeamMemberRun{}
+	if teamStore, ok := s.store.(teamHistoryStore); ok {
+		teamRuns, err = teamStore.ListSessionTeamRunsByAssistantMessageIDs(ctx, sessionID, messageIDs)
+		if err != nil {
+			return MessageHistoryPage{}, err
+		}
+		teamMemberRuns, err = teamStore.ListSessionTeamMemberRunsByAssistantMessageIDs(ctx, sessionID, messageIDs)
+		if err != nil {
+			return MessageHistoryPage{}, err
+		}
+	}
 
 	return MessageHistoryPage{
 		Messages:                        messages,
 		ToolCallsByAssistantMessageID:   buildToolCallHistory(records, messageIDSet, interruptedAssistantIDs),
 		ThinkingByAssistantMessageID:    buildThinkingHistory(thinkingRecords, messageIDSet, interruptedAssistantIDs),
 		ReplyTimingByAssistantMessageID: buildReplyTiming(messages),
+		TeamRuns:                        teamRuns,
+		TeamMemberRuns:                  teamMemberRuns,
 		HasMore:                         hasMore,
 	}, nil
 }

@@ -98,6 +98,8 @@ export function useCliSocket({
             content: "",
             parentToolCallId: data.parentToolCallId,
             subagentRunId: data.subagentRunId,
+            teamRunId: data.teamRunId,
+            memberRunId: data.memberRunId,
           },
         });
 
@@ -179,6 +181,8 @@ export function useCliSocket({
             content: data.output || data.error || "",
             parentToolCallId: data.parentToolCallId,
             subagentRunId: data.subagentRunId,
+            teamRunId: data.teamRunId,
+            memberRunId: data.memberRunId,
           },
         });
         dispatch({ type: "REMOVE_PENDING_APPROVAL", toolCallId: data.toolCallId });
@@ -197,8 +201,25 @@ export function useCliSocket({
             subagentRunId: data.subagentRunId,
             subagentTitle: data.title,
             subagentTask: data.task,
+            teamRunId: data.teamRunId,
+            memberRunId: data.memberRunId,
           },
         });
+        if (data.teamRunId && data.memberRunId) {
+          dispatch({
+            type: "UPSERT_TEAM_MEMBER",
+            member: {
+              id: data.memberRunId,
+              teamRunId: data.teamRunId,
+              toolCallId: data.parentToolCallId,
+              subagentRunId: data.subagentRunId,
+              title: data.title,
+              task: data.task,
+              status: "running",
+              startedAt: new Date().toISOString(),
+            },
+          });
+        }
       },
       onSubagentChunk: (data) => {
         if (!data.parentToolCallId || !data.content) return;
@@ -216,6 +237,31 @@ export function useCliSocket({
           error: data.error,
           finishedAt: Date.now(),
         });
+        if (data.teamRunId && data.memberRunId) {
+          dispatch({
+            type: "UPSERT_TEAM_MEMBER",
+            member: {
+              id: data.memberRunId,
+              teamRunId: data.teamRunId,
+              toolCallId: data.parentToolCallId,
+              subagentRunId: data.subagentRunId,
+              title: "",
+              task: "",
+              status: data.error ? "failed" : "succeeded",
+              error: data.error,
+              finishedAt: new Date().toISOString(),
+            },
+          });
+        }
+      },
+      onTeamStart: (run) => {
+        dispatch({ type: "UPSERT_TEAM_RUN", run });
+      },
+      onTeamMemberQueued: (member) => {
+        dispatch({ type: "UPSERT_TEAM_MEMBER", member });
+      },
+      onTeamDone: (run) => {
+        dispatch({ type: "UPSERT_TEAM_RUN", run });
       },
       onThinkingStart: (data) => {
         dispatch({

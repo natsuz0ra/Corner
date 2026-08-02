@@ -146,7 +146,45 @@ export interface SessionHistoryPayload {
   messages: Message[];
   toolCallsByAssistantMessageId: Record<string, ToolCallHistoryItem[]>;
   thinkingByAssistantMessageId: Record<string, ThinkingHistoryItem[]>;
+  teamRuns?: Array<Omit<AgentTeamRun, "members"> & { members?: AgentTeamMemberRun[] }>;
+  teamMemberRuns?: AgentTeamMemberRun[];
   hasMore: boolean;
+}
+
+export type AgentTeamStatus = "running" | "succeeded" | "partial_failed" | "failed" | "canceled" | "interrupted";
+export type AgentTeamMemberStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "interrupted";
+
+export interface AgentTeamMemberRun {
+  id: string;
+  teamRunId: string;
+  toolCallId: string;
+  subagentRunId?: string;
+  title: string;
+  task: string;
+  modelConfigId?: string;
+  status: AgentTeamMemberStatus;
+  answer?: string;
+  error?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AgentTeamRun {
+  id: string;
+  sessionId: string;
+  requestId: string;
+  assistantMessageId?: string;
+  status: AgentTeamStatus;
+  maxMembers: number;
+  maxParallel: number;
+  lastError?: string;
+  startedAt: string;
+  finishedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  members: AgentTeamMemberRun[];
 }
 
 export interface ToolCallHistoryItem {
@@ -158,6 +196,8 @@ export interface ToolCallHistoryItem {
   requiresApproval: boolean;
   parentToolCallId?: string;
   subagentRunId?: string;
+  teamRunId?: string;
+  memberRunId?: string;
   metadata?: unknown;
   subagentTitle?: string;
   subagentTask?: string;
@@ -171,6 +211,8 @@ export interface ThinkingHistoryItem {
   thinkingId: string;
   parentToolCallId?: string;
   subagentRunId?: string;
+  teamRunId?: string;
+  memberRunId?: string;
   content: string;
   status: string;
   startedAt?: string;
@@ -200,6 +242,8 @@ export interface ToolCallStartData {
   preamble?: string;
   parentToolCallId?: string;
   subagentRunId?: string;
+  teamRunId?: string;
+  memberRunId?: string;
 }
 
 export interface ToolCallReviewData {
@@ -211,6 +255,8 @@ export interface ToolCallReviewData {
   reviewReason?: string;
   parentToolCallId?: string;
   subagentRunId?: string;
+  teamRunId?: string;
+  memberRunId?: string;
 }
 
 export interface ToolApprovalRequiredData extends ToolCallReviewData {
@@ -229,12 +275,16 @@ export interface ToolCallResultData {
   metadata?: unknown;
   parentToolCallId?: string;
   subagentRunId?: string;
+  teamRunId?: string;
+  memberRunId?: string;
 }
 
 export interface SubagentChunkData {
   parentToolCallId: string;
   subagentRunId: string;
   content: string;
+  teamRunId?: string;
+  memberRunId?: string;
 }
 
 export interface SubagentStartData {
@@ -242,12 +292,16 @@ export interface SubagentStartData {
   subagentRunId: string;
   title: string;
   task: string;
+  teamRunId?: string;
+  memberRunId?: string;
 }
 
 export interface SubagentDoneData {
   parentToolCallId: string;
   subagentRunId: string;
   error?: string;
+  teamRunId?: string;
+  memberRunId?: string;
 }
 
 export type TodoItemStatus = "pending" | "in_progress" | "completed";
@@ -277,7 +331,7 @@ export interface ContextUsage {
 
 // ===== UI state types =====
 
-export type ViewMode = "chat" | "menu" | "mcp-editor" | "mcp-template" | "mcp-tools" | "model-editor" | "approval" | "thinking-detail" | "plan-confirm" | "question-answer" | "update" | "memory-console";
+export type ViewMode = "chat" | "menu" | "mcp-editor" | "mcp-template" | "mcp-tools" | "model-editor" | "approval" | "thinking-detail" | "plan-confirm" | "question-answer" | "update" | "memory-console" | "team-detail";
 
 export type MenuKind =
   | "session"
@@ -327,7 +381,7 @@ export const MCP_TEMPLATES: MCPTemplate[] = [
 export type ModelProvider = "openai" | "anthropic" | "deepseek";
 
 export interface TimelineEntry {
-  kind: "user" | "assistant" | "system" | "tool" | "thinking" | "plan";
+  kind: "user" | "assistant" | "system" | "tool" | "thinking" | "plan" | "team";
   content: string;
   toolCallId?: string;
   toolName?: string;
@@ -339,6 +393,9 @@ export interface TimelineEntry {
   metadata?: unknown;
   parentToolCallId?: string;
   subagentRunId?: string;
+  teamRunId?: string;
+  memberRunId?: string;
+  teamRun?: AgentTeamRun;
   subagentTitle?: string;
   subagentTask?: string;
   /** Accumulated nested agent stream (parent run_subagent only). */
@@ -426,6 +483,7 @@ export const SUPPORTED_COMMANDS: CommandMeta[] = [
   { command: "/session", description: "Open session menu to switch or delete" },
   { command: "/model", description: "Choose the default model" },
   { command: "/memory", description: "Open memory console" },
+  { command: "/team", description: "Open Agent Team details" },
   { command: "/subagent_model", description: "Choose sub-agent model" },
   { command: "/approval", description: "Toggle approval mode (standard/auto review/auto)" },
   { command: "/effort", description: "Toggle thinking level (off/low/medium/high)" },
@@ -484,6 +542,10 @@ export interface AppState {
   memoryDraft: string;
   memoryViewTarget: MemoryTarget | null;
   memoryMessage: string;
+
+  // Agent Team detail
+  teamRunCursor: number;
+  teamMemberCursor: number;
 
   // Thinking detail view
   thinkingDetailContent: string;
@@ -579,6 +641,11 @@ export type AppAction =
   | { type: "TOGGLE_COMPACT" }
   | { type: "TOGGLE_TOOL_OUTPUT" }
   | { type: "UPSERT_TOOL_ENTRY"; entry: TimelineEntry }
+  | { type: "UPSERT_TEAM_RUN"; run: Omit<AgentTeamRun, "members"> & { members?: AgentTeamMemberRun[] } }
+  | { type: "UPSERT_TEAM_MEMBER"; member: AgentTeamMemberRun }
+  | { type: "OPEN_TEAM_DETAIL" }
+  | { type: "TEAM_DETAIL_NAV_TEAM"; delta: number }
+  | { type: "TEAM_DETAIL_NAV_MEMBER"; delta: number }
   | { type: "APPEND_SUBAGENT_STREAM"; parentToolCallId: string; content: string }
   | { type: "SUBAGENT_DONE"; parentToolCallId: string; error?: string; finishedAt?: number }
   | { type: "APPEND_ENTRY"; entry: TimelineEntry }
